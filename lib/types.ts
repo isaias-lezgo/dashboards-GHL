@@ -52,12 +52,46 @@ export interface Task {
   assignedTo?: string
 }
 
+// Channels we can render with an icon/label in the thread.
+// Anything else collapses to "other".
+export type MessageChannel =
+  | "sms"
+  | "email"
+  | "facebook"
+  | "instagram"
+  | "whatsapp"
+  | "google_chat"
+  | "call"
+  | "webchat"
+  | "live_chat"
+  | "tiktok"
+  | "review"
+  | "form_submission"
+  | "internal_comment"
+  | "other"
+
+// System / activity event kinds — rendered as a centered timeline chip,
+// not a chat bubble.
+export type ActivityKind =
+  | "opportunity"
+  | "appointment"
+  | "invoice"
+  | "payment"
+  | "contact"
+  | "employee_action"
+  | "other"
+
 export interface Message {
   id: string
   contactId: string
   assignedTo?: string
   direction: "inbound" | "outbound"
-  source: "sms" | "email" | "facebook" | "instagram" | "whatsapp" | "google_chat"
+  // Omitted = real message. "activity" = system event (rendered as a chip).
+  kind?: "message" | "activity"
+  // For messages: the channel. For activities: "system".
+  source: MessageChannel | "system"
+  // Only set on activities — drives the chip label.
+  activityKind?: ActivityKind
   content?: string
   createdAt: string
 }

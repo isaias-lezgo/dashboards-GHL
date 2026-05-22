@@ -23,6 +23,7 @@ export interface DashboardData {
   campaigns: string[];
   sources: string[];
   pautas: Pauta[];
+  locationId: string;
   meta: {
     totalContacts: number;
     totalOpportunities: number;

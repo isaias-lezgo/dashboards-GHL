@@ -10,9 +10,8 @@ import {
   getAllCustomObjectRecords,
   type GHLContact,
   type GHLOpportunity,
-  type GHLConversation,
-  type GHLMessage,
 } from "@/lib/ghl-client";
+import { ghlMessageToInternal } from "@/lib/ghl-message-mapper";
 import type {
   Contact,
   Opportunity,
@@ -94,53 +93,6 @@ function transformOpportunity(
   };
 }
 
-const CONV_TYPE_SOURCE: Record<string, Message["source"]> = {
-  SMS: "sms",
-  Email: "email",
-  FB: "facebook",
-  IG: "instagram",
-  WhatsApp: "whatsapp",
-  GMB: "google_chat",
-  Live_Chat: "sms",
-  Custom: "sms",
-};
-
-// GHL message type numbers → internal channel source
-const MSG_TYPE_SOURCE: Record<number, Message["source"]> = {
-  1: "sms",
-  2: "email",
-  3: "sms",
-  5: "sms",       // live chat
-  6: "sms",       // manual SMS
-  7: "facebook",
-  8: "instagram",
-  9: "whatsapp",
-  10: "google_chat",
-  12: "email",
-};
-
-function transformConversation(ghl: GHLConversation): Message {
-  return {
-    id: ghl.id,
-    contactId: ghl.contactId,
-    direction: "inbound",
-    source: CONV_TYPE_SOURCE[ghl.type] || "sms",
-    content: ghl.lastMessageBody || "",
-    createdAt: ghl.lastMessageDate || ghl.dateAdded,
-    assignedTo: ghl.assignedTo,
-  };
-}
-
-function transformMessage(ghl: GHLMessage, contactId: string): Message {
-  return {
-    id: ghl.id,
-    contactId,
-    direction: ghl.direction,
-    source: MSG_TYPE_SOURCE[ghl.type] ?? "sms",
-    content: ghl.body || "",
-    createdAt: ghl.dateAdded,
-  };
-}
 
 function enc(obj: unknown): string {
   return JSON.stringify(obj) + "\n";
@@ -278,6 +230,51 @@ export async function GET() {
         for (const c of contacts) {
           contactById.set(c.id, c);
         }
+
+        // GHL guarantees every opportunity has a contact, and the
+        // /opportunities/search response already embeds { id, name, email,
+        // phone, tags }. The /contacts/ list endpoint, however, sometimes
+        // omits records (archived, restricted, pagination quirks). For any
+        // opp whose contact wasn't returned by /contacts/, synthesize a
+        // Contact from the opportunity-embedded data so the UI always
+        // resolves the lookup.
+        let synthesizedCount = 0;
+        for (const raw of opportunitiesRaw) {
+          const embedded = raw.contact;
+          if (!embedded?.id) continue;
+          if (contactById.has(embedded.id)) continue;
+
+          const attr = firstAttr(raw.attributions);
+          const synth: Contact = {
+            id: embedded.id,
+            name:
+              embedded.name?.trim() ||
+              embedded.email ||
+              embedded.phone ||
+              "Sin nombre",
+            email: embedded.email || "",
+            phone: embedded.phone || "",
+            tags: embedded.tags || [],
+            createdAt: raw.dateAdded,
+            source: attr?.utmSource || attr?.adSource || raw.source || "direct",
+            campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+            adType: attr?.utmMedium || attr?.utmSessionSource,
+            assignedTo:
+              raw.assignedTo && userMap.has(raw.assignedTo)
+                ? userMap.get(raw.assignedTo)
+                : raw.assignedTo,
+          };
+          contactById.set(embedded.id, synth);
+          contacts.push(synth);
+          synthesizedCount++;
+        }
+        if (synthesizedCount > 0) {
+          console.warn(
+            `[GHL] Synthesized ${synthesizedCount} contacts from opportunity-embedded data ` +
+              `(missing from /contacts/ list of ${contactsRaw.length}).`
+          );
+        }
+
         for (const opp of opportunities) {
           const contact = contactById.get(opp.contactId);
           if (contact) {
@@ -302,8 +299,8 @@ export async function GET() {
               try {
                 const msgResp = await getMessages(conv.id, { limit: 50 });
                 for (const msg of msgResp.messages.messages) {
-                  if (!msg.body) continue;
-                  messages.push(transformMessage(msg, contact.id));
+                  const transformed = ghlMessageToInternal(msg, contact.id);
+                  if (transformed) messages.push(transformed);
                 }
               } catch {
                 // skip conversations that fail individually
@@ -350,6 +347,7 @@ export async function GET() {
           campaigns: Array.from(campaignSet),
           sources: Array.from(sourceSet),
           pautas,
+          locationId: process.env.GHL_LOCATION_ID ?? "",
           meta: {
             totalContacts: contacts.length,
             totalOpportunities: opportunities.length,

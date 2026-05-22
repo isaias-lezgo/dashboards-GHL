@@ -317,7 +317,11 @@ export interface GHLMessage {
   contactId: string;
   locationId: string;
   body?: string;
+  // Numeric type — opaque, prefer messageType for routing
   type: number;
+  // String enum: TYPE_SMS, TYPE_EMAIL, TYPE_WHATSAPP, TYPE_FACEBOOK,
+  // TYPE_INSTAGRAM, TYPE_ACTIVITY_OPPORTUNITY, … — see GHL-API-Schemas.md
+  messageType?: string;
   direction: "inbound" | "outbound";
   status: string;
   dateAdded: string;

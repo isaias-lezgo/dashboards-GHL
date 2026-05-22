@@ -33,6 +33,7 @@ import {
   Calendar,
   DollarSign,
   User,
+  ExternalLink,
 } from "lucide-react"
 
 interface DetailDrawerProps {
@@ -43,6 +44,7 @@ interface DetailDrawerProps {
   contacts: Contact[]
   tasks: Task[]
   calls: Call[]
+  locationId?: string
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -87,6 +89,7 @@ export function DetailDrawer({
   contacts,
   tasks,
   calls,
+  locationId = "",
 }: DetailDrawerProps) {
   const [taskFilter, setTaskFilter] = useState<"all" | "open" | "completed">("all")
 
@@ -167,6 +170,42 @@ export function DetailDrawer({
               <span className="text-[11px] text-muted-foreground italic">Sin etiquetas</span>
             )}
           </div>
+          {locationId && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+              >
+                <a
+                  href={`https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${opportunity.id}?tab=Opportunity+Details`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Ver oportunidad
+                </a>
+              </Button>
+              {contact && (
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                >
+                  <a
+                    href={`https://login.lezgosuite.com/v2/location/${locationId}/contacts/detail/${contact.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Ver contacto
+                  </a>
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tabs */}

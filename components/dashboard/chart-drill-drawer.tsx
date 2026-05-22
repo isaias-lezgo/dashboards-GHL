@@ -54,6 +54,7 @@ interface ChartDrillDrawerProps {
   calls: Call[]
   /** Full opportunity list needed by DetailDrawer to resolve the selected ID */
   allOpportunities: Opportunity[]
+  locationId?: string
 }
 
 export function ChartDrillDrawer({
@@ -63,6 +64,7 @@ export function ChartDrillDrawer({
   tasks,
   calls,
   allOpportunities,
+  locationId = "",
 }: ChartDrillDrawerProps) {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -173,6 +175,7 @@ export function ChartDrillDrawer({
         contacts={contacts}
         tasks={tasks}
         calls={calls}
+        locationId={locationId}
       />
     </>
   )

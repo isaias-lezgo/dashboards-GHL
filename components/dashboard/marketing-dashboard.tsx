@@ -30,6 +30,7 @@ interface MarketingDashboardProps {
   pautas: Pauta[]
   tasks?: Task[]
   calls?: Call[]
+  locationId?: string
 }
 
 // Stage colors — consistent across all stacked charts
@@ -108,7 +109,7 @@ function TotalBadge({ value }: { value: number | string }) {
 
 const iconCls = "h-4 w-4 shrink-0 text-muted-foreground"
 
-export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [] }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], locationId = "" }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
 
@@ -771,6 +772,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        locationId={locationId}
       />
     </div>
   )

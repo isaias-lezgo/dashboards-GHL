@@ -9,3 +9,8 @@ instrumentation-client.ts
 node_modules/
 .next/
 .DS_Store
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env.*.local

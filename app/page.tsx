@@ -251,6 +251,7 @@ export default function DashboardPage() {
             pautas={data?.pautas ?? []}
             tasks={data?.tasks ?? []}
             calls={filteredCalls}
+            locationId={data?.locationId ?? ""}
           />
         ) : activeTab === "sales" ? (
           <SalesDashboard
@@ -259,6 +260,7 @@ export default function DashboardPage() {
             calls={filteredCalls}
             messages={filteredMessages}
             tasks={data?.tasks ?? []}
+            locationId={data?.locationId ?? ""}
           />
         ) : (
           <ConversationsDashboard

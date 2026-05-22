@@ -26,6 +26,7 @@ interface SalesDashboardProps {
   calls: Call[]
   messages: Message[]
   tasks?: Task[]
+  locationId?: string
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -74,7 +75,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, tasks = [], locationId = "" }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
@@ -640,6 +641,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        locationId={locationId}
       />
     </div>
   )

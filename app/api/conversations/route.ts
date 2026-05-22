@@ -1,18 +1,6 @@
 import { getConversations, getMessages } from "@/lib/ghl-client"
+import { ghlMessageToInternal } from "@/lib/ghl-message-mapper"
 import type { Message } from "@/lib/types"
-
-const MSG_TYPE_SOURCE: Record<number, Message["source"]> = {
-  1: "sms",
-  2: "email",
-  3: "sms",
-  5: "sms",
-  6: "sms",
-  7: "facebook",
-  8: "instagram",
-  9: "whatsapp",
-  10: "google_chat",
-  12: "email",
-}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -21,8 +9,10 @@ export async function GET(request: Request) {
     .map((s) => s.trim())
     .filter(Boolean)
 
+  const locationId = process.env.GHL_LOCATION_ID ?? ""
+
   if (contactIds.length === 0) {
-    return Response.json({ threads: [] })
+    return Response.json({ threads: [], locationId })
   }
 
   const threads: Array<{ contactId: string; messages: Message[] }> = []
@@ -37,15 +27,8 @@ export async function GET(request: Request) {
       }
       const msgResp = await getMessages(conv.id, { limit: 100 })
       const messages: Message[] = msgResp.messages.messages
-        .filter((m) => Boolean(m.body))
-        .map((m) => ({
-          id: m.id,
-          contactId,
-          direction: m.direction,
-          source: MSG_TYPE_SOURCE[m.type] ?? "sms",
-          content: m.body ?? "",
-          createdAt: m.dateAdded,
-        }))
+        .map((m) => ghlMessageToInternal(m, contactId))
+        .filter((m): m is Message => m !== null)
         .sort(
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -57,5 +40,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return Response.json({ threads })
+  return Response.json({ threads, locationId })
 }
