@@ -18,7 +18,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Call, Message, Task } from "@/lib/types"
-import { Users, TrendingUp, Target, DollarSign } from "lucide-react"
+import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 
 interface SalesDashboardProps {
@@ -789,8 +789,14 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       <SectionHeader title="Actividad de Conversaciones" />
       <Card>
         <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="text-base font-semibold flex items-center gap-1">
             Conversaciones únicas por día
+            <span
+              title="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora."
+              className="cursor-help shrink-0 inline-flex"
+            >
+              <Info size={14} className="text-muted-foreground" />
+            </span>
           </CardTitle>
           <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
         </CardHeader>
