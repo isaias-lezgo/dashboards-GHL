@@ -85,22 +85,6 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
     [opportunities]
   )
 
-  const chartData = useMemo(() => {
-    const members = [...new Set(opportunities.map((o) => o.assignedTo).filter((m): m is string => Boolean(m)))]
-    return members.map((member) => {
-      const row: Record<string, string | number> = { member }
-      for (const stage of allStages) {
-        row[stage] = opportunities.filter((o) => o.assignedTo === member && o.stage === stage).length
-      }
-      return row
-    })
-  }, [opportunities, allStages])
-
-  const chartConfig = useMemo(
-    () => Object.fromEntries(allStages.map((stage, i) => [stage, { label: stage, color: stageColor(stage, i) }])),
-    [allStages]
-  )
-
   const members = useMemo(
     () =>
       [
@@ -111,6 +95,21 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
         ),
       ],
     [opportunities]
+  )
+
+  const chartData = useMemo(() => {
+    return members.map((member) => {
+      const row: Record<string, string | number> = { member }
+      for (const stage of allStages) {
+        row[stage] = opportunities.filter((o) => o.assignedTo === member && o.stage === stage).length
+      }
+      return row
+    })
+  }, [members, allStages, opportunities])
+
+  const chartConfig = useMemo(
+    () => Object.fromEntries(allStages.map((stage, i) => [stage, { label: stage, color: stageColor(stage, i) }])),
+    [allStages]
   )
 
   return (
