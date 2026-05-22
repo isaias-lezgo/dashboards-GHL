@@ -287,28 +287,27 @@ export async function GET() {
           }
         }
 
-        // Fetch full message threads for first 5 contacts
+        // Fetch last 30 active conversations and their messages
         send({ type: "progress", message: "Cargando conversaciones…" });
         const messages: Message[] = [];
-        const first5 = contacts.slice(0, 5);
-
-        for (const contact of first5) {
-          try {
-            const convResp = await getConversations({ contactId: contact.id, limit: 20 });
-            for (const conv of convResp.conversations.slice(0, 3)) {
-              try {
-                const msgResp = await getMessages(conv.id, { limit: 50 });
-                for (const msg of msgResp.messages.messages) {
-                  const transformed = ghlMessageToInternal(msg, contact.id);
-                  if (transformed) messages.push(transformed);
-                }
-              } catch {
-                // skip conversations that fail individually
+        try {
+          const convResp = await getConversations({ limit: 30 });
+          for (const conv of convResp.conversations) {
+            try {
+              const msgResp = await getMessages(conv.id, { limit: 50 });
+              for (const msg of msgResp.messages.messages) {
+                const transformed = ghlMessageToInternal(msg, conv.contactId, {
+                  conversationId: conv.id,
+                  assignedTo: conv.assignedTo,
+                });
+                if (transformed) messages.push(transformed);
               }
+            } catch {
+              // skip conversations that fail individually
             }
-          } catch {
-            // skip contacts whose conversations can't be fetched
           }
+        } catch (err) {
+          console.error("[GHL] Conversations fetch failed:", err);
         }
 
         const calls: Call[] = [];
