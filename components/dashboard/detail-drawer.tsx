@@ -19,21 +19,9 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import type { Opportunity, Contact, Task, Call } from "@/lib/types"
 import {
   Phone,
-  PhoneIncoming,
-  PhoneOutgoing,
-  PhoneMissed,
-  CheckCircle2,
   Clock,
   Mail,
   MessageSquare,
@@ -44,7 +32,21 @@ import {
   ExternalLink,
   Sparkles,
   Loader2,
+  CalendarCheck,
+  CalendarX,
+  CalendarClock,
 } from "lucide-react"
+
+interface GHLAppointment {
+  id: string
+  title?: string
+  startTime: string
+  endTime: string
+  status: string
+  appointmentStatus?: string
+  notes?: string
+  assignedUserId?: string
+}
 
 interface DetailDrawerProps {
   open: boolean
@@ -78,12 +80,6 @@ function formatCurrency(value: number): string {
   return `$${value.toLocaleString()}`
 }
 
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, "0")}`
-}
-
 const TASK_ICONS: Record<string, typeof Phone> = {
   call: Phone,
   email: Mail,
@@ -106,6 +102,9 @@ export function DetailDrawer({
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
+  const [appointments, setAppointments] = useState<GHLAppointment[]>([])
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false)
+  const [appointmentsLoaded, setAppointmentsLoaded] = useState(false)
 
   const opportunity = opportunities.find((o) => o.id === opportunityId)
   if (!opportunity) {
@@ -132,25 +131,21 @@ export function DetailDrawer({
       ? oppTasks
       : oppTasks.filter((t) => t.status === taskFilter)
 
-  // Timeline: merge tasks and calls, sorted by date desc
-  const timelineItems = [
-    ...oppTasks.map((t) => ({
-      type: "task" as const,
-      date: t.dueDate,
-      title: t.title,
-      subtitle: `${t.type} - ${t.status}`,
-      icon: TASK_ICONS[t.type] || MoreHorizontal,
-      status: t.status,
-    })),
-    ...contactCalls.map((c) => ({
-      type: "call" as const,
-      date: c.createdAt,
-      title: `${c.direction} call - ${c.userName}`,
-      subtitle: c.status === "completed" ? formatDuration(c.durationSeconds) : "Missed",
-      icon: c.status === "missed" ? PhoneMissed : c.direction === "inbound" ? PhoneIncoming : PhoneOutgoing,
-      status: c.status,
-    })),
-  ].sort((a, b) => b.date.localeCompare(a.date))
+  async function handleTabChange(value: string) {
+    if (value !== "appointments" || appointmentsLoaded || appointmentsLoading) return
+    setAppointmentsLoading(true)
+    try {
+      const res = await fetch(`/api/contact-appointments?opportunityId=${opportunity.id}`)
+      const data = await res.json()
+      setAppointments(data.appointments ?? [])
+      setAppointmentsLoaded(true)
+    } catch {
+      setAppointments([])
+      setAppointmentsLoaded(true)
+    } finally {
+      setAppointmentsLoading(false)
+    }
+  }
 
   async function handleAnalyze() {
     if (!opportunity || !contact) return
@@ -297,12 +292,11 @@ export function DetailDrawer({
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="overview" className="px-6 pt-4">
+        <Tabs defaultValue="overview" className="px-6 pt-4" onValueChange={handleTabChange}>
           <TabsList className="w-full">
             <TabsTrigger value="overview" className="flex-1 text-xs">Resumen</TabsTrigger>
             <TabsTrigger value="tasks" className="flex-1 text-xs">Tareas</TabsTrigger>
-            <TabsTrigger value="calls" className="flex-1 text-xs">Llamadas</TabsTrigger>
-            <TabsTrigger value="timeline" className="flex-1 text-xs">Historial</TabsTrigger>
+            <TabsTrigger value="appointments" className="flex-1 text-xs">Citas</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -406,81 +400,63 @@ export function DetailDrawer({
             )}
           </TabsContent>
 
-          {/* Calls Tab */}
-          <TabsContent value="calls" className="mt-4">
-            {contactCalls.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Sin llamadas registradas.</p>
+          {/* Appointments Tab */}
+          <TabsContent value="appointments" className="mt-4 pb-6">
+            {appointmentsLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Cargando citas…</span>
+              </div>
+            ) : !appointmentsLoaded ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Selecciona esta pestaña para cargar las citas.</p>
+            ) : appointments.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Sin citas registradas.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-xs">Fecha</TableHead>
-                    <TableHead className="text-xs">Dirección</TableHead>
-                    <TableHead className="text-xs">Estado</TableHead>
-                    <TableHead className="text-xs">Duración</TableHead>
-                    <TableHead className="text-xs">Asesor</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {contactCalls.map((call) => (
-                    <TableRow key={call.id}>
-                      <TableCell className="text-xs text-foreground">{call.createdAt}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-xs text-foreground">
-                          {call.direction === "inbound" ? (
-                            <PhoneIncoming className="h-3 w-3 text-muted-foreground" />
-                          ) : (
-                            <PhoneOutgoing className="h-3 w-3 text-muted-foreground" />
-                          )}
-                          <span className="capitalize">{call.direction}</span>
+              <div className="flex flex-col gap-2">
+                {appointments
+                  .slice()
+                  .sort((a, b) => b.startTime.localeCompare(a.startTime))
+                  .map((appt) => {
+                    const status = appt.appointmentStatus ?? appt.status ?? ""
+                    const isConfirmed = ["confirmed", "showed"].includes(status.toLowerCase())
+                    const isCancelled = ["cancelled", "noshow", "no_show"].includes(status.toLowerCase())
+                    const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
+                    const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
+                    const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-amber-600"
+                    const badgeClass = isConfirmed
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : isCancelled
+                      ? "bg-red-50 text-red-600 border-red-200"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
+                    const startDate = new Date(appt.startTime)
+                    const dateStr = startDate.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
+                    const timeStr = startDate.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+                    return (
+                      <div key={appt.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
+                          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
                         </div>
-                      </TableCell>
-                      <TableCell>
+                        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {appt.title ?? "Cita"}
+                          </span>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span>{dateStr}</span>
+                            <span>{timeStr}</span>
+                          </div>
+                          {appt.notes && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{appt.notes}</p>
+                          )}
+                        </div>
                         <Badge
                           variant="outline"
-                          className={`text-[10px] ${call.status === "completed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}
+                          className={`text-[10px] shrink-0 capitalize ${badgeClass}`}
                         >
-                          {call.status}
+                          {status || "pendiente"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-foreground">
-                        {call.status === "completed" ? formatDuration(call.durationSeconds) : "--"}
-                      </TableCell>
-                      <TableCell className="text-xs text-foreground">{call.userName}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </TabsContent>
-
-          {/* Timeline Tab */}
-          <TabsContent value="timeline" className="mt-4 pb-6">
-            {timelineItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Sin actividad registrada.</p>
-            ) : (
-              <div className="relative flex flex-col gap-0">
-                {timelineItems.map((item, idx) => {
-                  const Icon = item.icon
-                  const isLast = idx === timelineItems.length - 1
-                  return (
-                    <div key={`${item.type}-${idx}`} className="relative flex gap-3 pb-4">
-                      {!isLast && (
-                        <div className="absolute left-[13px] top-7 bottom-0 w-px bg-border" />
-                      )}
-                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${item.type === "call" ? "bg-blue-100" : "bg-muted"}`}>
-                        <Icon className={`h-3.5 w-3.5 ${item.type === "call" ? "text-blue-600" : "text-muted-foreground"}`} />
                       </div>
-                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                        <span className="text-sm text-foreground">{item.title}</span>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{item.date}</span>
-                          <span>{item.subtitle}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
               </div>
             )}
           </TabsContent>
