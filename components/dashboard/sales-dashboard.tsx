@@ -119,6 +119,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
           lost:      opps.filter((o) => o.status === "lost").length,
           abandoned: opps.filter((o) => o.status === "abandoned").length,
           winRate:   opps.length > 0 ? (won / opps.length) * 100 : 0,
+          _total:    opps.length,
         }
       }),
     [members, opportunities]
@@ -170,16 +171,21 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
 
     const buckets = new Map<string, number>()
     for (const opp of opportunities) {
-      const d = new Date(opp.createdAt)
+      const raw = opp.createdAt
+      const d = raw.length === 10
+        ? new Date(`${raw}T00:00:00`)
+        : new Date(raw)
       if (Number.isNaN(d.getTime())) continue
       let key: string
       if (useMonths) {
         key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
       } else {
-        const day = d.getDay() || 7
-        const monday = new Date(d)
-        monday.setDate(d.getDate() - day + 1)
-        key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`
+        const tmp = new Date(d.getTime())
+        tmp.setHours(0, 0, 0, 0)
+        tmp.setDate(tmp.getDate() + 3 - ((tmp.getDay() + 6) % 7))
+        const week1 = new Date(tmp.getFullYear(), 0, 4)
+        const isoWeek = 1 + Math.round(((tmp.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+        key = `${tmp.getFullYear()}-W${String(isoWeek).padStart(2, "0")}`
       }
       buckets.set(key, (buckets.get(key) ?? 0) + 1)
     }
@@ -195,7 +201,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
                 year: "numeric",
               })
             })()
-          : `Sem ${key}`,
+          : `Sem ${key.split("-W")[1]}`,
         count,
       }))
   }, [opportunities])
@@ -407,7 +413,8 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
                   <Bar dataKey="won"      stackId="a" fill={WIN_LOSS_CONFIG.won.color} />
                   <Bar dataKey="open"     stackId="a" fill={WIN_LOSS_CONFIG.open.color} />
                   <Bar dataKey="lost"     stackId="a" fill={WIN_LOSS_CONFIG.lost.color} />
-                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color}>
+                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color} />
+                  <Bar dataKey="_total" stackId="b" fill="transparent" legendType="none">
                     <LabelList
                       dataKey="winRate"
                       position="right"
@@ -554,7 +561,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
               >
                 <BarChart
                   data={trendData}
-                  margin={{ left: 8, right: 8, top: 8, bottom: 32 }}
+                  margin={{ left: 8, right: 8, top: 8, bottom: 48 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
