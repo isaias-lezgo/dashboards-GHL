@@ -222,8 +222,9 @@ export function ConversationsDashboard({
   async function fetchThreads(contactIds: string[], append: boolean) {
     if (contactIds.length === 0) return
     const resp = await fetch(
-      `/api/conversations?contactIds=${contactIds.join(",")}`
+      `/api/conversations?contactIds=${encodeURIComponent(contactIds.join(","))}`
     )
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const data: { threads: ThreadData[] } = await resp.json()
     if (append) {
       setLoadedThreads((prev) => [...prev, ...data.threads])
@@ -247,7 +248,8 @@ export function ConversationsDashboard({
 
   async function handleLoadMore() {
     const batch = filteredContactIds.slice(loadedCount, loadedCount + 50)
-    setLoadedCount((prev) => prev + 50)
+    if (batch.length === 0) return
+    setLoadedCount((prev) => prev + batch.length)
     setIsLoadingMore(true)
     try {
       await fetchThreads(batch, true)
@@ -268,6 +270,11 @@ export function ConversationsDashboard({
     setFilteredContactIds([])
     setLoadedCount(0)
     setSelectedContactId("")
+    setSelectedUser("")
+    setSelectedTag("")
+    setSelectedPipeline("")
+    setSelectedStage("")
+    setHowMany(10)
   }
 
   // Preserve original contact order from loadedThreads
