@@ -530,6 +530,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                           nameKey="adType"
                           startAngle={90}
                           endAngle={-270}
+                          stroke="none"
+                          paddingAngle={2}
                           activeIndex={hoveredAdType}
                           activeShape={(props: any) => (
                             <Sector
@@ -540,6 +542,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                               startAngle={props.startAngle}
                               endAngle={props.endAngle}
                               fill={props.fill}
+                              stroke="none"
                             />
                           )}
                         >
@@ -560,13 +563,13 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         pointerEvents: "none",
                       }}
                     >
-                      <div style={{ color: "white", fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{total}</div>
-                      <div style={{ color: "#6b7280", fontSize: 9, marginTop: 2 }}>LEADS</div>
+                      <div style={{ color: "hsl(var(--foreground))", fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{total}</div>
+                      <div style={{ color: "hsl(var(--muted-foreground))", fontSize: 9, marginTop: 2 }}>LEADS</div>
                     </div>
                   </div>
 
                   {/* Right: ranked bar list */}
-                  <div className="flex flex-1 flex-col gap-y-2.5 overflow-y-auto">
+                  <div className="flex flex-1 flex-col gap-y-2.5">
                     {leadsByAdType.map((entry, i) => {
                       const pct = total > 0 ? Math.round((entry.value / total) * 100) : 0
                       const barWidth = maxVal > 0 ? (entry.value / maxVal) * 100 : 0
@@ -590,7 +593,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                               {entry.value} · {pct}%
                             </span>
                           </div>
-                          <div className="h-1.5 rounded bg-[#1f2937] overflow-hidden">
+                          <div className="h-1.5 rounded bg-muted overflow-hidden">
                             <div
                               className="h-full rounded transition-all"
                               style={{ width: `${barWidth}%`, backgroundColor: entry.color }}

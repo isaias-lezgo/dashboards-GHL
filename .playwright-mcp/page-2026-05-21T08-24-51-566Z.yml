@@ -1,0 +1,143 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - img [ref=e7]
+          - generic [ref=e9]:
+            - heading "GHL Analíticas" [level=1] [ref=e10]
+            - paragraph [ref=e11]: Panel de Marketing y Ventas
+        - generic [ref=e12]:
+          - generic [ref=e13]: Actualizado 02:24 a.m.
+          - button "Actualizar" [ref=e253] [cursor=pointer]:
+            - img
+            - text: Actualizar
+          - button "Cambiar tema" [active] [ref=e16] [cursor=pointer]:
+            - img
+    - generic [ref=e18]:
+      - button "Marketing" [ref=e19] [cursor=pointer]:
+        - img [ref=e20]
+        - text: Marketing
+      - button "Ventas" [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+        - text: Ventas
+    - region "Barra de filtros" [ref=e27]:
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - img [ref=e32]
+          - generic [ref=e34]: Filtros
+        - group "Rango de fechas" [ref=e35]:
+          - button "Hoy" [ref=e36] [cursor=pointer]
+          - button "7D" [ref=e37] [cursor=pointer]
+          - button "30D" [ref=e38] [cursor=pointer]
+          - button "Mes" [ref=e39] [cursor=pointer]
+          - button "Trimestre" [ref=e40] [cursor=pointer]
+          - button "Año" [ref=e41] [cursor=pointer]
+          - button "Todo" [pressed] [ref=e42] [cursor=pointer]
+        - combobox "Filtrar por miembro" [ref=e255] [cursor=pointer]:
+          - generic: Todos los miembros
+          - img [ref=e256]
+        - combobox "Filtrar por pipeline" [ref=e259] [cursor=pointer]:
+          - generic: Todos los pipelines
+          - img [ref=e260]
+        - combobox [ref=e263] [cursor=pointer]:
+          - generic [ref=e264]: Todos los tags
+          - img
+    - generic [ref=e123]:
+      - generic [ref=e124]:
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - paragraph [ref=e129]: Total Oportunidades
+            - paragraph [ref=e130]: 6,164
+          - img [ref=e131]
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - paragraph [ref=e139]: Miembros Activos
+            - paragraph [ref=e140]: "9"
+            - paragraph [ref=e141]: 9 en total
+          - img [ref=e142]
+        - generic [ref=e149]:
+          - generic [ref=e150]:
+            - paragraph [ref=e151]: Tasa de Conversión
+            - paragraph [ref=e152]: 0.1%
+          - img [ref=e153]
+        - generic [ref=e158]:
+          - generic [ref=e159]:
+            - paragraph [ref=e160]: Ingreso Ganado
+            - paragraph [ref=e161]: $11,497,991
+          - img [ref=e162]
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]: Leads por Miembro por Etapa del Pipeline
+          - generic [ref=e167]: "Total: 6,164"
+        - generic [ref=e171]:
+          - img [ref=e172]:
+            - generic [ref=e176]:
+              - generic [ref=e266]: MonicaSalinas
+              - generic [ref=e268]: AlejandroChávez
+              - generic [ref=e270]: Arely JoyceRoqueRobles
+              - generic [ref=e272]: EderSanchez
+              - generic [ref=e274]: EvelynAlonzo
+              - generic [ref=e276]: CésarTreviño
+              - generic [ref=e278]: Ana LiliaSalas
+              - generic [ref=e280]: JorgeBarragán
+              - generic [ref=e282]: KatleenBatista
+            - generic [ref=e184]:
+              - generic [ref=e186]: "0"
+              - generic [ref=e284]: "350"
+              - generic [ref=e286]: "700"
+              - generic [ref=e288]: "1050"
+              - generic [ref=e290]: "1400"
+          - list [ref=e226]:
+            - listitem [ref=e227]:
+              - img [ref=e228]
+              - text: Lead Recibido
+            - listitem [ref=e230]:
+              - img [ref=e231]
+              - text: Negocio Perdido
+            - listitem [ref=e233]:
+              - img [ref=e234]
+              - text: 1er Contacto
+            - listitem [ref=e236]:
+              - img [ref=e237]
+              - text: 02. Cliente Calificado
+            - listitem [ref=e239]:
+              - img [ref=e240]
+              - text: 03. Cita Agendada
+            - listitem [ref=e467]:
+              - img [ref=e468]
+              - text: 2do Contacto
+            - listitem [ref=e470]:
+              - img [ref=e471]
+              - text: 01. Contacto En Seguimiento
+            - listitem [ref=e473]:
+              - img [ref=e474]
+              - text: 04. Visita al Desarrollo
+            - listitem [ref=e476]:
+              - img [ref=e477]
+              - text: 3er Contacto
+            - listitem [ref=e479]:
+              - img [ref=e480]
+              - text: 10. Inversión Futura
+            - listitem [ref=e482]:
+              - img [ref=e483]
+              - text: 4to Contacto
+            - listitem [ref=e485]:
+              - img [ref=e486]
+              - text: 07. Pago de Mensualidades
+            - listitem [ref=e488]:
+              - img [ref=e489]
+              - text: 5to Contacto
+            - listitem [ref=e491]:
+              - img [ref=e492]
+              - text: 05. Cotización / Negociación
+            - listitem [ref=e494]:
+              - img [ref=e495]
+              - text: 06. Apartado
+            - listitem [ref=e497]:
+              - img [ref=e498]
+              - text: 08. Proceso de Escritura
+  - button "Open Next.js Dev Tools" [ref=e247] [cursor=pointer]:
+    - img [ref=e248]
+  - alert [ref=e251]
+  - generic [ref=e252]: Barragán

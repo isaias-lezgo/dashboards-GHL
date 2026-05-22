@@ -1,0 +1,101 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - img [ref=e7]
+          - generic [ref=e9]:
+            - heading "GHL Analíticas" [level=1] [ref=e10]
+            - paragraph [ref=e11]: Panel de Marketing y Ventas
+        - generic [ref=e12]:
+          - generic [ref=e13]: Cargando contactos… 2,600
+          - button "Actualizar" [disabled]:
+            - img
+            - text: Actualizar
+          - img [ref=e14]
+          - button "Cambiar tema" [ref=e16] [cursor=pointer]:
+            - img
+    - generic [ref=e18]:
+      - button "Marketing" [ref=e19] [cursor=pointer]:
+        - img [ref=e20]
+        - text: Marketing
+      - button "Ventas" [active] [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+        - text: Ventas
+    - generic [ref=e26]:
+      - region "Barra de filtros" [ref=e27]:
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - img [ref=e32]
+            - generic [ref=e34]: Filtros
+          - group "Rango de fechas" [ref=e35]:
+            - button "Hoy" [ref=e36] [cursor=pointer]
+            - button "7D" [ref=e37] [cursor=pointer]
+            - button "30D" [ref=e38] [cursor=pointer]
+            - button "Mes" [ref=e39] [cursor=pointer]
+            - button "Trimestre" [ref=e40] [cursor=pointer]
+            - button "Año" [ref=e41] [cursor=pointer]
+            - button "Todo" [pressed] [ref=e42] [cursor=pointer]
+      - generic "Cargando datos, filtros deshabilitados" [ref=e43]:
+        - generic [ref=e44]:
+          - img [ref=e45]
+          - generic [ref=e47]: Cargando contactos… 2,600
+    - generic [ref=e123]:
+      - generic [ref=e124]:
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - paragraph [ref=e129]: Total Oportunidades
+            - paragraph [ref=e130]: "16"
+          - img [ref=e131]
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - paragraph [ref=e139]: Miembros Activos
+            - paragraph [ref=e140]: "3"
+            - paragraph [ref=e141]: 3 en total
+          - img [ref=e142]
+        - generic [ref=e149]:
+          - generic [ref=e150]:
+            - paragraph [ref=e151]: Tasa de Conversión
+            - paragraph [ref=e152]: 6.3%
+          - img [ref=e153]
+        - generic [ref=e158]:
+          - generic [ref=e159]:
+            - paragraph [ref=e160]: Ingreso Ganado
+            - paragraph [ref=e161]: $35,000
+          - img [ref=e162]
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]: Leads por Miembro por Etapa del Pipeline
+          - generic [ref=e167]: "Total: 16"
+        - generic [ref=e171]:
+          - img [ref=e172]:
+            - generic [ref=e176]:
+              - generic [ref=e178]: Rep A
+              - generic [ref=e180]: Rep B
+              - generic [ref=e182]: Rep C
+            - generic [ref=e184]:
+              - generic [ref=e186]: "0"
+              - generic [ref=e188]: "2"
+              - generic [ref=e190]: "4"
+              - generic [ref=e192]: "6"
+              - generic [ref=e194]: "8"
+          - list [ref=e226]:
+            - listitem [ref=e227]:
+              - img [ref=e228]
+              - text: Discovery
+            - listitem [ref=e230]:
+              - img [ref=e231]
+              - text: Proposal
+            - listitem [ref=e233]:
+              - img [ref=e234]
+              - text: Negotiation
+            - listitem [ref=e236]:
+              - img [ref=e237]
+              - text: Closed Won
+            - listitem [ref=e239]:
+              - img [ref=e240]
+              - text: Closed Lost
+  - button "Open Next.js Dev Tools" [ref=e247] [cursor=pointer]:
+    - img [ref=e248]
+  - alert [ref=e251]
+  - generic [ref=e252]: Rep A
