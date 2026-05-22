@@ -188,10 +188,13 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, count]) => ({
         period: useMonths
-          ? new Date(key + "-01").toLocaleDateString("es-MX", {
-              month: "short",
-              year: "numeric",
-            })
+          ? (() => {
+              const [y, m] = key.split("-").map(Number)
+              return new Date(y, m - 1).toLocaleDateString("es-MX", {
+                month: "short",
+                year: "numeric",
+              })
+            })()
           : `Sem ${key}`,
         count,
       }))
