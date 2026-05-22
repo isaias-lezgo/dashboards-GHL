@@ -200,6 +200,45 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
       }))
   }, [opportunities])
 
+  const lostReasonsData = useMemo(() => {
+    const lostOpps = opportunities.filter((o) => o.status === "lost")
+    const lostMembers = [
+      ...new Set(
+        lostOpps
+          .map((o) => o.assignedTo)
+          .filter((m): m is string => Boolean(m))
+      ),
+    ]
+    const reasons = [
+      ...new Set(lostOpps.map((o) => o.lostReason ?? "Sin razón")),
+    ]
+    return {
+      data: lostMembers.map((member) => {
+        const row: Record<string, string | number> = { member }
+        for (const reason of reasons) {
+          row[reason] = lostOpps.filter(
+            (o) =>
+              o.assignedTo === member &&
+              (o.lostReason ?? "Sin razón") === reason
+          ).length
+        }
+        return row
+      }),
+      reasons,
+    }
+  }, [opportunities])
+
+  const lostReasonsConfig = useMemo(
+    () =>
+      Object.fromEntries(
+        lostReasonsData.reasons.map((reason, i) => [
+          reason,
+          { label: reason, color: COLOR_PALETTE[i % COLOR_PALETTE.length] },
+        ])
+      ),
+    [lostReasonsData.reasons]
+  )
+
   const chartData = useMemo(() => {
     return members.map((member) => {
       const row: Record<string, string | number> = { member }
@@ -534,6 +573,57 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Análisis de Pérdidas ───────────────────── */}
+      <SectionHeader title="Análisis de Pérdidas" />
+      <Card>
+        <CardHeader className="flex flex-row items-center pb-2">
+          <CardTitle className="text-base font-semibold">
+            Razones de Pérdida por Asesor
+          </CardTitle>
+          <TotalBadge
+            value={opportunities.filter((o) => o.status === "lost").length}
+          />
+        </CardHeader>
+        <CardContent>
+          {lostReasonsData.data.length === 0 ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              Sin oportunidades perdidas
+            </div>
+          ) : (
+            <ChartContainer
+              config={lostReasonsConfig}
+              style={{ height: Math.max(200, lostReasonsData.data.length * 64) }}
+              className="w-full"
+            >
+              <BarChart
+                data={lostReasonsData.data}
+                layout="vertical"
+                margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <YAxis
+                  dataKey="member"
+                  type="category"
+                  width={68}
+                  tick={{ fontSize: 12 }}
+                />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Legend />
+                {lostReasonsData.reasons.map((reason, i) => (
+                  <Bar
+                    key={reason}
+                    dataKey={reason}
+                    stackId="a"
+                    fill={COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                  />
+                ))}
+              </BarChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Drill-down drawer */}
       <ChartDrillDrawer
