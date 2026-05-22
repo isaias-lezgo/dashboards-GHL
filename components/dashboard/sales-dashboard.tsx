@@ -49,6 +49,8 @@ const WIN_LOSS_CONFIG = {
   winRate:   { label: "Tasa de Ganancia", color: "transparent" },
 } as const
 
+const PIPELINE_STAGE_ORDER = ["Discovery", "Proposal", "Negotiation"]
+
 function stageColor(stage: string, index: number): string {
   return STAGE_COLORS[stage] ?? COLOR_PALETTE[index % COLOR_PALETTE.length]
 }
@@ -135,6 +137,26 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
         .sort((a, b) => b.revenue - a.revenue),
     [members, opportunities]
   )
+
+  const pipelineValueData = useMemo(() => {
+    const openOpps = opportunities.filter((o) => o.status === "open")
+    const stages = [...new Set(openOpps.map((o) => o.stage))]
+    return stages
+      .sort((a, b) => {
+        const ai = PIPELINE_STAGE_ORDER.indexOf(a)
+        const bi = PIPELINE_STAGE_ORDER.indexOf(b)
+        if (ai === -1 && bi === -1) return a.localeCompare(b)
+        if (ai === -1) return 1
+        if (bi === -1) return -1
+        return ai - bi
+      })
+      .map((stage) => ({
+        stage,
+        value: openOpps
+          .filter((o) => o.stage === stage)
+          .reduce((sum, o) => sum + o.value, 0),
+      }))
+  }, [opportunities])
 
   const chartData = useMemo(() => {
     return members.map((member) => {
@@ -372,6 +394,66 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* ── Salud del Pipeline ─────────────────────── */}
+      <SectionHeader title="Salud del Pipeline" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Chart C: Valor en Pipeline por Etapa */}
+        <Card>
+          <CardHeader className="flex flex-row items-center pb-2">
+            <CardTitle className="text-base font-semibold">
+              Valor en Pipeline por Etapa
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pipelineValueData.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                Sin oportunidades abiertas
+              </div>
+            ) : (
+              <ChartContainer
+                config={{ value: { label: "Valor en Pipeline", color: "#3b82f6" } }}
+                style={{ height: Math.max(200, pipelineValueData.length * 64) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={pipelineValueData}
+                  layout="vertical"
+                  margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <YAxis
+                    dataKey="stage"
+                    type="category"
+                    width={90}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) =>
+                          typeof value === "number"
+                            ? value.toLocaleString("es-MX", {
+                                style: "currency",
+                                currency: "MXN",
+                                maximumFractionDigits: 0,
+                              })
+                            : String(value)
+                        }
+                      />
+                    }
+                  />
+                  <Bar dataKey="value" fill="#3b82f6" />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Chart D placeholder — filled in Task 5 */}
+        <div />
       </div>
 
       {/* Drill-down drawer */}
