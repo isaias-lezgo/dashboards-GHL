@@ -131,6 +131,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
             .filter((o) => o.assignedTo === member && o.status === "won")
             .reduce((sum, o) => sum + o.value, 0),
         }))
+        .filter((d) => d.revenue > 0)
         .sort((a, b) => b.revenue - a.revenue),
     [members, opportunities]
   )
@@ -327,7 +328,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {revenueData.every((d) => d.revenue === 0) ? (
+            {revenueData.length === 0 ? (
               <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
                 Sin ingresos ganados
               </div>
