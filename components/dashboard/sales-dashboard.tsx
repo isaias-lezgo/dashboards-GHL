@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Legend,
   LabelList,
+  Cell,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -55,6 +56,54 @@ const PIPELINE_STAGE_ORDER = ["Discovery", "Proposal", "Negotiation"]
 
 function stageColor(stage: string, index: number): string {
   return STAGE_COLORS[stage] ?? COLOR_PALETTE[index % COLOR_PALETTE.length]
+}
+
+function isBusinessHoursStr(isoStr: string): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Mexico_City",
+    weekday: "short",
+    hour: "numeric",
+    hour12: false,
+  }).formatToParts(new Date(isoStr))
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? ""
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10)
+  return !["Sat", "Sun"].includes(weekday) && hour >= 9 && hour < 19
+}
+
+function nextBusinessOpenMs(isoStr: string): number {
+  const d = new Date(isoStr)
+  let candidate = new Date(d)
+  candidate.setUTCMinutes(0, 0, 0)
+  candidate.setUTCMilliseconds(0)
+  if (candidate.getTime() <= d.getTime()) {
+    candidate = new Date(candidate.getTime() + 3_600_000)
+  }
+  for (let h = 0; h < 168; h++) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Mexico_City",
+      weekday: "short",
+      hour: "numeric",
+      hour12: false,
+    }).formatToParts(candidate)
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? ""
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10)
+    if (!["Sat", "Sun"].includes(weekday) && hour === 9) return candidate.getTime()
+    candidate = new Date(candidate.getTime() + 3_600_000)
+  }
+  return d.getTime()
+}
+
+function responseColor(minutes: number): string {
+  if (minutes < 30) return "#10b981"
+  if (minutes <= 60) return "#f59e0b"
+  return "#ef4444"
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const h = Math.floor(minutes / 60)
+  const m = Math.round(minutes % 60)
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
 }
 
 function TotalBadge({ value }: { value: number | string }) {
@@ -272,6 +321,46 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         }),
         count: convSet.size,
       }))
+  }, [messages])
+
+  const responseTimeData = useMemo(() => {
+    const threads = new Map<string, typeof messages>()
+    for (const msg of messages) {
+      if (!msg.conversationId) continue
+      if (!threads.has(msg.conversationId)) threads.set(msg.conversationId, [])
+      threads.get(msg.conversationId)!.push(msg)
+    }
+    for (const thread of threads.values()) {
+      thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    }
+
+    const advisorDeltas = new Map<string, number[]>()
+    for (const thread of threads.values()) {
+      for (let i = 0; i < thread.length; i++) {
+        const msg = thread[i]
+        if (msg.direction !== "inbound" || msg.kind === "activity") continue
+        const reply = thread.slice(i + 1).find(
+          (m) => m.direction === "outbound" && m.kind !== "activity"
+        )
+        if (!reply) continue
+        const advisor = reply.assignedTo
+        if (!advisor) continue
+        const clockStart = isBusinessHoursStr(msg.createdAt)
+          ? new Date(msg.createdAt).getTime()
+          : nextBusinessOpenMs(msg.createdAt)
+        const delta = new Date(reply.createdAt).getTime() - clockStart
+        if (delta <= 0) continue
+        if (!advisorDeltas.has(advisor)) advisorDeltas.set(advisor, [])
+        advisorDeltas.get(advisor)!.push(delta)
+      }
+    }
+
+    return [...advisorDeltas.entries()]
+      .map(([member, deltas]) => ({
+        member,
+        avgMinutes: deltas.reduce((s, d) => s + d, 0) / deltas.length / 60_000,
+      }))
+      .sort((a, b) => a.avgMinutes - b.avgMinutes)
   }, [messages])
 
   const chartData = useMemo(() => {
@@ -528,6 +617,66 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           </CardContent>
         </Card>
       </div>
+
+      {/* Tiempo promedio de respuesta - full width */}
+      {responseTimeData.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center pb-2">
+            <CardTitle className="text-base font-semibold">
+              Tiempo promedio de respuesta del asesor
+            </CardTitle>
+            <TotalBadge value={`${responseTimeData.length} asesores`} />
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#10b981" } }}
+              style={{ height: Math.max(200, responseTimeData.length * 64) }}
+              className="w-full"
+            >
+              <BarChart
+                data={responseTimeData}
+                layout="vertical"
+                margin={{ left: 8, right: 80, top: 8, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <YAxis
+                  dataKey="member"
+                  type="category"
+                  width={68}
+                  tick={{ fontSize: 12 }}
+                />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `${Math.round(v as number)}m`}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value) =>
+                        typeof value === "number" ? formatMinutes(value) : String(value)
+                      }
+                    />
+                  }
+                />
+                <Bar dataKey="avgMinutes" radius={[0, 3, 3, 0]}>
+                  {responseTimeData.map((entry) => (
+                    <Cell key={entry.member} fill={responseColor(entry.avgMinutes)} />
+                  ))}
+                  <LabelList
+                    dataKey="avgMinutes"
+                    position="right"
+                    formatter={(v: unknown) =>
+                      typeof v === "number" ? formatMinutes(v) : ""
+                    }
+                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  />
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Salud del Pipeline ─────────────────────── */}
       <SectionHeader title="Salud del Pipeline" />
