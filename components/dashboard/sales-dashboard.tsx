@@ -42,10 +42,11 @@ const COLOR_PALETTE = [
 ]
 
 const WIN_LOSS_CONFIG = {
-  won:       { label: "Ganado",      color: "#10b981" },
-  open:      { label: "Abierto",     color: "#3b82f6" },
-  lost:      { label: "Perdido",     color: "#ef4444" },
-  abandoned: { label: "Abandonado",  color: "#94a3b8" },
+  won:       { label: "Ganado",           color: "#10b981" },
+  open:      { label: "Abierto",          color: "#3b82f6" },
+  lost:      { label: "Perdido",          color: "#ef4444" },
+  abandoned: { label: "Abandonado",       color: "#94a3b8" },
+  winRate:   { label: "Tasa de Ganancia", color: "transparent" },
 } as const
 
 function stageColor(stage: string, index: number): string {
