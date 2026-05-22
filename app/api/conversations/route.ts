@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
   for (const contactId of contactIds) {
     try {
-      const convResp = await getConversations({ contactId, limit: 20 })
+      const convResp = await getConversations({ contactId, limit: 1 })
       const conv = convResp.conversations[0]
       if (!conv) {
         threads.push({ contactId, messages: [] })
@@ -51,7 +51,8 @@ export async function GET(request: Request) {
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         )
       threads.push({ contactId, messages })
-    } catch {
+    } catch (err) {
+      console.warn(`[conversations] Failed to fetch threads for contact ${contactId}:`, err)
       threads.push({ contactId, messages: [] })
     }
   }
