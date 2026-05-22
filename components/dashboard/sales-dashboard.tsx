@@ -41,6 +41,13 @@ const COLOR_PALETTE = [
   "#f97316","#06b6d4","#84cc16","#ec4899","#a855f7",
 ]
 
+const WIN_LOSS_CONFIG = {
+  won:       { label: "Ganado",      color: "#10b981" },
+  open:      { label: "Abierto",     color: "#3b82f6" },
+  lost:      { label: "Perdido",     color: "#ef4444" },
+  abandoned: { label: "Abandonado",  color: "#94a3b8" },
+} as const
+
 function stageColor(stage: string, index: number): string {
   return STAGE_COLORS[stage] ?? COLOR_PALETTE[index % COLOR_PALETTE.length]
 }
@@ -95,6 +102,23 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
         ),
       ],
     [opportunities]
+  )
+
+  const winLossData = useMemo(
+    () =>
+      members.map((member) => {
+        const opps = opportunities.filter((o) => o.assignedTo === member)
+        const won = opps.filter((o) => o.status === "won").length
+        return {
+          member,
+          won,
+          open:      opps.filter((o) => o.status === "open").length,
+          lost:      opps.filter((o) => o.status === "lost").length,
+          abandoned: opps.filter((o) => o.status === "abandoned").length,
+          winRate:   opps.length > 0 ? (won / opps.length) * 100 : 0,
+        }
+      }),
+    [members, opportunities]
   )
 
   const chartData = useMemo(() => {
@@ -224,6 +248,66 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
           )}
         </CardContent>
       </Card>
+
+      {/* ── Rendimiento Individual ─────────────────── */}
+      <SectionHeader title="Rendimiento Individual" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Chart A: Win/Loss por Asesor */}
+        <Card>
+          <CardHeader className="flex flex-row items-center pb-2">
+            <CardTitle className="text-base font-semibold">
+              Win/Loss por Asesor
+            </CardTitle>
+            <TotalBadge value={opportunities.length} />
+          </CardHeader>
+          <CardContent>
+            {winLossData.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                Sin oportunidades para mostrar
+              </div>
+            ) : (
+              <ChartContainer
+                config={WIN_LOSS_CONFIG}
+                style={{ height: Math.max(200, winLossData.length * 64) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={winLossData}
+                  layout="vertical"
+                  margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <YAxis
+                    dataKey="member"
+                    type="category"
+                    width={68}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend />
+                  <Bar dataKey="won"      stackId="a" fill={WIN_LOSS_CONFIG.won.color} />
+                  <Bar dataKey="open"     stackId="a" fill={WIN_LOSS_CONFIG.open.color} />
+                  <Bar dataKey="lost"     stackId="a" fill={WIN_LOSS_CONFIG.lost.color} />
+                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color}>
+                    <LabelList
+                      dataKey="winRate"
+                      position="right"
+                      formatter={(v: unknown) =>
+                        typeof v === "number" ? `${v.toFixed(1)}%` : ""
+                      }
+                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Chart B placeholder — filled in Task 3 */}
+        <div />
+      </div>
 
       {/* Drill-down drawer */}
       <ChartDrillDrawer
