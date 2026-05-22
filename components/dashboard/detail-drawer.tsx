@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import ReactMarkdown from "react-markdown"
 import {
   Sheet,
   SheetContent,
@@ -11,6 +12,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -34,6 +42,8 @@ import {
   DollarSign,
   User,
   ExternalLink,
+  Sparkles,
+  Loader2,
 } from "lucide-react"
 
 interface DetailDrawerProps {
@@ -92,6 +102,10 @@ export function DetailDrawer({
   locationId = "",
 }: DetailDrawerProps) {
   const [taskFilter, setTaskFilter] = useState<"all" | "open" | "completed">("all")
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [analysisOpen, setAnalysisOpen] = useState(false)
 
   const opportunity = opportunities.find((o) => o.id === opportunityId)
   if (!opportunity) {
@@ -137,6 +151,66 @@ export function DetailDrawer({
       status: c.status,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date))
+
+  async function handleAnalyze() {
+    if (!opportunity || !contact) return
+    setIsAnalyzing(true)
+    setAnalysisError(null)
+    try {
+      const res = await fetch("/api/analyze-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          opportunityId: opportunity.id,
+          contact: {
+            name: contact.name,
+            email: contact.email,
+            phone: contact.phone,
+            tags: contact.tags,
+            source: contact.source,
+            campaign: contact.campaign,
+            assignedTo: contact.assignedTo,
+          },
+          opportunity: {
+            id: opportunity.id,
+            name: opportunity.name,
+            pipelineName: opportunity.pipelineName,
+            stage: opportunity.stage,
+            status: opportunity.status,
+            value: opportunity.value,
+            lostReason: opportunity.lostReason,
+            createdAt: opportunity.createdAt,
+            updatedAt: opportunity.updatedAt,
+            assignedTo: opportunity.assignedTo,
+          },
+          tasks: oppTasks.map((t) => ({
+            title: t.title,
+            type: t.type,
+            status: t.status,
+            dueDate: t.dueDate,
+          })),
+          calls: contactCalls.map((c) => ({
+            direction: c.direction,
+            status: c.status,
+            durationSeconds: c.durationSeconds,
+            createdAt: c.createdAt,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAnalysisError(data.error ?? "Error desconocido")
+      } else {
+        setAnalysisResult(data.analysis)
+      }
+      setAnalysisOpen(true)
+    } catch {
+      setAnalysisError("No se pudo conectar con el servidor de análisis.")
+      setAnalysisOpen(true)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -204,6 +278,20 @@ export function DetailDrawer({
                   </a>
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={handleAnalyze}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {isAnalyzing ? "Analizando…" : "Analizar con IA"}
+              </Button>
             </div>
           )}
         </div>
@@ -397,6 +485,27 @@ export function DetailDrawer({
             )}
           </TabsContent>
         </Tabs>
+
+        <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="h-4 w-4" />
+                Análisis IA — {contact?.name ?? "Contacto"}
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Generado por Claude · Basado en datos del CRM y citas
+              </DialogDescription>
+            </DialogHeader>
+            {analysisError ? (
+              <p className="text-sm text-destructive mt-2">{analysisError}</p>
+            ) : (
+              <div className="prose prose-sm dark:prose-invert max-w-none mt-2">
+                <ReactMarkdown>{analysisResult ?? ""}</ReactMarkdown>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   )
