@@ -167,16 +167,20 @@ export interface GHLContactsResponse {
   };
 }
 
-// Simple contacts list with cursor pagination
+// Simple contacts list with cursor pagination.
+// GHL needs BOTH startAfterId and startAfter (a dateAdded epoch ms) together —
+// passing only the id makes the cursor non-unique and returns overlapping pages.
 export async function getContacts(params?: {
   limit?: number;
   startAfterId?: string;
+  startAfter?: number;
   query?: string;
 }): Promise<GHLContactsResponse> {
   return ghlFetch<GHLContactsResponse>("/contacts/", {
     params: {
       limit: params?.limit || 100,
       startAfterId: params?.startAfterId,
+      startAfter: params?.startAfter,
       query: params?.query,
     },
   });
@@ -227,6 +231,22 @@ export interface GHLOpportunitiesResponse {
     nextPage?: number | null;
     prevPage?: number | null;
   };
+}
+
+export interface GHLOpportunityDetail extends GHLOpportunity {
+  calendarEvents: GHLCalendarEvent[];
+}
+
+export interface GHLOpportunityDetailResponse {
+  opportunity: GHLOpportunityDetail;
+}
+
+export async function getOpportunityById(id: string): Promise<GHLOpportunityDetail> {
+  const resp = await ghlFetch<GHLOpportunityDetailResponse>(
+    `/opportunities/${id}`,
+    { noQueryLocationId: true }
+  );
+  return resp.opportunity;
 }
 
 export async function getOpportunities(params?: {
@@ -541,24 +561,40 @@ export async function getAllContacts(
   onProgress?: (count: number) => void
 ): Promise<GHLContact[]> {
   const allContacts: GHLContact[] = [];
+  const seenIds = new Set<string>();
   let startAfterId: string | undefined;
+  let startAfter: number | undefined;
   let total: number | undefined;
 
   while (true) {
-    const response = await getContacts({ limit: 100, startAfterId });
+    const response = await getContacts({ limit: 100, startAfterId, startAfter });
     if (total === undefined && response.meta?.total !== undefined) total = response.meta.total;
 
-    allContacts.push(...response.contacts);
+    // Dedupe by id — GHL's cursor pagination occasionally returns overlapping
+    // pages and we'd otherwise inflate the count.
+    let pageNew = 0;
+    for (const c of response.contacts) {
+      if (seenIds.has(c.id)) continue;
+      seenIds.add(c.id);
+      allContacts.push(c);
+      pageNew++;
+    }
     onProgress?.(allContacts.length);
 
-    // Stop once we have all records, got a partial page, or have no cursor to continue
+    // Stop once we have all records or got a partial page.
     if (
       (total !== undefined && allContacts.length >= total) ||
       response.contacts.length < 100
     ) break;
 
-    // Advance cursor — prefer the API-provided one, fall back to last contact id
-    startAfterId = response.meta?.startAfterId ?? response.contacts[response.contacts.length - 1].id;
+    // If a whole page is duplicates, the cursor is stuck — bail out.
+    if (pageNew === 0) break;
+
+    // Advance cursor — use both fields together (startAfter is a dateAdded
+    // epoch ms; without it the cursor isn't unique).
+    const last = response.contacts[response.contacts.length - 1];
+    startAfterId = response.meta?.startAfterId ?? last.id;
+    startAfter = response.meta?.startAfter ?? new Date(last.dateAdded).getTime();
     await sleep(200);
   }
 
