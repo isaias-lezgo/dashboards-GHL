@@ -1,8 +1,6 @@
 import type { GHLMessage } from "./ghl-client"
 import type { ActivityKind, Message, MessageChannel } from "./types"
 
-// GHL messageType string → channel. Anything not in the map and not an
-// activity falls through to "other".
 const CHANNEL_BY_TYPE: Record<string, MessageChannel> = {
   TYPE_CALL: "call",
   TYPE_IVR_CALL: "call",
@@ -60,10 +58,10 @@ const ACTIVITY_BY_TYPE: Record<string, { kind: ActivityKind; label: string }> = 
   TYPE_ACTIVITY_WHATSAPP: { kind: "other", label: "Actividad de WhatsApp" },
 }
 
-// Returns null for plain messages with no body (nothing worth rendering).
 export function ghlMessageToInternal(
   m: GHLMessage,
-  contactId: string
+  contactId: string,
+  extra?: { conversationId?: string; assignedTo?: string }
 ): Message | null {
   const typeKey = m.messageType ?? ""
   const activity = ACTIVITY_BY_TYPE[typeKey]
@@ -71,6 +69,8 @@ export function ghlMessageToInternal(
     return {
       id: m.id,
       contactId,
+      conversationId: extra?.conversationId,
+      assignedTo: extra?.assignedTo,
       direction: m.direction,
       kind: "activity",
       source: "system",
@@ -83,6 +83,8 @@ export function ghlMessageToInternal(
   return {
     id: m.id,
     contactId,
+    conversationId: extra?.conversationId,
+    assignedTo: extra?.assignedTo,
     direction: m.direction,
     kind: "message",
     source: CHANNEL_BY_TYPE[typeKey] ?? "other",

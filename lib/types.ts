@@ -84,6 +84,7 @@ export type ActivityKind =
 export interface Message {
   id: string
   contactId: string
+  conversationId?: string
   assignedTo?: string
   direction: "inbound" | "outbound"
   // Omitted = real message. "activity" = system event (rendered as a chip).
