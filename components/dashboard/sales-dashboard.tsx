@@ -158,6 +158,45 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
       }))
   }, [opportunities])
 
+  const trendData = useMemo(() => {
+    if (opportunities.length === 0) return []
+    const timestamps = opportunities
+      .map((o) => new Date(o.createdAt).getTime())
+      .filter((t) => !Number.isNaN(t))
+    if (timestamps.length === 0) return []
+    const spanDays =
+      (Math.max(...timestamps) - Math.min(...timestamps)) / (1000 * 60 * 60 * 24)
+    const useMonths = spanDays > 60
+
+    const buckets = new Map<string, number>()
+    for (const opp of opportunities) {
+      const d = new Date(opp.createdAt)
+      if (Number.isNaN(d.getTime())) continue
+      let key: string
+      if (useMonths) {
+        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      } else {
+        const day = d.getDay() || 7
+        const monday = new Date(d)
+        monday.setDate(d.getDate() - day + 1)
+        key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`
+      }
+      buckets.set(key, (buckets.get(key) ?? 0) + 1)
+    }
+
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, count]) => ({
+        period: useMonths
+          ? new Date(key + "-01").toLocaleDateString("es-MX", {
+              month: "short",
+              year: "numeric",
+            })
+          : `Sem ${key}`,
+        count,
+      }))
+  }, [opportunities])
+
   const chartData = useMemo(() => {
     return members.map((member) => {
       const row: Record<string, string | number> = { member }
@@ -452,8 +491,45 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
           </CardContent>
         </Card>
 
-        {/* Chart D placeholder — filled in Task 5 */}
-        <div />
+        {/* Chart D: Nuevas Oportunidades por Período */}
+        <Card>
+          <CardHeader className="flex flex-row items-center pb-2">
+            <CardTitle className="text-base font-semibold">
+              Nuevas Oportunidades por Período
+            </CardTitle>
+            <TotalBadge value={opportunities.length} />
+          </CardHeader>
+          <CardContent>
+            {trendData.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                Sin datos de tendencia
+              </div>
+            ) : (
+              <ChartContainer
+                config={{ count: { label: "Nuevas Oportunidades", color: "#8b5cf6" } }}
+                style={{ height: 220 }}
+                className="w-full"
+              >
+                <BarChart
+                  data={trendData}
+                  margin={{ left: 8, right: 8, top: 8, bottom: 32 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fontSize: 11 }}
+                    angle={-35}
+                    textAnchor="end"
+                    interval={0}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Drill-down drawer */}
