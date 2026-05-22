@@ -26,6 +26,7 @@ interface SalesDashboardProps {
   calls: Call[]
   messages: Message[]
   tasks?: Task[]
+  members?: string[]
   locationId?: string
 }
 
@@ -75,7 +76,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, tasks = [], locationId = "" }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], tasks = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
@@ -86,7 +87,9 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
     const total = opportunities.length
     const won = opportunities.filter((o) => o.status === "won").length
     const wonRevenue = opportunities.filter((o) => o.status === "won").reduce((sum, o) => sum + o.value, 0)
-    const activeMembers = new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
+    const activeMembers = membersProp.length > 0
+      ? membersProp.length
+      : new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
     const conversionRate = total > 0 ? (won / total) * 100 : 0
     return { total, won, wonRevenue, activeMembers, conversionRate }
   }, [opportunities])
@@ -171,6 +174,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
     const useMonths = spanDays > 60
 
     const buckets = new Map<string, number>()
+    const oppsByBucket = new Map<string, Opportunity[]>()
     for (const opp of opportunities) {
       const raw = opp.createdAt
       const d = raw.length === 10
@@ -189,6 +193,8 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
         key = `${tmp.getFullYear()}-W${String(isoWeek).padStart(2, "0")}`
       }
       buckets.set(key, (buckets.get(key) ?? 0) + 1)
+      if (!oppsByBucket.has(key)) oppsByBucket.set(key, [])
+      oppsByBucket.get(key)!.push(opp)
     }
 
     return [...buckets.entries()]
@@ -204,6 +210,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
             })()
           : `Sem ${key.split("-W")[1]}`,
         count,
+        opps: oppsByBucket.get(key) ?? [],
       }))
   }, [opportunities])
 
@@ -246,6 +253,27 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
     [lostReasonsData.reasons]
   )
 
+  const dailyConvData = useMemo(() => {
+    if (messages.length === 0) return []
+    const dailyMap = new Map<string, Set<string>>()
+    for (const msg of messages) {
+      if (!msg.conversationId) continue
+      const date = msg.createdAt.slice(0, 10)
+      if (!dailyMap.has(date)) dailyMap.set(date, new Set())
+      dailyMap.get(date)!.add(msg.conversationId)
+    }
+    return [...dailyMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, convSet]) => ({
+        date,
+        label: new Date(date + "T12:00:00").toLocaleDateString("es-MX", {
+          day: "2-digit",
+          month: "short",
+        }),
+        count: convSet.size,
+      }))
+  }, [messages])
+
   const chartData = useMemo(() => {
     return members.map((member) => {
       const row: Record<string, string | number> = { member }
@@ -282,7 +310,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
 
         <Card
           className="cursor-pointer hover:border-primary/40 hover:bg-accent/20 transition-all"
-          onClick={() => openDrill("Miembros del Equipo", opportunities, `${kpiMetrics.activeMembers} miembros activos`)}
+          onClick={() => setDrill({ open: true, title: "Miembros del Equipo", subtitle: `${kpiMetrics.activeMembers} asesores`, opportunities, members: membersProp.length > 0 ? membersProp : [...new Set(opportunities.map((o) => o.assignedTo).filter(Boolean) as string[])] })}
         >
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
@@ -391,6 +419,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                 Sin oportunidades para mostrar
               </div>
             ) : (
+              <>
               <ChartContainer
                 config={WIN_LOSS_CONFIG}
                 style={{ height: Math.max(200, winLossData.length * 64) }}
@@ -411,10 +440,18 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Legend />
-                  <Bar dataKey="won"      stackId="a" fill={WIN_LOSS_CONFIG.won.color} />
-                  <Bar dataKey="open"     stackId="a" fill={WIN_LOSS_CONFIG.open.color} />
-                  <Bar dataKey="lost"     stackId="a" fill={WIN_LOSS_CONFIG.lost.color} />
-                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color} />
+                  <Bar dataKey="won" stackId="a" fill={WIN_LOSS_CONFIG.won.color} cursor="pointer"
+                    onClick={(data: any) => openDrill(`${data.member} · Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
+                  />
+                  <Bar dataKey="open" stackId="a" fill={WIN_LOSS_CONFIG.open.color} cursor="pointer"
+                    onClick={(data: any) => openDrill(`${data.member} · Abierto`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "open"))}
+                  />
+                  <Bar dataKey="lost" stackId="a" fill={WIN_LOSS_CONFIG.lost.color} cursor="pointer"
+                    onClick={(data: any) => openDrill(`${data.member} · Perdido`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "lost"))}
+                  />
+                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color} cursor="pointer"
+                    onClick={(data: any) => openDrill(`${data.member} · Abandonado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "abandoned"))}
+                  />
                   <Bar dataKey="_total" stackId="b" fill="transparent" legendType="none">
                     <LabelList
                       dataKey="winRate"
@@ -427,6 +464,8 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                   </Bar>
                 </BarChart>
               </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -444,6 +483,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                 Sin ingresos ganados
               </div>
             ) : (
+              <>
               <ChartContainer
                 config={{ revenue: { label: "Ingreso Ganado", color: "#10b981" } }}
                 style={{ height: Math.max(200, revenueData.length * 64) }}
@@ -477,9 +517,13 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                       />
                     }
                   />
-                  <Bar dataKey="revenue" fill="#10b981" />
+                  <Bar dataKey="revenue" fill="#10b981" cursor="pointer"
+                    onClick={(data: any) => openDrill(`${data.member} · Ingreso Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
+                  />
                 </BarChart>
               </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -501,6 +545,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                 Sin oportunidades abiertas
               </div>
             ) : (
+              <>
               <ChartContainer
                 config={{ value: { label: "Valor en Pipeline", color: "#3b82f6" } }}
                 style={{ height: Math.max(200, pipelineValueData.length * 64) }}
@@ -534,9 +579,13 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                       />
                     }
                   />
-                  <Bar dataKey="value" fill="#3b82f6" />
+                  <Bar dataKey="value" fill="#3b82f6" cursor="pointer"
+                    onClick={(data: any) => openDrill(`Pipeline: ${data.stage}`, opportunities.filter((o) => o.status === "open" && o.stage === data.stage))}
+                  />
                 </BarChart>
               </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              </>
             )}
           </CardContent>
         </Card>
@@ -555,6 +604,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                 Sin datos de tendencia
               </div>
             ) : (
+              <>
               <ChartContainer
                 config={{ count: { label: "Nuevas Oportunidades", color: "#8b5cf6" } }}
                 style={{ height: 220 }}
@@ -574,13 +624,58 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                   />
                   <YAxis tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} cursor="pointer"
+                    onClick={(data: any) => openDrill(`Período: ${data.period}`, data.opps ?? [])}
+                  />
                 </BarChart>
               </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              </>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Actividad de Conversaciones ─────────────── */}
+      <SectionHeader title="Actividad de Conversaciones" />
+      <Card>
+        <CardHeader className="flex flex-row items-center pb-2">
+          <CardTitle className="text-base font-semibold">
+            Conversaciones únicas por día
+          </CardTitle>
+          <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
+        </CardHeader>
+        <CardContent>
+          {dailyConvData.length === 0 ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              Sin datos de conversaciones
+            </div>
+          ) : (
+            <ChartContainer
+              config={{ count: { label: "Conversaciones", color: "#06b6d4" } }}
+              style={{ height: 220 }}
+              className="w-full"
+            >
+              <BarChart
+                data={dailyConvData}
+                margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11 }}
+                  angle={dailyConvData.length > 10 ? -35 : 0}
+                  textAnchor={dailyConvData.length > 10 ? "end" : "middle"}
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="count" fill="#06b6d4" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Análisis de Pérdidas ───────────────────── */}
       <SectionHeader title="Análisis de Pérdidas" />
@@ -599,6 +694,7 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
               Sin oportunidades perdidas
             </div>
           ) : (
+            <>
             <ChartContainer
               config={lostReasonsConfig}
               style={{ height: Math.max(200, lostReasonsData.data.length * 64) }}
@@ -625,10 +721,17 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [], loc
                     dataKey={reason}
                     stackId="a"
                     fill={COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                    cursor="pointer"
+                    onClick={(data: any) => openDrill(
+                      `${data.member} · ${reason}`,
+                      opportunities.filter((o) => o.assignedTo === data.member && o.status === "lost" && (o.lostReason ?? "Sin razón") === reason)
+                    )}
                   />
                 ))}
               </BarChart>
             </ChartContainer>
+            <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
+            </>
           )}
         </CardContent>
       </Card>
