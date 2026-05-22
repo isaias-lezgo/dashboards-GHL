@@ -122,6 +122,19 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
     [members, opportunities]
   )
 
+  const revenueData = useMemo(
+    () =>
+      members
+        .map((member) => ({
+          member,
+          revenue: opportunities
+            .filter((o) => o.assignedTo === member && o.status === "won")
+            .reduce((sum, o) => sum + o.value, 0),
+        }))
+        .sort((a, b) => b.revenue - a.revenue),
+    [members, opportunities]
+  )
+
   const chartData = useMemo(() => {
     return members.map((member) => {
       const row: Record<string, string | number> = { member }
@@ -306,8 +319,58 @@ export function SalesDashboard({ opportunities, contacts, calls, tasks = [] }: S
           </CardContent>
         </Card>
 
-        {/* Chart B placeholder — filled in Task 3 */}
-        <div />
+        {/* Chart B: Ingreso Ganado por Asesor */}
+        <Card>
+          <CardHeader className="flex flex-row items-center pb-2">
+            <CardTitle className="text-base font-semibold">
+              Ingreso Ganado por Asesor
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {revenueData.every((d) => d.revenue === 0) ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                Sin ingresos ganados
+              </div>
+            ) : (
+              <ChartContainer
+                config={{ revenue: { label: "Ingreso Ganado", color: "#10b981" } }}
+                style={{ height: Math.max(200, revenueData.length * 64) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={revenueData}
+                  layout="vertical"
+                  margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <YAxis
+                    dataKey="member"
+                    type="category"
+                    width={68}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value) =>
+                          typeof value === "number"
+                            ? value.toLocaleString("es-MX", {
+                                style: "currency",
+                                currency: "MXN",
+                                maximumFractionDigits: 0,
+                              })
+                            : String(value)
+                        }
+                      />
+                    }
+                  />
+                  <Bar dataKey="revenue" fill="#10b981" />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Drill-down drawer */}
