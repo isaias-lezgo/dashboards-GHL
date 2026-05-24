@@ -498,6 +498,7 @@ export interface GHLCustomObjectRecord {
   properties: Record<string, string | string[] | null>;
   createdAt?: string;
   updatedAt?: string;
+  associations?: Record<string, unknown>;
 }
 
 export interface GHLCustomObjectRecordsResponse {
