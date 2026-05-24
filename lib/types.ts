@@ -52,6 +52,17 @@ export interface Task {
   assignedTo?: string
 }
 
+export interface Appointment {
+  id: string
+  contactId: string
+  assignedTo?: string
+  title?: string
+  startTime: string
+  endTime: string
+  status: string
+  notes?: string
+}
+
 // Channels we can render with an icon/label in the thread.
 // Anything else collapses to "other".
 export type MessageChannel =
