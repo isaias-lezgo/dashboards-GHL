@@ -18,7 +18,6 @@ Data comes from a new step inside `/api/dashboard` that bulk-fetches calendar ev
 - New fetch step in `app/api/dashboard/route.ts` that returns `appointments: Appointment[]` in the streamed `data` payload.
 - New chart card in `components/dashboard/sales-dashboard.tsx`, under a new "Citas" section header.
 - New `AppointmentDrillDrawer` component for segment click-through.
-- Mock appointment data so the dev fallback continues to render the chart.
 
 **Out of scope (YAGNI)**
 
@@ -75,15 +74,11 @@ Stream a progress message (`"Cargando citas…"`) before the step, consistent wi
 
 ### Hook — `hooks/use-dashboard-data.ts`
 
-No change. The streamed chunk is spread into the SWR cache; `appointments` flows through automatically.
-
-### Mock fallback — `lib/mock-data.ts`
-
-Add `mockAppointments: Appointment[]` generated against existing `mockContacts` and `DEFAULT_MEMBERS`, covering several statuses (showed, noshow, confirmed, new, cancelled) so the dev chart has meaningful data. Counts should be small (~30 total) — enough to render, not enough to clutter.
+Add `appointments: Appointment[]` to the `DashboardData` interface so the typed payload includes the new array.
 
 ### Page — `app/page.tsx`
 
-Pass `data?.appointments ?? mockAppointments` into `<SalesDashboard appointments={...} />`. Apply asesor filter client-side before passing down, matching the existing pattern for opportunities.
+Pass `data?.appointments ?? []` into `<SalesDashboard appointments={...} />`. Apply asesor filter client-side before passing down, matching the empty-array fallback used for opportunities, contacts, calls, and messages today.
 
 ## Chart
 
@@ -209,12 +204,11 @@ The chart's aggregation `useMemo` is small enough to keep inside `sales-dashboar
 
 - Per-user GHL fetch failure → that user contributes 0 appointments; `console.error` only.
 - All fetches fail → `appointments: []`; chart renders empty state.
-- Mock fallback covers the "no GHL token" path.
-
-No global page-level error states added.
+- No global page-level error states added. The existing "Error al cargar datos" header banner already covers a full-stream failure.
 
 ## Validation
 
 - Manual: hit `/api/dashboard` and confirm the streamed `data` chunk includes an `appointments` array.
 - Manual: open the Ventas dashboard, confirm the chart renders, segments are clickable, and the drawer lists the right appointments.
-- Manual: clear `GHL_API_TOKEN` from `.env.local`, restart dev, confirm the chart still renders against mock data.
+- Manual: filter to a single asesor and confirm only that asesor's column remains.
+- Type check: `npm run lint` (project skips type errors in build, so lint is the primary gate).
