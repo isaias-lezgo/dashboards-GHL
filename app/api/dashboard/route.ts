@@ -103,6 +103,26 @@ function enc(obj: unknown): string {
   return JSON.stringify(obj) + "\n";
 }
 
+function resolveContactIdFromAssociations(associations: Record<string, unknown> | undefined): string | undefined {
+  if (!associations) return undefined;
+
+  const candidates = [
+    associations["contact"],
+    associations["contacts"],
+    associations["Contact"],
+  ];
+
+  for (const val of candidates) {
+    if (typeof val === "string" && val.trim()) return val.trim();
+    if (Array.isArray(val) && typeof val[0] === "string" && val[0].trim()) return val[0].trim();
+    if (Array.isArray(val) && val[0] && typeof (val[0] as any).id === "string") {
+      return (val[0] as any).id;
+    }
+  }
+
+  return undefined;
+}
+
 async function fetchAllPautas(): Promise<Pauta[]> {
   try {
     // List all custom objects to find the Pautas schema key
@@ -118,12 +138,33 @@ async function fetchAllPautas(): Promise<Pauta[]> {
     }
 
     const records = await getAllCustomObjectRecords(stub.key);
-    return records.map((r) => ({
-      id: r.id,
-      tipo: String(r.properties["tipo"] ?? "") || "Sin tipo",
-      nombrePauta: String(r.properties["nombre_pauta"] ?? "") || "Sin nombre",
-      createdAt: r.createdAt ?? new Date().toISOString(),
-    }));
+
+    if (records[0]?.associations !== undefined) {
+      console.log("[GHL] Pauta associations sample:", JSON.stringify(records[0].associations));
+    } else {
+      console.warn("[GHL] Pauta record has no 'associations' field — contactId will be empty. Raw keys:", Object.keys(records[0] ?? {}));
+    }
+
+    const SKIP_PROPERTY_KEYS = new Set(["tipo", "nombre_pauta", "id"]);
+
+    return records.map((r) => {
+      const properties: Record<string, string> = {};
+      for (const [k, v] of Object.entries(r.properties)) {
+        if (SKIP_PROPERTY_KEYS.has(k)) continue;
+        if (v === null || v === undefined) continue;
+        const str = Array.isArray(v) ? v.join(", ") : String(v);
+        if (str.trim()) properties[k] = str.trim();
+      }
+
+      return {
+        id: r.id,
+        tipo: String(r.properties["tipo"] ?? "") || "Sin tipo",
+        nombrePauta: String(r.properties["nombre_pauta"] ?? "") || "Sin nombre",
+        createdAt: r.createdAt ?? new Date().toISOString(),
+        contactId: resolveContactIdFromAssociations(r.associations),
+        properties,
+      };
+    });
   } catch (err) {
     console.error("[GHL] Pautas fetch failed:", err);
     return [];
