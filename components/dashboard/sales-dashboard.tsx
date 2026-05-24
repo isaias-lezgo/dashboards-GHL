@@ -475,17 +475,28 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       .sort((a, b) => a.avgMinutes - b.avgMinutes)
   }, [messages])
 
-  const apptByStatusByAdvisor = useMemo(() => {
-    const memberMap = new Map<string, Map<string, number>>()
+  const apptByMonthByAdvisor = useMemo(() => {
+    const monthMap = new Map<string, Map<string, Map<string, number>>>()
+    const advisorSet = new Set<string>()
     const statusSet = new Set<string>()
+    let total = 0
+
     for (const appt of appointments) {
       if (!appt.assignedTo) continue
-      statusSet.add(appt.status)
-      if (!memberMap.has(appt.assignedTo)) memberMap.set(appt.assignedTo, new Map())
-      const row = memberMap.get(appt.assignedTo)!
-      row.set(appt.status, (row.get(appt.status) ?? 0) + 1)
+      const month = appt.startTime.slice(0, 7)
+      const advisor = appt.assignedTo
+      const status = appt.status
+      advisorSet.add(advisor)
+      statusSet.add(status)
+      total++
+      if (!monthMap.has(month)) monthMap.set(month, new Map())
+      const advisorMap = monthMap.get(month)!
+      if (!advisorMap.has(advisor)) advisorMap.set(advisor, new Map())
+      const statusMap = advisorMap.get(advisor)!
+      statusMap.set(status, (statusMap.get(status) ?? 0) + 1)
     }
 
+    const advisors = [...advisorSet].sort()
     const statuses = [...statusSet].sort((a, b) => {
       const ai = KNOWN_APPT_STATUS_ORDER.indexOf(a)
       const bi = KNOWN_APPT_STATUS_ORDER.indexOf(b)
@@ -495,31 +506,40 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       return ai - bi
     })
 
-    const data = [...memberMap.entries()]
-      .map(([member, statusCounts]) => {
-        const row: Record<string, string | number> = { member }
-        let total = 0
-        for (const status of statuses) {
-          const n = statusCounts.get(status) ?? 0
-          row[status] = n
-          total += n
-        }
-        row._total = total
-        return row
+    const months = [...monthMap.keys()].sort()
+    const data = months.map((month) => {
+      const [y, m] = month.split("-").map(Number)
+      const label = new Date(y, m - 1, 1).toLocaleDateString("es-MX", {
+        month: "short",
+        year: "numeric",
       })
-      .sort((a, b) => (b._total as number) - (a._total as number))
+      const row: Record<string, string | number> = { month, label }
+      for (const advisor of advisors) {
+        for (const status of statuses) {
+          row[`${advisor}_${status}`] =
+            monthMap.get(month)?.get(advisor)?.get(status) ?? 0
+        }
+      }
+      return row
+    })
 
-    return { data, statuses, total: appointments.filter((a) => a.assignedTo).length }
+    return { data, advisors, statuses, total }
   }, [appointments])
 
   const apptChartConfig = useMemo(
-    () => Object.fromEntries(
-      apptByStatusByAdvisor.statuses.map((status, i) => [
-        status,
-        apptStatusVisual(status, i),
-      ])
-    ),
-    [apptByStatusByAdvisor.statuses]
+    () =>
+      Object.fromEntries(
+        apptByMonthByAdvisor.advisors.flatMap((advisor) =>
+          apptByMonthByAdvisor.statuses.map((status, si) => [
+            `${advisor}_${status}`,
+            {
+              label: `${advisor} · ${apptStatusVisual(status, si).label}`,
+              color: apptStatusVisual(status, si).color,
+            },
+          ])
+        )
+      ),
+    [apptByMonthByAdvisor.advisors, apptByMonthByAdvisor.statuses]
   )
 
   const chartData = useMemo(() => {
