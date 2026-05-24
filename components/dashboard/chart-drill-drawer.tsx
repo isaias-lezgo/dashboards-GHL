@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { DetailDrawer } from "./detail-drawer"
 import type { Opportunity, Contact, Task, Call, Pauta } from "@/lib/types"
-import { DollarSign, User, Tag, FileText, ChevronRight, TrendingUp } from "lucide-react"
+import { DollarSign, User, Tag, FileText, ChevronRight, TrendingUp, Mail, Phone } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
   "Primera Cita":            "bg-blue-100 text-blue-700",
@@ -104,7 +104,7 @@ export function ChartDrillDrawer({
             {showMembers ? (
               <MembersList members={drill.members!} opportunities={drill.opportunities} />
             ) : showPautas ? (
-              <PautasList pautas={drill.pautas!} />
+              <PautasList pautas={drill.pautas!} contacts={contacts} allOpportunities={allOpportunities} />
             ) : count === 0 ? (
               <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
                 Sin datos para mostrar.
@@ -229,31 +229,123 @@ function MembersList({ members, opportunities }: { members: string[]; opportunit
   )
 }
 
-function PautasList({ pautas }: { pautas: Pauta[] }) {
+const OPP_STATUS_ORDER: Record<string, number> = { open: 0, won: 1, lost: 2, abandoned: 3 }
+
+function PautasList({
+  pautas,
+  contacts,
+  allOpportunities,
+}: {
+  pautas: Pauta[]
+  contacts: Contact[]
+  allOpportunities: Opportunity[]
+}) {
   return (
     <>
-      {pautas.map((p, i) => (
-        <motion.div
-          key={p.id}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.18 }}
-          className="rounded-xl border border-border bg-card p-4"
-        >
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="text-sm font-semibold text-foreground truncate">
-                {p.nombrePauta}
-              </span>
+      {pautas.map((p, i) => {
+        const contact = p.contactId ? contacts.find((c) => c.id === p.contactId) : undefined
+        const opps = contact
+          ? allOpportunities
+              .filter((o) => o.contactId === contact.id)
+              .sort((a, b) => (OPP_STATUS_ORDER[a.status] ?? 3) - (OPP_STATUS_ORDER[b.status] ?? 3))
+          : []
+
+        const extraProps = Object.entries(p.properties ?? {})
+
+        return (
+          <motion.div
+            key={p.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.18 }}
+            className="rounded-xl border border-border bg-card overflow-hidden"
+          >
+            {/* Pauta section */}
+            <div className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground truncate">
+                    {p.nombrePauta}
+                  </span>
+                </div>
+                <Badge variant="outline" className="text-[10px] shrink-0">{p.tipo}</Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground pl-5 mb-2">
+                {new Date(p.createdAt).toLocaleDateString("es-MX")}
+              </p>
+              {extraProps.length > 0 && (
+                <div className="pl-5 flex flex-wrap gap-x-3 gap-y-1">
+                  {extraProps.map(([k, v]) => (
+                    <span key={k} className="text-[11px] text-muted-foreground">
+                      <span className="font-medium text-foreground/70">{k.replace(/_/g, " ")}:</span>{" "}
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <Badge variant="outline" className="text-[10px] shrink-0">{p.tipo}</Badge>
-          </div>
-          <p className="text-[11px] text-muted-foreground pl-5">
-            {new Date(p.createdAt).toLocaleDateString("es-MX")}
-          </p>
-        </motion.div>
-      ))}
+
+            {/* Contact section */}
+            <div className="border-t border-border px-4 py-3 bg-muted/20">
+              {!p.contactId ? (
+                <p className="text-[11px] text-muted-foreground italic">Sin contacto asociado</p>
+              ) : !contact ? (
+                <p className="text-[11px] text-muted-foreground italic">Contacto no encontrado</p>
+              ) : (
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="text-sm font-semibold text-foreground">{contact.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3 pl-5 text-[11px] text-muted-foreground">
+                    {contact.email && (
+                      <span className="flex items-center gap-1 truncate">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        {contact.email}
+                      </span>
+                    )}
+                    {contact.phone && (
+                      <span className="flex items-center gap-1 shrink-0">
+                        <Phone className="h-3 w-3" />
+                        {contact.phone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Opportunities section */}
+            {contact && (
+              <div className="border-t border-border px-4 py-3">
+                {opps.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground italic">Sin oportunidades</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {opps.map((opp) => (
+                      <div key={opp.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <DollarSign className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="text-[11px] text-foreground truncate">{opp.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${STAGE_CLASSES[opp.stage] ?? "bg-muted text-muted-foreground"}`}>
+                            {opp.stage}
+                          </span>
+                          <span className="text-[11px] font-semibold text-foreground tabular-nums">
+                            ${opp.value.toLocaleString("es-MX")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
+        )
+      })}
     </>
   )
 }
