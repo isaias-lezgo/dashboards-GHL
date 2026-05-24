@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import type { Appointment, Contact } from "@/lib/types"
-import { CalendarCheck, CalendarX, CalendarClock, User } from "lucide-react"
+import { CalendarCheck, CalendarX, CalendarClock, User, Phone, Mail, Tag, Megaphone, Clock } from "lucide-react"
 
 export interface ApptDrillState {
   open: boolean
@@ -102,43 +102,101 @@ export function AppointmentDrillDrawer({
                 hour: "2-digit",
                 minute: "2-digit",
               })
+              const end = new Date(appt.endTime)
+              const durationMs = end.getTime() - start.getTime()
+              const durationMin = Math.round(durationMs / 60_000)
+              const durationStr = durationMin >= 60
+                ? `${Math.floor(durationMin / 60)}h ${durationMin % 60 > 0 ? `${durationMin % 60}min` : ""}`.trim()
+                : `${durationMin} min`
+
               return (
                 <motion.div
                   key={appt.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.18 }}
-                  className="flex items-start gap-3 rounded-xl border border-border bg-card p-4"
+                  className="rounded-xl border border-border bg-card p-4 space-y-3"
                 >
-                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
-                    <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
-                  </div>
-                  <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="text-sm font-semibold text-foreground truncate">
-                        {contact?.name ?? "Contacto desconocido"}
-                      </span>
+                  {/* Header row: icon + title + badge */}
+                  <div className="flex items-start gap-3">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
+                      <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {appt.title ?? "Cita"}
-                    </p>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
-                      <span>{dateStr}</span>
-                      <span>{timeStr}</span>
-                    </div>
-                    {appt.notes && (
-                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
-                        {appt.notes}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground leading-snug">
+                        {appt.title ?? "Cita"}
                       </p>
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                        <span>{dateStr}</span>
+                        <span>{timeStr}</span>
+                        {durationMin > 0 && (
+                          <>
+                            <span className="text-border">·</span>
+                            <span className="flex items-center gap-0.5">
+                              <Clock className="h-2.5 w-2.5" />
+                              {durationStr}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] shrink-0 capitalize ${badgeClass}`}
+                    >
+                      {appt.status}
+                    </Badge>
+                  </div>
+
+                  {/* Contact info */}
+                  <div className="space-y-1.5 pl-10">
+                    <div className="flex items-center gap-1.5 text-[11px] text-foreground">
+                      <User className="h-3 w-3 shrink-0 text-muted-foreground" />
+                      <span className="font-medium">{contact?.name ?? "Contacto desconocido"}</span>
+                    </div>
+                    {contact?.phone && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Phone className="h-3 w-3 shrink-0" />
+                        <span>{contact.phone}</span>
+                      </div>
+                    )}
+                    {contact?.email && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{contact.email}</span>
+                      </div>
+                    )}
+                    {(contact?.source || contact?.campaign) && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Megaphone className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          {[contact.source, contact.campaign].filter(Boolean).join(" · ")}
+                        </span>
+                      </div>
+                    )}
+                    {contact?.tags && contact.tags.length > 0 && (
+                      <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                        <Tag className="h-3 w-3 shrink-0 mt-0.5" />
+                        <div className="flex flex-wrap gap-1">
+                          {contact.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] shrink-0 capitalize ${badgeClass}`}
-                  >
-                    {appt.status}
-                  </Badge>
+
+                  {/* Notes */}
+                  {appt.notes && (
+                    <p className="pl-10 text-[11px] text-muted-foreground leading-relaxed border-t border-border pt-2.5">
+                      {appt.notes}
+                    </p>
+                  )}
                 </motion.div>
               )
             })
