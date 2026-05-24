@@ -425,6 +425,21 @@ export async function getCalendarEvents(params?: {
   });
 }
 
+export interface GHLCalendar {
+  id: string;
+  locationId: string;
+  name: string;
+  isActive?: boolean;
+}
+
+export interface GHLCalendarsResponse {
+  calendars: GHLCalendar[];
+}
+
+export async function getCalendars(): Promise<GHLCalendarsResponse> {
+  return ghlFetch<GHLCalendarsResponse>("/calendars/");
+}
+
 // ============ TASKS ============
 
 export interface GHLTask {

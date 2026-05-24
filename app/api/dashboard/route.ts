@@ -9,6 +9,7 @@ import {
   getCustomObjects,
   getAllCustomObjectRecords,
   getCalendarEvents,
+  getCalendars,
   type GHLContact,
   type GHLConversation,
   type GHLOpportunity,
@@ -356,58 +357,70 @@ export async function GET() {
           console.error("[GHL] Conversations fetch failed:", err);
         }
 
-        // Fetch appointments per asesor over the last 90 days.
-        // /calendars/events takes (userId, startTime, endTime); we fan out
-        // across users with bounded concurrency. Per-user failures are
-        // swallowed so one bad user doesn't blank the chart.
+        // Fetch appointments per calendar over the last 90 days.
+        // /calendars/events requires one of (calendarId, userId, groupId);
+        // empirically GHL doesn't index it on assignedUserId, so userId-based
+        // queries return empty. Fan out across calendars instead and use each
+        // event's assignedUserId for asesor attribution. Per-calendar failures
+        // are swallowed so one bad calendar doesn't blank the chart.
         send({ type: "progress", message: "Cargando citas…" });
         const appointments: Appointment[] = [];
         try {
-          const now = Date.now();
-          const apptStartTime = new Date(now - 90 * 86_400_000).toISOString();
-          const apptEndTime = new Date(now).toISOString();
-          const userIds = Array.from(userMap.keys());
+          const calsResp = await getCalendars().catch((err: unknown) => {
+            console.error("[GHL] Calendars list fetch failed:", err);
+            return { calendars: [] };
+          });
+          const calendarIds = calsResp.calendars.map((c) => c.id);
 
-          const CONCURRENCY_APPT = 6;
-          let apptCursor = 0;
-          const apptBatches: GHLCalendarEvent[][] = new Array(userIds.length);
-          await Promise.all(
-            Array.from({ length: Math.min(CONCURRENCY_APPT, userIds.length) }, async () => {
-              while (apptCursor < userIds.length) {
-                const idx = apptCursor++;
-                const userId = userIds[idx];
-                try {
-                  const resp = await getCalendarEvents({ userId, startTime: apptStartTime, endTime: apptEndTime });
-                  apptBatches[idx] = resp.events ?? [];
-                } catch (err) {
-                  console.error(`[GHL] Calendar events fetch failed for user ${userId}:`, err);
-                  apptBatches[idx] = [];
+          if (calendarIds.length > 0) {
+            const now = Date.now();
+            const apptStartTime = new Date(now - 90 * 86_400_000).toISOString();
+            const apptEndTime = new Date(now).toISOString();
+
+            // Concurrency 3: appointments piggy-back on the same rate-limit
+            // budget as the in-flight conversation fan-out (CONCURRENCY=6).
+            const CONCURRENCY_APPT = 3;
+            let apptCursor = 0;
+            const apptBatches: GHLCalendarEvent[][] = new Array(calendarIds.length);
+            await Promise.all(
+              Array.from({ length: Math.min(CONCURRENCY_APPT, calendarIds.length) }, async () => {
+                while (apptCursor < calendarIds.length) {
+                  const idx = apptCursor++;
+                  const calendarId = calendarIds[idx];
+                  try {
+                    const resp = await getCalendarEvents({ calendarId, startTime: apptStartTime, endTime: apptEndTime });
+                    apptBatches[idx] = resp.events ?? [];
+                  } catch (err) {
+                    console.error(`[GHL] Calendar events fetch failed for calendar ${calendarId}:`, err);
+                    apptBatches[idx] = [];
+                  }
                 }
-              }
-            })
-          );
+              })
+            );
 
-          // Dedupe by event id, then transform.
-          const seen = new Set<string>();
-          for (const batch of apptBatches) {
-            if (!batch) continue;
-            for (const ev of batch) {
-              if (seen.has(ev.id)) continue;
-              seen.add(ev.id);
-              const advisorId = ev.assignedUserId;
-              const advisorName = advisorId && userMap.has(advisorId)
-                ? userMap.get(advisorId)
-                : advisorId;
-              appointments.push({
-                id: ev.id,
-                contactId: ev.contactId,
-                assignedTo: advisorName,
-                title: ev.title,
-                startTime: ev.startTime,
-                endTime: ev.endTime,
-                status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
-                notes: ev.notes,
-              });
+            // Dedupe by event id (one event could appear under multiple
+            // calendars in theory), then transform.
+            const seen = new Set<string>();
+            for (const batch of apptBatches) {
+              if (!batch) continue;
+              for (const ev of batch) {
+                if (seen.has(ev.id)) continue;
+                seen.add(ev.id);
+                const advisorId = ev.assignedUserId;
+                const advisorName = advisorId && userMap.has(advisorId)
+                  ? userMap.get(advisorId)
+                  : advisorId;
+                appointments.push({
+                  id: ev.id,
+                  contactId: ev.contactId,
+                  assignedTo: advisorName,
+                  title: ev.title,
+                  startTime: ev.startTime,
+                  endTime: ev.endTime,
+                  status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
+                  notes: ev.notes,
+                });
+              }
             }
           }
         } catch (err) {
