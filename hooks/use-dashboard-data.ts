@@ -9,6 +9,7 @@ import type {
   Message,
   Pipeline,
   Pauta,
+  Appointment,
 } from "@/lib/types";
 
 export interface DashboardData {
@@ -17,6 +18,7 @@ export interface DashboardData {
   calls: Call[];
   tasks: Task[];
   messages: Message[];
+  appointments: Appointment[];
   pipelines: Pipeline[];
   members: string[];
   tags: string[];
