@@ -373,9 +373,11 @@ export async function GET() {
           const calendarIds = calsResp.calendars.map((c) => c.id);
 
           if (calendarIds.length > 0) {
+            // /calendars/events expects startTime/endTime as epoch ms strings;
+            // ISO strings silently return empty.
             const now = Date.now();
-            const apptStartTime = new Date(now - 90 * 86_400_000).toISOString();
-            const apptEndTime = new Date(now).toISOString();
+            const apptStartTime = String(now - 90 * 86_400_000);
+            const apptEndTime = String(now);
 
             // Concurrency 3: appointments piggy-back on the same rate-limit
             // budget as the in-flight conversation fan-out (CONCURRENCY=6).
