@@ -135,4 +135,6 @@ export interface Pauta {
   tipo: string
   nombrePauta: string
   createdAt: string
+  contactId?: string
+  properties?: Record<string, string>
 }
