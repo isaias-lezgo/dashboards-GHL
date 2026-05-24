@@ -411,12 +411,14 @@ export interface GHLCalendarEventsResponse {
 
 export async function getCalendarEvents(params?: {
   calendarId?: string;
+  userId?: string;
   startTime?: string;
   endTime?: string;
 }): Promise<GHLCalendarEventsResponse> {
   return ghlFetch<GHLCalendarEventsResponse>("/calendars/events", {
     params: {
       calendarId: params?.calendarId,
+      userId: params?.userId,
       startTime: params?.startTime,
       endTime: params?.endTime,
     },
