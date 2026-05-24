@@ -8,8 +8,11 @@ import {
   getLostReasons,
   getCustomObjects,
   getAllCustomObjectRecords,
+  getCalendarEvents,
   type GHLContact,
+  type GHLConversation,
   type GHLOpportunity,
+  type GHLCalendarEvent,
 } from "@/lib/ghl-client";
 import { ghlMessageToInternal } from "@/lib/ghl-message-mapper";
 import type {
@@ -20,6 +23,7 @@ import type {
   Message,
   Pipeline,
   Pauta,
+  Appointment,
 } from "@/lib/types";
 
 type Attribution = {
@@ -287,27 +291,127 @@ export async function GET() {
           }
         }
 
-        // Fetch last 30 active conversations and their messages
+        // Fetch last 30 active conversations PER user (not 30 in total),
+        // so every advisor with activity shows up in the conversation charts.
         send({ type: "progress", message: "Cargando conversaciones…" });
         const messages: Message[] = [];
         try {
-          const convResp = await getConversations({ limit: 30 });
-          for (const conv of convResp.conversations) {
-            try {
-              const msgResp = await getMessages(conv.id, { limit: 50 });
-              for (const msg of msgResp.messages.messages) {
-                const transformed = ghlMessageToInternal(msg, conv.contactId, {
-                  conversationId: conv.id,
-                  assignedTo: conv.assignedTo,
-                });
-                if (transformed) messages.push(transformed);
-              }
-            } catch {
-              // skip conversations that fail individually
+          const userIds = Array.from(userMap.keys());
+          const userConvLists = await Promise.allSettled(
+            userIds.map(async (userId) => {
+              const resp = await getConversations({ limit: 30, assignedTo: userId });
+              return { userId, conversations: resp.conversations };
+            })
+          );
+
+          // Dedupe conversations across users (a conv reassigned mid-stream
+          // could surface under multiple users) and remember which user we
+          // queried for, so we can attribute messages even if conv.assignedTo
+          // is missing from the GHL payload.
+          const convQueue: Array<{ conv: GHLConversation; queriedUserId: string }> = [];
+          const seenConvIds = new Set<string>();
+          for (const result of userConvLists) {
+            if (result.status !== "fulfilled") continue;
+            const { userId, conversations } = result.value;
+            for (const conv of conversations) {
+              if (seenConvIds.has(conv.id)) continue;
+              seenConvIds.add(conv.id);
+              convQueue.push({ conv, queriedUserId: userId });
             }
+          }
+
+          // Bounded-concurrency message fetches so a 100+-conversation queue
+          // doesn't fan out to hundreds of simultaneous requests.
+          const CONCURRENCY = 6;
+          let cursor = 0;
+          const collected: Message[][] = new Array(convQueue.length);
+          await Promise.all(
+            Array.from({ length: Math.min(CONCURRENCY, convQueue.length) }, async () => {
+              while (cursor < convQueue.length) {
+                const idx = cursor++;
+                const { conv, queriedUserId } = convQueue[idx];
+                const advisorId = conv.assignedTo ?? queriedUserId;
+                const advisorName = userMap.get(advisorId) ?? advisorId;
+                try {
+                  const msgResp = await getMessages(conv.id, { limit: 50 });
+                  const out: Message[] = [];
+                  for (const msg of msgResp.messages.messages) {
+                    const transformed = ghlMessageToInternal(msg, conv.contactId, {
+                      conversationId: conv.id,
+                      assignedTo: advisorName,
+                    });
+                    if (transformed) out.push(transformed);
+                  }
+                  collected[idx] = out;
+                } catch {
+                  collected[idx] = [];
+                }
+              }
+            })
+          );
+          for (const batch of collected) {
+            if (batch) messages.push(...batch);
           }
         } catch (err) {
           console.error("[GHL] Conversations fetch failed:", err);
+        }
+
+        // Fetch appointments per asesor over the last 90 days.
+        // /calendars/events takes (userId, startTime, endTime); we fan out
+        // across users with bounded concurrency. Per-user failures are
+        // swallowed so one bad user doesn't blank the chart.
+        send({ type: "progress", message: "Cargando citas…" });
+        const appointments: Appointment[] = [];
+        try {
+          const now = Date.now();
+          const apptStartTime = new Date(now - 90 * 86_400_000).toISOString();
+          const apptEndTime = new Date(now).toISOString();
+          const userIds = Array.from(userMap.keys());
+
+          const CONCURRENCY_APPT = 6;
+          let apptCursor = 0;
+          const apptBatches: GHLCalendarEvent[][] = new Array(userIds.length);
+          await Promise.all(
+            Array.from({ length: Math.min(CONCURRENCY_APPT, userIds.length) }, async () => {
+              while (apptCursor < userIds.length) {
+                const idx = apptCursor++;
+                const userId = userIds[idx];
+                try {
+                  const resp = await getCalendarEvents({ userId, startTime: apptStartTime, endTime: apptEndTime });
+                  apptBatches[idx] = resp.events ?? [];
+                } catch (err) {
+                  console.error(`[GHL] Calendar events fetch failed for user ${userId}:`, err);
+                  apptBatches[idx] = [];
+                }
+              }
+            })
+          );
+
+          // Dedupe by event id, then transform.
+          const seen = new Set<string>();
+          for (const batch of apptBatches) {
+            if (!batch) continue;
+            for (const ev of batch) {
+              if (seen.has(ev.id)) continue;
+              seen.add(ev.id);
+              const advisorId = ev.assignedUserId;
+              const advisorName = advisorId && userMap.has(advisorId)
+                ? userMap.get(advisorId)
+                : advisorId;
+              appointments.push({
+                id: ev.id,
+                contactId: ev.contactId,
+                assignedTo: advisorName,
+                title: ev.title,
+                startTime: ev.startTime,
+                endTime: ev.endTime,
+                status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
+                notes: ev.notes,
+              });
+            }
+          }
+        } catch (err) {
+          console.error("[GHL] Appointments fetch failed:", err);
         }
 
         const calls: Call[] = [];
@@ -340,6 +444,7 @@ export async function GET() {
           calls,
           tasks,
           messages,
+          appointments,
           pipelines: pipelineList,
           members,
           tags: Array.from(tagSet),
