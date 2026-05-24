@@ -8,7 +8,7 @@ import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsDashboard } from "@/components/dashboard/conversations-dashboard"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
-import { filterOpportunities, filterContacts, filterCalls, filterMessages } from "@/lib/filter-helpers"
+import { filterOpportunities, filterContacts, filterCalls, filterMessages, filterAppointments } from "@/lib/filter-helpers"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import {
   TrendingUp,
@@ -69,6 +69,7 @@ export default function DashboardPage() {
   const opportunities = data?.opportunities ?? []
   const calls = data?.calls ?? []
   const messages = data?.messages ?? []
+  const appointments = data?.appointments ?? []
 
   // Stable options: persist the last successfully-loaded set so dropdowns
   // don't vanish when a narrow date range returns fewer options.
@@ -105,6 +106,10 @@ export default function DashboardPage() {
   const filteredMessages = useMemo(
     () => filterMessages(messages, filters),
     [messages, filters]
+  )
+  const filteredAppointments = useMemo(
+    () => filterAppointments(appointments, filters),
+    [appointments, filters]
   )
 
   const isInitialLoad = isLoading && !data
@@ -259,6 +264,7 @@ export default function DashboardPage() {
             contacts={filteredContacts}
             calls={filteredCalls}
             messages={filteredMessages}
+            appointments={filteredAppointments}
             tasks={data?.tasks ?? []}
             locationId={data?.locationId ?? ""}
           />
