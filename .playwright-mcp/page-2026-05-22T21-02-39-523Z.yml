@@ -1,0 +1,6023 @@
+- generic:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - heading [level=1]: GHL Analíticas
+            - paragraph: Panel de Marketing y Ventas
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - text: 2,872
+            - generic:
+              - img
+              - text: "305"
+          - generic: Actualizado 03:02 p.m.
+          - button:
+            - img
+            - text: Actualizar
+          - button:
+            - img
+    - generic:
+      - generic:
+        - button:
+          - img
+          - text: Marketing
+        - button:
+          - img
+          - text: Ventas
+        - button:
+          - img
+          - text: Conversaciones
+    - generic:
+      - region:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+                - generic: Filtros
+              - group:
+                - button: Hoy
+                - button: 7D
+                - button: 30D
+                - button: Mes
+                - button: Trimestre
+                - button: Año
+                - button [pressed]: Todo
+              - generic:
+                - combobox:
+                  - generic: Todos los miembros
+                  - img
+              - generic:
+                - combobox:
+                  - generic: Todos los pipelines
+                  - img
+              - generic:
+                - combobox:
+                  - generic: Todos los tags
+                  - img
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Total Oportunidades
+                  - paragraph: "305"
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Miembros Activos
+                  - paragraph: "10"
+                  - paragraph: 10 en total
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Tasa de Conversión
+                  - paragraph: 16.4%
+                  - paragraph: 50 ganadas
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Ingreso Ganado
+                  - paragraph: $224,399
+                - img
+        - generic:
+          - generic:
+            - generic: Leads por Miembro por Etapa del Pipeline
+            - generic: "Total: 305"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Iván SalazarLedezma
+                        - generic:
+                          - generic: Isaías Ríos
+                        - generic:
+                          - generic: Juan CarlosMartinezHernandez
+                        - generic:
+                          - generic: JacoboYescas
+                        - generic:
+                          - generic: EstrategasDomus
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "55"
+                        - generic:
+                          - generic: "110"
+                        - generic:
+                          - generic: "165"
+                        - generic:
+                          - generic: "220"
+                  - generic:
+                    - list:
+                      - listitem:
+                        - img
+                        - text: Prospecto Perdido
+                      - listitem:
+                        - img
+                        - text: Primera Cita
+                      - listitem:
+                        - img
+                        - text: Primer Contacto
+                      - listitem:
+                        - img
+                        - text: Segunda Cita
+                      - listitem:
+                        - img
+                        - text: Cliente Activo
+                      - listitem:
+                        - img
+                        - text: Activo con Servicio Técnico Dedicado
+                      - listitem:
+                        - img
+                        - text: Proceso de Implementación
+                      - listitem:
+                        - img
+                        - text: Servicio Terminado
+                      - listitem:
+                        - img
+                        - text: Envío de liga de pago
+                      - listitem:
+                        - img
+                        - text: Envío de propuesta
+            - paragraph: Haz clic en un segmento para ver los leads
+        - generic:
+          - generic: Rendimiento Individual
+        - generic:
+          - generic:
+            - generic:
+              - generic: Win/Loss por Asesor
+              - generic: "Total: 305"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Iván SalazarLedezma
+                          - generic:
+                            - generic: Isaías Ríos
+                          - generic:
+                            - generic: Juan CarlosMartinezHernandez
+                          - generic:
+                            - generic: JacoboYescas
+                          - generic:
+                            - generic: EstrategasDomus
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "55"
+                          - generic:
+                            - generic: "110"
+                          - generic:
+                            - generic: "165"
+                          - generic:
+                            - generic: "220"
+                      - generic:
+                        - generic:
+                          - generic: 0.5%
+                          - generic: 97.1%
+                          - generic: 100.0%
+                          - generic: 0.0%
+                          - generic: 0.0%
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - text: won
+                        - listitem:
+                          - img
+                          - text: open
+                        - listitem:
+                          - img
+                          - text: lost
+                        - listitem:
+                          - img
+                          - text: abandoned
+              - paragraph: Haz clic en un segmento para ver los leads
+          - generic:
+            - generic:
+              - generic: Ingreso Ganado por Asesor
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Isaías Ríos
+                          - generic:
+                            - generic: Juan CarlosMartinezHernandez
+                          - generic:
+                            - generic: Iván SalazarLedezma
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "45000"
+                          - generic:
+                            - generic: "90000"
+                          - generic:
+                            - generic: "135000"
+                          - generic:
+                            - generic: "180000"
+              - paragraph: Haz clic en una barra para ver los leads
+        - generic:
+          - generic:
+            - generic: Tiempo promedio de respuesta del asesor
+            - generic: "Total: 3 asesores"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: g4lTMmyu0FJpAqbnN4K3
+                        - generic:
+                          - generic: COS2ozuu4AJIlcGJgNJO
+                        - generic:
+                          - generic: kzHFmolI07wJYXPPTBNj
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 0m
+                        - generic:
+                          - generic: 300m
+                        - generic:
+                          - generic: 600m
+                        - generic:
+                          - generic: 900m
+                        - generic:
+                          - generic: 1200m
+                    - generic:
+                      - generic:
+                        - generic: 4h 20min
+                        - generic: 10h 17min
+                        - generic: 18h 35min
+        - generic:
+          - generic: Salud del Pipeline
+        - generic:
+          - generic:
+            - generic:
+              - generic: Valor en Pipeline por Etapa
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Envío de liga depago
+                          - generic:
+                            - generic: Envío depropuesta
+                          - generic:
+                            - generic: Primera Cita
+                          - generic:
+                            - generic: ProspectoPerdido
+                          - generic:
+                            - generic: Segunda Cita
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "4000"
+                          - generic:
+                            - generic: "8000"
+                          - generic:
+                            - generic: "12000"
+                          - generic:
+                            - generic: "16000"
+              - paragraph: Haz clic en una barra para ver los leads
+          - generic:
+            - generic:
+              - generic: Nuevas Oportunidades por Período
+              - generic: "Total: 305"
+            - generic:
+              - generic: Sin datos de tendencia
+        - generic:
+          - generic: Actividad de Conversaciones
+        - generic:
+          - generic:
+            - generic: Conversaciones únicas por día
+            - generic: "Total: 28"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 09-oct
+                        - generic:
+                          - generic: 14-nov
+                        - generic:
+                          - generic: 16-nov
+                        - generic:
+                          - generic: 04-feb
+                        - generic:
+                          - generic: 09-feb
+                        - generic:
+                          - generic: 19-feb
+                        - generic:
+                          - generic: 20-feb
+                        - generic:
+                          - generic: 23-feb
+                        - generic:
+                          - generic: 27-feb
+                        - generic:
+                          - generic: 03-mar
+                        - generic:
+                          - generic: 16-mar
+                        - generic:
+                          - generic: 17-mar
+                        - generic:
+                          - generic: 27-mar
+                        - generic:
+                          - generic: 01-abr
+                        - generic:
+                          - generic: 02-abr
+                        - generic:
+                          - generic: 10-abr
+                        - generic:
+                          - generic: 13-abr
+                        - generic:
+                          - generic: 17-abr
+                        - generic:
+                          - generic: 18-abr
+                        - generic:
+                          - generic: 30-abr
+                        - generic:
+                          - generic: 01-may
+                        - generic:
+                          - generic: 04-may
+                        - generic:
+                          - generic: 05-may
+                        - generic:
+                          - generic: 06-may
+                        - generic:
+                          - generic: 09-may
+                        - generic:
+                          - generic: 10-may
+                        - generic:
+                          - generic: 11-may
+                        - generic:
+                          - generic: 12-may
+                        - generic:
+                          - generic: 13-may
+                        - generic:
+                          - generic: 14-may
+                        - generic:
+                          - generic: 15-may
+                        - generic:
+                          - generic: 16-may
+                        - generic:
+                          - generic: 18-may
+                        - generic:
+                          - generic: 19-may
+                        - generic:
+                          - generic: 20-may
+                        - generic:
+                          - generic: 21-may
+                        - generic:
+                          - generic: 22-may
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "7"
+                        - generic:
+                          - generic: "14"
+                        - generic:
+                          - generic: "21"
+                        - generic:
+                          - generic: "28"
+        - generic:
+          - generic: Análisis de Pérdidas
+        - generic:
+          - generic:
+            - generic: Razones de Pérdida por Asesor
+            - generic: "Total: 146"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Iván SalazarLedezma
+                        - generic:
+                          - generic: EstrategasDomus
+                        - generic:
+                          - generic: Isaías Ríos
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "40"
+                        - generic:
+                          - generic: "80"
+                        - generic:
+                          - generic: "120"
+                        - generic:
+                          - generic: "160"
+                  - generic:
+                    - list:
+                      - listitem:
+                        - img
+                        - text: Sin razón
+            - paragraph: Haz clic en un segmento para ver los leads
+  - button "Open Next.js Dev Tools" [ref=e179] [cursor=pointer]:
+    - img [ref=e180]
+  - alert
+  - generic: 35min
+  - dialog:
+    - generic:
+      - generic:
+        - heading [level=2]: Todas las Oportunidades
+      - generic:
+        - generic: 305 registros
+    - generic:
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alvaro correa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alvaro - Construccion
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: christian ignacio magno
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Christian - Flipping house
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ricardo gonzalez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Ricardo -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: daniel lópez balderas
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Daniel -
+        - generic:
+          - generic: Primer Contacto
+          - generic:
+            - img
+            - text: 4,745.93
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alberto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alberto -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: antonio lopez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Antonio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gerardo medina
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Gerardo - Fábricamos equipo medico
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: martha núñez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Martha Núñez - Match Houses Mx
+        - generic:
+          - generic: Segunda Cita
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ricardo perez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Ricardo Perez - La Colada
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hiedra wendy pérez lópez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Hiedra - Agencia de viajes
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: arq. emiliano nuri
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Arq. - Bienes raíces
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mariela herrera r
+          - generic:
+            - generic: open
+            - img
+        - paragraph: M&M -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: asesor christian tronco
+          - generic:
+            - generic: open
+            - img
+        - paragraph: ASESOR - Todo el sector inmobiliario en especial terrenos y casas en venta y renta
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: arturo ruiz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: King - Agencia de Marketing Digital
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge ortiz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jorge - Servicios de salud
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alberto argaez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alberto -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: guillermo
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Guillermo - 4 personas
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: giovanni resendiz chavez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Giovanni - De uniformes de futbol
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: vladimir yeh
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Vladimir -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: neal sustaita
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Neal - real estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rosaura flores
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Rosaura -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: edgar mora
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Edgar -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: santiago figueroa sterling
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Santiago - Inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fernando lopez portillo
+          - generic:
+            - generic: won
+            - img
+        - paragraph: FERNANDO - Sahai
+        - generic:
+          - generic: Activo con Servicio Técnico Dedicado
+          - generic:
+            - img
+            - text: 4,527.95
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yessenia basurto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Yessenia - Residencial y comercial
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: raisa valdés
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Raisa - inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alondra vázquez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alondra - Casas usadas
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: karyna sánchez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Karyna - Inmobiliario Desarrollo
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé bayro núñez mora
+          - generic:
+            - generic: open
+            - img
+        - paragraph: José - Venta de lotes de 10x20 Es una lotificacion
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alexia yulisa higuera sánchez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alexia -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: pablo carlos santiago carmona
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Pablo -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: elsa franco
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Elsa - Bienes raices
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 1,297
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jose humberto campaña nuñez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Jose - Inmobiliaria Bienes raices
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: piedad farías
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Piedad - Solo Inmobiliairia
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: césar durán colín
+          - generic:
+            - generic: won
+            - img
+        - paragraph: César - Grand Center
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gerardo orellana
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Gerardo - Inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge fuentes
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fuecor -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: elizabeth guerra
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Elizabeth -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mike lupercio
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Mike - Purificadores de aire
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: diana laura silva gonzález
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Diana Laura Silva
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jose mauricio ortega
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jose - Casa habitación, naves industriales, locales comerciales y macrolotes
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rosa isela gonzález
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Rosa - compra, renta de casas, departamentos y bodegas
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis alberto michel flores
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Luis - Inmobiliarios
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: daniel lópez balderas
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Daniel - Venta de terrenos
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: andres perez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: andres perez
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 5,706
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roberto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Consultor -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julián carrizosa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Julián - Real Estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: paulina lima
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Paulina - Medist
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: vivian garcia
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Vivian -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: javier montoya
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Javier - Laboratorio de análisis clínicos
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luzmaria hernandez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: LuzMaria - Iniciando Bien inmuebles además de. Réditos de nómina a personal de gobierno
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: moisés santaella
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Moisés -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo ochoa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Eduardo - Bienes raíces
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan estudillo marin
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Juan - Residencial y comercial. Renta de oficinas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: nancy martinez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Nancy - Bienes inmuebles
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: araceli roura
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Araceli -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mario humberto andrade aguilar
+          - generic:
+            - generic: open
+            - img
+        - paragraph: FR -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Sergio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ricardo perez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Ricardo - ACECOB
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio hernandez realtor
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Sergio Hernandez Realtor
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: adriana nava díaz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Adriana Nava Díaz
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge mata lara
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Grupo Grumosa - Mariela
+        - generic:
+          - generic: Proceso de Implementación
+          - generic:
+            - img
+            - text: 6,500
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eugenio javier hernandez flores
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Eugenio Javier Hernandez Flores
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: abril suarez romero
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Abril Suarez Romero
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: silvia angelica
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Silvia Angelica
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jose daniel martinez chitoy
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jose Daniel Martinez Chitoy
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fernando gutierrez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fernando Gutierrez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis miguel duran lopez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Luis Miguel Duran Lopez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: teresa ivette velazquez martinez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Teresa Ivette Velazquez Martinez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fatima espillar
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fatima Espillar
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: manuel padilla
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Manuel Padilla
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yasmin lopez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Yasmin Lopez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mario delgado
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Mario Delgado
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio gomez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Julio Gomez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan pablo velazquez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Juan Pablo Velazquez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: stephanie valderrama
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Stephanie Valderrama
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mauricio alvarez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Mau Alvarez - Rise29
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: raúl martínez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Raúl Martínez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: evanni
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Evanni
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio acosta
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Sergio Acosta
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roger mtz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Roger Mtz
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: grupo arrieta casas inmobiliaria
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Grupo Arrieta Casas Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mv
+          - generic:
+            - generic: open
+            - img
+        - paragraph: MV
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: lic. mau gonzález
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Lic. Mau González
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: barbara myatt
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Barbara Myatt
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alex
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alex
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: g.t.
+          - generic:
+            - generic: open
+            - img
+        - paragraph: G.T.
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: chris méndez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Chris Méndez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis castruita
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Luis Castruita
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: diego escajadillo
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Diego Escajadillo
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fabian
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fabian
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: zaid romero
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Zaid Romero
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: betzy ruelas
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Betzy Ruelas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: danha castro
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Danha castro
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: pedro serafin
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Pedro Serafin
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: 🅴🅻 🅿🅰🅿🅰 🅳🅴 🅻-🅶
+          - generic:
+            - generic: open
+            - img
+        - paragraph: 🅴🅻 🅿🅰🅿🅰 🅳🅴 🅻-🅶
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge rivera
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jorge Rivera
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mario ochoa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Mario Ochoa
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: guillermo garcía ayala
+          - generic:
+            - generic: won
+            - img
+        - paragraph: GGA - Epione
+        - generic:
+          - generic: Proceso de Implementación
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: monserrat duran
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Monserrat Duran
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: metrópoli 77
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Metrópoli 77
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge lopez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jorge Lopez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: "10"
+          - generic:
+            - generic: open
+            - img
+        - paragraph: 10 - 100% en comercialización de inmuebles
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: angel esau morones galvan
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Angel - Inmobiliaria y construcción
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: esly guadalupe
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Esly -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé francisco olvera pedraza
+          - generic:
+            - generic: open
+            - img
+        - paragraph: JOSÉ - Agente de ventas de internet infinitum Telmex
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: bruno italo ceja sosa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Bruno - Es inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fabian nieto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fabian - Habitacional
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gabriela campos juárez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Gabriela - inmobiliaria y venta de remates
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: valeria de la peña
+          - generic:
+            - generic: open
+            - img
+        - paragraph: VALERIA - inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: israel baez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Israel - Real estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sofía
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Sofía
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: francisco yañez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Francisco Yan - Inverte Capital
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,745
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: andcar proyectos s.a de c.v
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Suly - ANDCAR PROTECTOS
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo ugalde
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Eduardo Ugalde
+        - generic:
+          - generic: Envío de liga de pago
+          - generic:
+            - img
+            - text: 2,000
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jpa administracion
+          - generic:
+            - generic: won
+            - img
+        - paragraph: VAEO - Jorge Pizzuto Aznar
+        - generic:
+          - generic: Activo con Servicio Técnico Dedicado
+          - generic:
+            - img
+            - text: 20,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: genaro jimenez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Plusvalenza - Genaro
+        - generic:
+          - generic: Proceso de Implementación
+          - generic:
+            - img
+            - text: 4,976.31
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ana elena ruiz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Ana - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: paola 👻
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Faugier. -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fernando eduardo reza
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fernando - Residencial
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Jacobo Yescas
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jasson vargas
+          - generic:
+            - generic: open
+            - img
+        - paragraph: JASSON VARGAS
+        - generic:
+          - generic: Envío de propuesta
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio cesar blanco mendez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Julio Blanco
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: laura palomo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Laura - Solo inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: nayde páramo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Contadora - inmobiliario
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: osvaldo de loera garcía
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Osvaldo - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: zuriel rodríguez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: You Can Drive
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio lacorti
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Sergio - Seguros
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: armando acosta
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Armando - sector comercial
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: lleymi ramirez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Lleymi Guadalupe -
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "317"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio roa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Julio - lotificacion en preventa
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: israel villegas
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Israel - Fabricantes de cocinas integrales y variedad de muebles
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: adriana guerra
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Adriana -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan díaz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Juan - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rogelio rey
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Rogelio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mónica realtor
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mónica - Habitacional residencial
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: manuel vargas
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Manuel - Inmobiliario
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge morales
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jorge - Promocionales
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: israel
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Israel - Aviacion
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: margarita trujillo pérez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Margarita - Real Estate, negocio de gotcha para niños en fiestas infantiles
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: felipe ballen
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Felipe - negocio de colchones
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alex carbajal
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alex -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: uriel rosas
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Uriel - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alejandro mtz
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alejandro -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: david badillo lópez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: David - Compra-venta
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo parra
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Lionbull1996 -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: dan ramírez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Dan - Real Estate
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: iván franco palmer
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Iván - Marketing
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fabiola estrada
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Fabiola - inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rodrigo
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Condesa Cimatario
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 2,450
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: maría rosalba torres becerra
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: María - renta venta compra residencial habitacional y comercial
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: antonio leal morales
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Antonio - Treu Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alan hernández
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alan - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rebeca contreras
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Rebeca - QB7
+        - generic:
+          - generic: Proceso de Implementación
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan gonzález
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Insumos -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis becerra domínguez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Luis - asesores inmobiliarios
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: saira rivera
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Saira -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mar moreno
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mar -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo vázquez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Eduardo - Bienes raices
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "317"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: enrique torres
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Grupo Tosc - Enrique Torres
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "317"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: héctor moro
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Héctor - Inmobiliarias
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: dreamland interiorismo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Dreamland -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: coral vinalay
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Coral - inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jose pablo padilla
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jose - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: christian montull
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Christian - Bienes raices
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "317"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: kristian prado sosa
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Kristian - Real Estate
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sebastián lemos
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Sebastián - inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eulogio perera
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Eulogio - Construcción y Desarrollo inmobiliario
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roberto gómez romero
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Roberto - Refacciones automotrices y mecánica automotriz
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: santiago arana
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Santiago - Metta Bienes Raíces
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roberto bernal
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Roberto - Consumibles de Computación
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: armando lopez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Armando - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "317"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: areli chávez tapia
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Areli - Constructora e inmobiliaria Elace
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ramon piñuelas banda
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: RAMON - tecnología epigenética
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gaudencio de felipe sabino
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Gaudencio - suplementos alimenticios y negocio de redes de mercadeo multinivel
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: carlos conde
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Carlos - Papelería
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: krystell klünder
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Punto Inmobiliario - Krystell
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: oswaldo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Oswaldo - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hugo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Hugo - Venta de productos naturales para la próstata, venta de boletos para entrenamiento de desarrollo personal, acceso a conferencias gratuitas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mariela contreras
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Mi Éxito Inmobiliario
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: david mendicuti
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: David - Venta de motocicletas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: manuel
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Manuel - Inversiones y seguros Vida, autos, gmm y daños
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: miguel carrión
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Scania Perú
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan luis garcía barranco
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Juan Luis García
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mario villarreal
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: MUVQ - Organización y gestión de eventos deportivos. Comercialización de productos y servicios
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: muebles y cocinas ms
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Muebles - Inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: miguel burgoa
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Miguel Burgoa
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan antonio velazquez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mieles - A ventas al menudeo
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo diaz
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Eduardo - estudio de Danza además de brindar servicio de coreografías para xvaños, foto y video studio
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo ledesma
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Eduardo - Servicios de compresores y bombeo de agua
+        - generic:
+          - generic: Segunda Cita
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roberto pedrero orantes
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: DOCEVEINTE - Branding y Desarrollo Web
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mauricio achar cicourel
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Security -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: manuel gonzález h. solemtec
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Manuel - Marketing
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jesus sanabria
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Jesus Sanabria
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: zenaida quiterio
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: GetShuttle - Transporte Turístico
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis carlos vela
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Luis Carlos Vela
+        - generic:
+          - generic: Segunda Cita
+          - generic:
+            - img
+            - text: 5,397
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alejandro serrano
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alejandro -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: j guadalupe pérez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: J -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: asesor de inversiones inmobiliarias.
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Asesor de Inversiones Inmobiliarias.
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: andrea flores
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Andrea - MX Inmobiliario
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,527
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: francisco rocha
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Francisco - C21
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: marco díaz
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Chispon - Envasado
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge ramirez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jorge -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: juan francisco castro
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Juan Francisco Castro
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hb 改善
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: HB -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jiro sanz
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jiro - agencia creativa y mkt digital
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé salustiano
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: José - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: adrian ángeles
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Adrianz - Inmobiliaria ventas en playa del Carmen, Tulum , puerto Morelos, Cancún y nuestra nueva oficina EN DUBÁI
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rubén campos
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Rubén - restaurantes y bares
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fausto bado
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Bado - bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yoselyn aldana
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Yoss -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: geeovan mathey
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: GeoTheBoss -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mauricio del valle
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mauricio - Rekupera.com.mx
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "297"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ed verdalett
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Ed
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: nivia
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Nivia - Ropa
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rosendo jimenez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Rosendo -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: melissa pollet
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Melissa -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: lu
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Lu -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: graciela arredondo
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Graciela - Desaparecida
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ángel cortés
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Ángel Cortés
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: consultoría patrimonial
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Consultoría -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sebastián muradás ibarra
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Sebastián Muradás - iimagine
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "297"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: cuarto gráfico
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Cuarto -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: raul tames
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Raul - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: polleria la florida
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Polleria -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: don josé realtor
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Don -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sarai peñate
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Sarai -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge peña
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jorge -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hector ocampo
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Hector -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: bunkr572 espacios funcionales
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Bunkr572 - mini bodegas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: diana posada
+          - generic:
+            - generic: won
+            - img
+        - paragraph: RUF Inmobiliaria - Fabiola
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 5,200
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: janette🌕
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Janette🌕 - Agendar más citas
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: isaac.
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Isaac. -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé almaraz amaya
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Cubaski -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: angel león
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: La -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: andres briones
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Andres -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: marlene cortés 👑
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: ZibaHome
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: saúl gatnez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Saúl -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rodolfo martínez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Rodolfo -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "891"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: martín gonzález
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: IPH Crédit - Martín
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: elvira chiunti
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Elvira - Bienes raíces
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: lorena recoba
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Lorena -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "891"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jenny herrera
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jenny -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: 🎓 j. juan 🎓
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: 🎓 -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: arturo castillo - asesor de inversiones & inmobiliario
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Arturo - inmobiliario
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hausmen real estate
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Carlos - Hausmen Real Estate
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 2,800
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio lujano
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Sergio - Pizzuto y Asociados - P&L Patrimonial
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo fernández
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Eduardo Fernández - Remax Sí
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "297"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: israel garcia f
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Se Venden Casas
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,388.65
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: german sánchez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: German Sánchez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alexis rojas
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Alexis Eduardo
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: aesthetic car detail servis
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Aesthetic -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge méndez asesor inmobiliario
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jorge -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: benjamin saavedra
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Benjamin -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "564"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ronald cruz / cabo monarch realty
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Ronald -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sandra
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Sandra Elena - Kapitaliza
+        - generic:
+          - generic: Activo con Servicio Técnico Dedicado
+          - generic:
+            - img
+            - text: 8,260
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: evelyng castro
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Evelyng -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio valencia
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Julio - mantenimiento automotriz
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ramón bravo navarro
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Ramón -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gustavo reyes
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Gustavo - inmobiliaria
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: edmond tuachi
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Edmond tuachi - Edmondeg
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ivan salazar
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Roy Avila - Turimar
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Estrategas Domus
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo juárez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Eduardo Juárez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alberto monroy
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alberto -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: carlos salazar
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Carlos -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rodri realtor
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Rodri - Rodri Realtor
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: anabella pezet
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Anabella -
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: claudio aldrete
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Claudio -
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "207"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yerardi mote | bienes raíces
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Yerardi - Rockstars
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fernando lópez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: FERNANDO - Grupo Salo
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jesús salazar
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jesús Salazar - Vivea Real Estate
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alfredo 🏢
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: wu Real Rstate mx
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé maría
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Daniela - Lumar
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "297"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gerry
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Gerry
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: salvador galván
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Salvador Galván
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge ernesto domínguez luna
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Jorge Ernesto Domínguez Luna
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jhoat diaz
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: We Vacations
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: maría gabriela márquez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: María Gabriela Márquez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: leonardo escobar
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Leonardo - Lezgo Growth
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: carlos
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Brokrs
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "192"
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: paola hernández
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Vista Real Sección 13
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: "259"
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: evelyn alonzo
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Yconia Connected Habitat
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 20,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mariana iturbe
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mariana Iturbe
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: camila fernandez serrano
+          - generic:
+            - generic: won
+            - img
+        - paragraph: DRT
+        - generic:
+          - generic: Activo con Servicio Técnico Dedicado
+          - generic:
+            - img
+            - text: 15,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: martha pineda
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Grand Olivo
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 3,567
+        - generic:
+          - generic:
+            - img
+            - text: Juan Carlos Martinez Hernandez
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: david therapy center méxico
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: David - Therapy Center México
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: carolina treviño
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Saki Desarrollos
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 4,602.5
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: carlos
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Carlos
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: adolfo ramirez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Adolfo Ramirez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "197"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alfredo huerta
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alfredo Huerta
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: araceli lópez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Ucalli
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mauricio pérez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mauricio Pérez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: andrés rocha
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Inmex Capital
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alejandro gonzález
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Alejandro González
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: maría barrueta
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Cellarium
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 10,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mariana sánchez
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Mariana Sánchez
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: lissie cámara
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Jerry Medina
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 10,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luimi negocios
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Luimi Negocios
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: 1,579
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: maria eugenia lópez gomez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Tiempo Cero
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 4,500
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: vanessa castellano
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Vanessa Castellano
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: salvador becherano
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Salvador
+        - generic:
+          - generic: Servicio Terminado
+          - generic:
+            - img
+            - text: 1,700
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: cecilia zárate
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Cecilia Zárate
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio llaca
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Julio Llaca
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: santiago botaya
+          - generic:
+            - generic: lost
+            - img
+        - paragraph: Santiago Botaya
+        - generic:
+          - generic: Prospecto Perdido
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: amir cherit
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Amir Cherit
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 9,000
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: karen krystel olivera núñez
+          - generic:
+            - generic: won
+            - img
+        - paragraph: Herrera Real Estate
+        - generic:
+          - generic: Cliente Activo
+          - generic:
+            - img
+            - text: 2,500
+        - generic:
+          - generic:
+            - img
+            - text: Isaías Ríos
+    - button:
+      - img
+      - generic: Close
+  - dialog "alvaro correa" [ref=e8207]:
+    - generic [ref=e8208]:
+      - generic [ref=e8209]:
+        - generic [ref=e8211]:
+          - heading "alvaro correa" [level=2] [ref=e8212]
+          - paragraph [ref=e8213]: alvaro@correa.com.co · +573156067619
+        - generic [ref=e8214]: open
+      - generic [ref=e8215]:
+        - generic [ref=e8216]: stop bot
+        - generic [ref=e8217]: cita agendada 1
+      - generic [ref=e8218]:
+        - link "Ver oportunidad" [ref=e8219] [cursor=pointer]:
+          - /url: https://login.lezgosuite.com/v2/location/uRFrk77agXq9is0a0gkp/opportunities/nEnitSNpzIdmYKlBbfje?tab=Opportunity+Details
+          - img
+          - text: Ver oportunidad
+        - link "Ver contacto" [ref=e8220] [cursor=pointer]:
+          - /url: https://login.lezgosuite.com/v2/location/uRFrk77agXq9is0a0gkp/contacts/detail/yrE2Q6AjzwfkfteCu539
+          - img
+          - text: Ver contacto
+        - button "Analizar con IA" [active] [ref=e8221] [cursor=pointer]:
+          - img
+          - text: Analizar con IA
+    - generic [ref=e8222]:
+      - tablist [ref=e8223]:
+        - tab "Resumen" [selected] [ref=e8224] [cursor=pointer]
+        - tab "Tareas" [ref=e8225] [cursor=pointer]
+        - tab "Citas" [ref=e8226] [cursor=pointer]
+      - tabpanel "Resumen" [ref=e8227]:
+        - generic [ref=e8228]:
+          - generic [ref=e8229]:
+            - heading "Detalles de la Oportunidad" [level=4] [ref=e8230]
+            - generic [ref=e8231]:
+              - generic [ref=e8232]:
+                - img [ref=e8233]
+                - generic [ref=e8235]:
+                  - paragraph [ref=e8236]: Valor
+                  - paragraph [ref=e8237]: Sin valor
+              - generic [ref=e8238]:
+                - img [ref=e8239]
+                - generic [ref=e8241]:
+                  - paragraph [ref=e8242]: Fecha de cierre
+                  - paragraph [ref=e8243]: No disponible
+              - generic [ref=e8244]:
+                - img [ref=e8245]
+                - generic [ref=e8248]:
+                  - paragraph [ref=e8249]: Etapa
+                  - paragraph [ref=e8250]: Prospecto Perdido
+              - generic [ref=e8251]:
+                - img [ref=e8252]
+                - generic [ref=e8255]:
+                  - paragraph [ref=e8256]: Pipeline
+                  - paragraph [ref=e8257]: Ventas
+          - generic [ref=e8258]:
+            - heading "Información de Contacto" [level=4] [ref=e8259]
+            - generic [ref=e8260]:
+              - paragraph [ref=e8261]: alvaro correa
+              - paragraph [ref=e8262]: alvaro@correa.com.co
+              - paragraph [ref=e8263]: "+573156067619"
+              - paragraph [ref=e8264]: "Asignado a: Iván Salazar Ledezma"
+    - button "Close" [ref=e8265] [cursor=pointer]:
+      - img [ref=e8266]
+      - generic [ref=e8269]: Close

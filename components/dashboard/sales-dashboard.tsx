@@ -371,6 +371,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     }
     return [...dailyConvMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-30)
       .map(([date, convSet]) => ({
         date,
         label: new Date(date + "T12:00:00").toLocaleDateString("es-MX", {

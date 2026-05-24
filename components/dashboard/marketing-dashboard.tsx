@@ -99,6 +99,12 @@ function sourceLabel(opp: Opportunity): string {
   return parts.length > 0 ? parts.join(" / ") : "Directo"
 }
 
+function NonZeroTooltipContent(props: any) {
+  const filtered = (props.payload ?? []).filter((p: any) => Number(p?.value) > 0)
+  if (!props.active || filtered.length === 0) return null
+  return <ChartTooltipContent {...props} payload={filtered} />
+}
+
 function TotalBadge({ value }: { value: number | string }) {
   return (
     <span className="ml-auto inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
@@ -379,7 +385,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="campaign" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={80} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
                   <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.campaign ?? String(_)} />} />
+                  <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.campaign ?? String(_)} />} />
                   <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
                   {stageOrder.map((stage, i) => (
                     <Bar
@@ -419,7 +425,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="source" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={80} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
                   <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.source ?? String(_)} />} />
+                  <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.source ?? String(_)} />} />
                   <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
                   {stageOrder.map((stage, i) => (
                     <Bar
@@ -472,7 +478,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                       <XAxis dataKey="campaign" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={72} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
                       <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.campaign ?? String(_)} />} />
+                      <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.campaign ?? String(_)} />} />
                       <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
                       {lostReasons.map((reason, i) => (
                         <Bar

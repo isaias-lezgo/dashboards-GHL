@@ -1,0 +1,306 @@
+- generic [ref=e1]:
+  - generic [ref=e33]:
+    - banner [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img [ref=e38]
+          - generic [ref=e40]:
+            - heading "GHL Analíticas" [level=1] [ref=e41]
+            - paragraph [ref=e42]: Panel de Marketing y Ventas
+        - generic [ref=e43]:
+          - generic [ref=e207]:
+            - generic "Contactos cargados" [ref=e208]:
+              - img [ref=e209]
+              - text: 2,871
+            - generic "Oportunidades cargadas" [ref=e214]:
+              - img [ref=e215]
+              - text: "305"
+          - generic [ref=e44]: Actualizado 02:50 p.m.
+          - button "Actualizar" [ref=e219] [cursor=pointer]:
+            - img
+            - text: Actualizar
+          - button "Cambiar tema" [ref=e47] [cursor=pointer]:
+            - img
+    - generic [ref=e49]:
+      - button "Marketing" [ref=e50] [cursor=pointer]:
+        - img [ref=e51]
+        - text: Marketing
+      - button "Ventas" [active] [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+        - text: Ventas
+      - button "Conversaciones" [ref=e57] [cursor=pointer]:
+        - img [ref=e58]
+        - text: Conversaciones
+    - region "Barra de filtros" [ref=e61]:
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - img [ref=e66]
+          - generic [ref=e68]: Filtros
+        - group "Rango de fechas" [ref=e69]:
+          - button "Hoy" [ref=e70] [cursor=pointer]
+          - button "7D" [ref=e71] [cursor=pointer]
+          - button "30D" [ref=e72] [cursor=pointer]
+          - button "Mes" [ref=e73] [cursor=pointer]
+          - button "Trimestre" [ref=e74] [cursor=pointer]
+          - button "Año" [ref=e75] [cursor=pointer]
+          - button "Todo" [pressed] [ref=e76] [cursor=pointer]
+        - combobox "Filtrar por miembro" [ref=e221] [cursor=pointer]:
+          - generic: Todos los miembros
+          - img [ref=e222]
+        - combobox "Filtrar por pipeline" [ref=e225] [cursor=pointer]:
+          - generic: Todos los pipelines
+          - img [ref=e226]
+        - combobox [ref=e229] [cursor=pointer]:
+          - generic [ref=e230]: Todos los tags
+          - img
+    - generic [ref=e851]:
+      - generic [ref=e852]:
+        - generic [ref=e855] [cursor=pointer]:
+          - generic [ref=e856]:
+            - paragraph [ref=e857]: Total Oportunidades
+            - paragraph [ref=e858]: "305"
+          - img [ref=e859]
+        - generic [ref=e865] [cursor=pointer]:
+          - generic [ref=e866]:
+            - paragraph [ref=e867]: Miembros Activos
+            - paragraph [ref=e868]: "10"
+            - paragraph [ref=e869]: 10 en total
+          - img [ref=e870]
+        - generic [ref=e877] [cursor=pointer]:
+          - generic [ref=e878]:
+            - paragraph [ref=e879]: Tasa de Conversión
+            - paragraph [ref=e880]: 16.4%
+            - paragraph [ref=e881]: 50 ganadas
+          - img [ref=e882]
+        - generic [ref=e887] [cursor=pointer]:
+          - generic [ref=e888]:
+            - paragraph [ref=e889]: Ingreso Ganado
+            - paragraph [ref=e890]: $224,399
+          - img [ref=e891]
+      - generic [ref=e893]:
+        - generic [ref=e894]:
+          - generic [ref=e895]: Leads por Miembro por Etapa del Pipeline
+          - generic [ref=e896]: "Total: 305"
+        - generic [ref=e897]:
+          - generic [ref=e900]:
+            - img [ref=e901]:
+              - generic [ref=e905]:
+                - generic [ref=e907]: Iván SalazarLedezma
+                - generic [ref=e909]: Isaías Ríos
+                - generic [ref=e911]: Juan CarlosMartinezHernandez
+                - generic [ref=e913]: JacoboYescas
+                - generic [ref=e915]: EstrategasDomus
+              - generic [ref=e917]:
+                - generic [ref=e919]: "0"
+                - generic [ref=e921]: "55"
+                - generic [ref=e923]: "110"
+                - generic [ref=e925]: "165"
+                - generic [ref=e927]: "220"
+            - list [ref=e990]:
+              - listitem [ref=e991]:
+                - img [ref=e992]
+                - text: Prospecto Perdido
+              - listitem [ref=e994]:
+                - img [ref=e995]
+                - text: Primera Cita
+              - listitem [ref=e997]:
+                - img [ref=e998]
+                - text: Primer Contacto
+              - listitem [ref=e1000]:
+                - img [ref=e1001]
+                - text: Segunda Cita
+              - listitem [ref=e1003]:
+                - img [ref=e1004]
+                - text: Cliente Activo
+              - listitem [ref=e1006]:
+                - img [ref=e1007]
+                - text: Activo con Servicio Técnico Dedicado
+              - listitem [ref=e1009]:
+                - img [ref=e1010]
+                - text: Proceso de Implementación
+              - listitem [ref=e1012]:
+                - img [ref=e1013]
+                - text: Servicio Terminado
+              - listitem [ref=e1015]:
+                - img [ref=e1016]
+                - text: Envío de liga de pago
+              - listitem [ref=e1018]:
+                - img [ref=e1019]
+                - text: Envío de propuesta
+          - paragraph [ref=e1021]: Haz clic en un segmento para ver los leads
+      - generic [ref=e1023]: Rendimiento Individual
+      - generic [ref=e1025]:
+        - generic [ref=e1026]:
+          - generic [ref=e1027]:
+            - generic [ref=e1028]: Win/Loss por Asesor
+            - generic [ref=e1029]: "Total: 305"
+          - generic [ref=e1030]:
+            - generic [ref=e1033]:
+              - img [ref=e1034]:
+                - generic [ref=e1038]:
+                  - generic [ref=e1040]: Iván SalazarLedezma
+                  - generic [ref=e1042]: Isaías Ríos
+                  - generic [ref=e1044]: Juan CarlosMartinezHernandez
+                  - generic [ref=e1046]: JacoboYescas
+                  - generic [ref=e1048]: EstrategasDomus
+                - generic [ref=e1050]:
+                  - generic [ref=e1052]: "0"
+                  - generic [ref=e1054]: "55"
+                  - generic [ref=e1056]: "110"
+                  - generic [ref=e1058]: "165"
+                  - generic [ref=e1060]: "220"
+                - generic [ref=e1099]:
+                  - generic [ref=e1100]: 0.5%
+                  - generic [ref=e1101]: 97.1%
+                  - generic [ref=e1102]: 100.0%
+                  - generic [ref=e1103]: 0.0%
+                  - generic [ref=e1104]: 0.0%
+              - list [ref=e1106]:
+                - listitem [ref=e1107]:
+                  - img [ref=e1108]
+                  - text: won
+                - listitem [ref=e1110]:
+                  - img [ref=e1111]
+                  - text: open
+                - listitem [ref=e1113]:
+                  - img [ref=e1114]
+                  - text: lost
+                - listitem [ref=e1116]:
+                  - img [ref=e1117]
+                  - text: abandoned
+            - paragraph [ref=e1119]: Haz clic en un segmento para ver los leads
+        - generic [ref=e1120]:
+          - generic [ref=e1122]: Ingreso Ganado por Asesor
+          - generic [ref=e1123]:
+            - img [ref=e1127]:
+              - generic [ref=e1131]:
+                - generic [ref=e1133]: Isaías Ríos
+                - generic [ref=e1135]: Juan CarlosMartinezHernandez
+                - generic [ref=e1137]: Iván SalazarLedezma
+              - generic [ref=e1139]:
+                - generic [ref=e1141]: "0"
+                - generic [ref=e1143]: "45000"
+                - generic [ref=e1145]: "90000"
+                - generic [ref=e1147]: "135000"
+                - generic [ref=e1149]: "180000"
+            - paragraph [ref=e1159]: Haz clic en una barra para ver los leads
+      - generic [ref=e1160]:
+        - generic [ref=e1161]:
+          - generic [ref=e1162]: Tiempo promedio de respuesta del asesor
+          - generic [ref=e1163]: "Total: 3 asesores"
+        - img [ref=e1168]:
+          - generic [ref=e1172]:
+            - generic [ref=e1174]: g4lTMmyu0FJpAqbnN4K3
+            - generic [ref=e1176]: kzHFmolI07wJYXPPTBNj
+            - generic [ref=e1178]: COS2ozuu4AJIlcGJgNJO
+          - generic [ref=e1180]:
+            - generic [ref=e1182]: 0m
+            - generic [ref=e1184]: 150m
+            - generic [ref=e1186]: 300m
+            - generic [ref=e1188]: 450m
+            - generic [ref=e1190]: 600m
+          - generic [ref=e1200]:
+            - generic [ref=e1201]: 4h 20min
+            - generic [ref=e1202]: 8h 58min
+            - generic [ref=e1203]: 9h 58min
+      - generic [ref=e1205]: Salud del Pipeline
+      - generic [ref=e1207]:
+        - generic [ref=e1208]:
+          - generic [ref=e1210]: Valor en Pipeline por Etapa
+          - generic [ref=e1211]:
+            - img [ref=e1215]:
+              - generic [ref=e1219]:
+                - generic [ref=e1221]: Envío de liga depago
+                - generic [ref=e1223]: Envío depropuesta
+                - generic [ref=e1225]: Primera Cita
+                - generic [ref=e1227]: ProspectoPerdido
+                - generic [ref=e1229]: Segunda Cita
+              - generic [ref=e1231]:
+                - generic [ref=e1233]: "0"
+                - generic [ref=e1235]: "4000"
+                - generic [ref=e1237]: "8000"
+                - generic [ref=e1239]: "12000"
+                - generic [ref=e1241]: "16000"
+            - paragraph [ref=e1253]: Haz clic en una barra para ver los leads
+        - generic [ref=e1254]:
+          - generic [ref=e1255]:
+            - generic [ref=e1256]: Nuevas Oportunidades por Período
+            - generic [ref=e1257]: "Total: 305"
+          - generic [ref=e1259]: Sin datos de tendencia
+      - generic [ref=e1261]: Actividad de Conversaciones
+      - generic [ref=e1263]:
+        - generic [ref=e1264]:
+          - generic [ref=e1265]: Conversaciones únicas por día
+          - generic [ref=e1266]: "Total: 28"
+        - img [ref=e1271]:
+          - generic [ref=e1275]:
+            - generic [ref=e1277]: 09-oct
+            - generic [ref=e1279]: 14-nov
+            - generic [ref=e1281]: 16-nov
+            - generic [ref=e1283]: 04-feb
+            - generic [ref=e1285]: 09-feb
+            - generic [ref=e1287]: 19-feb
+            - generic [ref=e1289]: 20-feb
+            - generic [ref=e1291]: 23-feb
+            - generic [ref=e1293]: 27-feb
+            - generic [ref=e1295]: 03-mar
+            - generic [ref=e1297]: 16-mar
+            - generic [ref=e1299]: 17-mar
+            - generic [ref=e1301]: 27-mar
+            - generic [ref=e1303]: 01-abr
+            - generic [ref=e1305]: 02-abr
+            - generic [ref=e1307]: 10-abr
+            - generic [ref=e1309]: 13-abr
+            - generic [ref=e1311]: 17-abr
+            - generic [ref=e1313]: 18-abr
+            - generic [ref=e1315]: 30-abr
+            - generic [ref=e1317]: 01-may
+            - generic [ref=e1319]: 04-may
+            - generic [ref=e1321]: 05-may
+            - generic [ref=e1323]: 06-may
+            - generic [ref=e1325]: 09-may
+            - generic [ref=e1327]: 10-may
+            - generic [ref=e1329]: 11-may
+            - generic [ref=e1331]: 12-may
+            - generic [ref=e1333]: 13-may
+            - generic [ref=e1335]: 14-may
+            - generic [ref=e1337]: 15-may
+            - generic [ref=e1339]: 16-may
+            - generic [ref=e1341]: 18-may
+            - generic [ref=e1343]: 19-may
+            - generic [ref=e1345]: 20-may
+            - generic [ref=e1347]: 21-may
+            - generic [ref=e1349]: 22-may
+          - generic [ref=e1351]:
+            - generic [ref=e1353]: "0"
+            - generic [ref=e1355]: "7"
+            - generic [ref=e1357]: "14"
+            - generic [ref=e1359]: "21"
+            - generic [ref=e1361]: "28"
+      - generic [ref=e1440]: Análisis de Pérdidas
+      - generic [ref=e1442]:
+        - generic [ref=e1443]:
+          - generic [ref=e1444]: Razones de Pérdida por Asesor
+          - generic [ref=e1445]: "Total: 146"
+        - generic [ref=e1446]:
+          - generic [ref=e1449]:
+            - img [ref=e1450]:
+              - generic [ref=e1454]:
+                - generic [ref=e1456]: Iván SalazarLedezma
+                - generic [ref=e1458]: EstrategasDomus
+                - generic [ref=e1460]: Isaías Ríos
+              - generic [ref=e1462]:
+                - generic [ref=e1464]: "0"
+                - generic [ref=e1466]: "40"
+                - generic [ref=e1468]: "80"
+                - generic [ref=e1470]: "120"
+                - generic [ref=e1472]: "160"
+            - list [ref=e1483]:
+              - listitem [ref=e1484]:
+                - img [ref=e1485]
+                - text: Sin razón
+          - paragraph [ref=e1487]: Haz clic en un segmento para ver los leads
+  - button "Open Next.js Dev Tools" [ref=e179] [cursor=pointer]:
+    - img [ref=e180]
+  - alert [ref=e206]
+  - generic [ref=e850]: 9h

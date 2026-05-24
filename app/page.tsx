@@ -19,6 +19,8 @@ import {
   Sun,
   Moon,
   MessageSquare,
+  Users,
+  Target,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -138,6 +140,24 @@ export default function DashboardPage() {
               <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Error al cargar datos
+              </div>
+            )}
+            {!isLoading && data && (
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground"
+                  title="Contactos cargados"
+                >
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  {data.contacts.length.toLocaleString("es-MX")}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground"
+                  title="Oportunidades cargadas"
+                >
+                  <Target className="h-3 w-3 text-muted-foreground" />
+                  {data.opportunities.length.toLocaleString("es-MX")}
+                </span>
               </div>
             )}
             <span className="text-[11px] text-muted-foreground">
@@ -266,6 +286,7 @@ export default function DashboardPage() {
             messages={filteredMessages}
             appointments={filteredAppointments}
             tasks={data?.tasks ?? []}
+            members={availableMembers}
             locationId={data?.locationId ?? ""}
           />
         ) : (

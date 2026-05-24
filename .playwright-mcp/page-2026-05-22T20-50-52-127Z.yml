@@ -1,0 +1,367 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e33]:
+    - banner [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img [ref=e38]
+          - generic [ref=e40]:
+            - heading "GHL Analíticas" [level=1] [ref=e41]
+            - paragraph [ref=e42]: Panel de Marketing y Ventas
+        - generic [ref=e43]:
+          - generic [ref=e207]:
+            - generic "Contactos cargados" [ref=e208]:
+              - img [ref=e209]
+              - text: 2,871
+            - generic "Oportunidades cargadas" [ref=e214]:
+              - img [ref=e215]
+              - text: "305"
+          - generic [ref=e44]: Actualizado 02:50 p.m.
+          - button "Actualizar" [ref=e219] [cursor=pointer]:
+            - img
+            - text: Actualizar
+          - button "Cambiar tema" [ref=e47] [cursor=pointer]:
+            - img
+    - generic [ref=e49]:
+      - button "Marketing" [ref=e50] [cursor=pointer]:
+        - img [ref=e51]
+        - text: Marketing
+      - button "Ventas" [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+        - text: Ventas
+      - button "Conversaciones" [ref=e57] [cursor=pointer]:
+        - img [ref=e58]
+        - text: Conversaciones
+    - region "Barra de filtros" [ref=e61]:
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - img [ref=e66]
+          - generic [ref=e68]: Filtros
+        - group "Rango de fechas" [ref=e69]:
+          - button "Hoy" [ref=e70] [cursor=pointer]
+          - button "7D" [ref=e71] [cursor=pointer]
+          - button "30D" [ref=e72] [cursor=pointer]
+          - button "Mes" [ref=e73] [cursor=pointer]
+          - button "Trimestre" [ref=e74] [cursor=pointer]
+          - button "Año" [ref=e75] [cursor=pointer]
+          - button "Todo" [pressed] [ref=e76] [cursor=pointer]
+        - combobox "Filtrar por miembro" [ref=e221] [cursor=pointer]:
+          - generic: Todos los miembros
+          - img [ref=e222]
+        - combobox "Filtrar por pipeline" [ref=e225] [cursor=pointer]:
+          - generic: Todos los pipelines
+          - img [ref=e226]
+        - combobox [ref=e229] [cursor=pointer]:
+          - generic [ref=e230]: Todos los tags
+          - img
+    - generic [ref=e78]:
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - img [ref=e82]
+            - generic [ref=e85]: Leads por Campaña
+            - generic [ref=e86]: "Total: 305"
+          - generic [ref=e87]:
+            - img [ref=e186]:
+              - generic [ref=e234]: Sin campaña
+              - generic [ref=e236]:
+                - generic [ref=e238]: "0"
+                - generic [ref=e240]: "80"
+                - generic [ref=e242]: "160"
+                - generic [ref=e244]: "240"
+                - generic [ref=e246]: "320"
+            - paragraph [ref=e90]: Haz clic en una barra para ver los leads
+        - generic [ref=e91]:
+          - generic [ref=e92]:
+            - img [ref=e93]
+            - generic [ref=e96]: Leads por Fuente
+            - generic [ref=e97]: "Total: 305"
+          - generic [ref=e98]:
+            - img [ref=e191]:
+              - generic [ref=e253]:
+                - generic [ref=e255]: CRM UI / direct
+                - generic [ref=e257]: Paid Social / di…
+                - generic [ref=e259]: Paid Social / 12…
+                - generic [ref=e261]: direct
+                - generic [ref=e263]: CRM UI / Prospec…
+                - generic [ref=e265]: Paid Social / 12…
+              - generic [ref=e267]:
+                - generic [ref=e269]: "0"
+                - generic [ref=e271]: "7"
+                - generic [ref=e273]: "14"
+                - generic [ref=e275]: "21"
+                - generic [ref=e277]: "28"
+            - paragraph [ref=e101]: Haz clic en una barra para ver los leads
+      - generic [ref=e102]:
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - img [ref=e105]
+            - generic [ref=e107]: Campaña por Etapa del Pipeline
+            - generic [ref=e108]: "Total: 305"
+          - generic [ref=e109]:
+            - generic [ref=e195]:
+              - img [ref=e196]:
+                - generic [ref=e308]: Sin campaña
+                - generic [ref=e310]:
+                  - generic [ref=e312]: "0"
+                  - generic [ref=e314]: "80"
+                  - generic [ref=e316]: "160"
+                  - generic [ref=e318]: "240"
+                  - generic [ref=e320]: "320"
+              - list [ref=e371]:
+                - listitem [ref=e372]:
+                  - img [ref=e373]
+                  - text: Primera Cita
+                - listitem [ref=e375]:
+                  - img [ref=e376]
+                  - text: Segunda Cita
+                - listitem [ref=e378]:
+                  - img [ref=e379]
+                  - text: Envío de propuesta
+                - listitem [ref=e381]:
+                  - img [ref=e382]
+                  - text: Envío de liga de pago
+                - listitem [ref=e384]:
+                  - img [ref=e385]
+                  - text: Proceso de Implementación
+                - listitem [ref=e387]:
+                  - img [ref=e388]
+                  - text: Cliente Activo
+                - listitem [ref=e390]:
+                  - img [ref=e391]
+                  - text: Servicio Terminado
+                - listitem [ref=e393]:
+                  - img [ref=e394]
+                  - text: Prospecto Perdido
+                - listitem [ref=e396]:
+                  - img [ref=e397]
+                  - text: Primer Contacto
+                - listitem [ref=e399]:
+                  - img [ref=e400]
+                  - text: Activo con Servicio Técnico Dedicado
+            - paragraph [ref=e112]: Haz clic en un segmento para ver los leads
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - img [ref=e115]
+            - generic [ref=e119]: Fuente por Etapa del Pipeline
+            - generic [ref=e120]: "Total: 305"
+          - generic [ref=e121]:
+            - generic [ref=e201]:
+              - img [ref=e202]:
+                - generic [ref=e403]:
+                  - generic [ref=e405]: Social media / d…
+                  - generic [ref=e407]: CRM UI / direct
+                  - generic [ref=e409]: Paid Social / 12…
+                  - generic [ref=e411]: Paid Social / di…
+                  - generic [ref=e413]: Paid Social / 12…
+                  - generic [ref=e415]: Paid Social / 12…
+                  - generic [ref=e417]: Paid Social / 12…
+                  - generic [ref=e419]: direct
+                  - generic [ref=e421]: Paid Social / 12…
+                  - generic [ref=e423]: CRM UI / Prospec…
+                - generic [ref=e425]:
+                  - generic [ref=e427]: "0"
+                  - generic [ref=e429]: "7"
+                  - generic [ref=e431]: "14"
+                  - generic [ref=e433]: "21"
+                  - generic [ref=e435]: "28"
+              - list [ref=e508]:
+                - listitem [ref=e509]:
+                  - img [ref=e510]
+                  - text: Primera Cita
+                - listitem [ref=e512]:
+                  - img [ref=e513]
+                  - text: Segunda Cita
+                - listitem [ref=e515]:
+                  - img [ref=e516]
+                  - text: Envío de propuesta
+                - listitem [ref=e518]:
+                  - img [ref=e519]
+                  - text: Envío de liga de pago
+                - listitem [ref=e521]:
+                  - img [ref=e522]
+                  - text: Proceso de Implementación
+                - listitem [ref=e524]:
+                  - img [ref=e525]
+                  - text: Cliente Activo
+                - listitem [ref=e527]:
+                  - img [ref=e528]
+                  - text: Servicio Terminado
+                - listitem [ref=e530]:
+                  - img [ref=e531]
+                  - text: Prospecto Perdido
+                - listitem [ref=e533]:
+                  - img [ref=e534]
+                  - text: Primer Contacto
+                - listitem [ref=e536]:
+                  - img [ref=e537]
+                  - text: Activo con Servicio Técnico Dedicado
+            - paragraph [ref=e124]: Haz clic en un segmento para ver los leads
+      - generic [ref=e125]:
+        - generic [ref=e126]:
+          - generic [ref=e127]:
+            - img [ref=e128]
+            - generic [ref=e131]: Leads Perdidos por Campaña y Razón
+            - generic [ref=e132]: "Perdidos: 146"
+          - generic [ref=e133]:
+            - generic [ref=e542]:
+              - img [ref=e543]:
+                - generic [ref=e549]: Sin campaña
+                - generic [ref=e551]:
+                  - generic [ref=e553]: "0"
+                  - generic [ref=e555]: "40"
+                  - generic [ref=e557]: "80"
+                  - generic [ref=e559]: "120"
+                  - generic [ref=e561]: "160"
+              - list [ref=e568]:
+                - listitem [ref=e569]:
+                  - img [ref=e570]
+                  - text: Sin razón
+            - paragraph [ref=e572]: Haz clic en una barra para ver los leads
+        - generic [ref=e135]:
+          - generic [ref=e136]:
+            - img [ref=e137]
+            - generic [ref=e140]: Leads por Tipo de Anuncio
+            - generic [ref=e141]: "Total: 305"
+          - generic [ref=e142]:
+            - generic [ref=e143]:
+              - generic [ref=e573]:
+                - img [ref=e576]:
+                  - generic [ref=e578]:
+                    - img [ref=e580]
+                    - img [ref=e582]
+                    - img [ref=e584]
+                    - img [ref=e586]
+                    - img [ref=e588]
+                    - img [ref=e590]
+                    - img [ref=e592]
+                - generic:
+                  - generic: "305"
+                  - generic: LEADS
+              - generic [ref=e593]:
+                - generic [ref=e595] [cursor=pointer]:
+                  - generic [ref=e596]: Paid Social
+                  - generic [ref=e597]: 170 · 56%
+                - generic [ref=e601] [cursor=pointer]:
+                  - generic [ref=e602]: CRM UI
+                  - generic [ref=e603]: 42 · 14%
+                - generic [ref=e607] [cursor=pointer]:
+                  - generic [ref=e608]: Social media
+                  - generic [ref=e609]: 39 · 13%
+                - generic [ref=e613] [cursor=pointer]:
+                  - generic [ref=e614]: Otro
+                  - generic [ref=e615]: 28 · 9%
+                - generic [ref=e619] [cursor=pointer]:
+                  - generic [ref=e620]: Direct traffic
+                  - generic [ref=e621]: 23 · 8%
+                - generic [ref=e625] [cursor=pointer]:
+                  - generic [ref=e626]: Referral
+                  - generic [ref=e627]: 2 · 1%
+                - generic [ref=e631] [cursor=pointer]:
+                  - generic [ref=e632]: Organic Search
+                  - generic [ref=e633]: 1 · 0%
+            - paragraph [ref=e144]: Haz clic en una fila para ver los leads
+      - generic [ref=e145]:
+        - generic [ref=e146]:
+          - img [ref=e147]
+          - generic [ref=e151]: Embudo Paid Social
+          - generic [ref=e152]: "Total: 52"
+        - generic [ref=e154]:
+          - generic [ref=e636]:
+            - generic [ref=e637]: Primera Cita
+            - button "42 leads" [ref=e639] [cursor=pointer]:
+              - generic [ref=e640]: 42 leads
+            - generic [ref=e642]: 100%
+          - generic [ref=e643]:
+            - generic [ref=e644]: Segunda Cita
+            - button [ref=e646] [cursor=pointer]
+            - generic [ref=e647]:
+              - generic [ref=e648]: "1"
+              - generic [ref=e649]: 2%
+              - generic [ref=e650]: ↓2%
+          - generic [ref=e651]:
+            - generic [ref=e652]: Proceso de Implementación
+            - button [ref=e654] [cursor=pointer]
+            - generic [ref=e655]:
+              - generic [ref=e656]: "2"
+              - generic [ref=e657]: 5%
+              - generic [ref=e658]: ↓200%
+          - generic [ref=e659]:
+            - generic [ref=e660]: Cliente Activo
+            - button [ref=e662] [cursor=pointer]
+            - generic [ref=e663]:
+              - generic [ref=e664]: "6"
+              - generic [ref=e665]: 14%
+              - generic [ref=e666]: ↓300%
+          - generic [ref=e667]:
+            - generic [ref=e668]: Activo con Servicio Técnico Dedicado
+            - button [ref=e670] [cursor=pointer]
+            - generic [ref=e671]:
+              - generic [ref=e672]: "1"
+              - generic [ref=e673]: 2%
+              - generic [ref=e674]: ↓17%
+          - paragraph [ref=e675]: Haz clic en una barra para ver los leads
+      - generic [ref=e155]:
+        - generic [ref=e156]:
+          - generic [ref=e157]:
+            - img [ref=e158]
+            - generic [ref=e161]: Pautas por Tipo
+            - generic [ref=e162]: "Total: 761"
+          - generic [ref=e163]:
+            - img [ref=e680]:
+              - generic [ref=e684]:
+                - generic [ref=e686]: "0"
+                - generic [ref=e688]: "200"
+                - generic [ref=e690]: "400"
+                - generic [ref=e692]: "600"
+                - generic [ref=e694]: "800"
+              - generic [ref=e698]: Mensaje WhatsApp
+            - paragraph [ref=e704]: Haz clic en una barra para ver las pautas
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - img [ref=e167]
+            - generic [ref=e170]: Pautas por Nombre (Top 30)
+            - generic [ref=e171]: "Total: 761"
+          - generic [ref=e172]:
+            - img [ref=e709]:
+              - generic [ref=e713]:
+                - generic [ref=e715]: "0"
+                - generic [ref=e717]: "25"
+                - generic [ref=e719]: "50"
+                - generic [ref=e721]: "75"
+                - generic [ref=e723]: "100"
+              - generic [ref=e725]:
+                - generic [ref=e727]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e729]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e731]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e733]: CRM TODO-EN-UNOIMPULSADO …
+                - generic [ref=e735]: EL CRM QUE IMPULSATUS RES…
+                - generic [ref=e737]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e739]: EL CRM QUE ENTIENDE ELREA…
+                - generic [ref=e741]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e743]: EL CRM QUE ENTIENDE ELREA…
+                - generic [ref=e745]: TODAS TUS APPS ENUN SOLO …
+                - generic [ref=e747]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e749]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e751]: EL CRM QUE IMPULSATUS RES…
+                - generic [ref=e753]: TODAS TUS APPS ENUN SOLO …
+                - generic [ref=e755]: CRM TODO-EN-UNOIMPULSADO …
+                - generic [ref=e757]: EL CRM QUE IMPULSATUS RES…
+                - generic [ref=e759]: TODAS TUS APPS ENUN SOLO …
+                - generic [ref=e761]: TODAS TUS APPS ENUN SOLO …
+                - generic [ref=e763]: EL CRM QUE IMPULSATUS RES…
+                - generic [ref=e765]: TU INMOBILIARIA, MÁSEFICI…
+                - generic [ref=e767]: EL CRM PARADESARROLLADORA…
+                - generic [ref=e769]: EL CRM PARADESARROLLADORA…
+                - generic [ref=e771]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e773]: TODAS TUS APPS ENUN SOLO …
+                - generic [ref=e775]: EL CRM QUE ENTIENDE ELREA…
+                - generic [ref=e777]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e779]: EL CRM PARADESARROLLADORA…
+                - generic [ref=e781]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e783]: EL CRM DISEÑADOPARA REAL …
+                - generic [ref=e785]: EL CRM QUE IMPULSATUS RES…
+            - paragraph [ref=e849]: Haz clic en una barra para ver las pautas
+  - button "Open Next.js Dev Tools" [ref=e179] [cursor=pointer]:
+    - img [ref=e180]
+  - alert [ref=e206]
+  - generic [ref=e850]: REA…

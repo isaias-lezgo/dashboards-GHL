@@ -298,10 +298,24 @@ export async function GET() {
         const messages: Message[] = [];
         try {
           const userIds = Array.from(userMap.keys());
-          const userConvLists = await Promise.allSettled(
-            userIds.map(async (userId) => {
-              const resp = await getConversations({ limit: 30, assignedTo: userId });
-              return { userId, conversations: resp.conversations };
+
+          // Bounded concurrency — avoid firing all user-conversation queries
+          // simultaneously, which exhausts the GHL rate-limit budget.
+          const CONCURRENCY_CONV = 4;
+          let convFetchCursor = 0;
+          const userConvResults: Array<{ userId: string; conversations: GHLConversation[] }> = [];
+          await Promise.all(
+            Array.from({ length: Math.min(CONCURRENCY_CONV, userIds.length) }, async () => {
+              while (convFetchCursor < userIds.length) {
+                const idx = convFetchCursor++;
+                const userId = userIds[idx];
+                try {
+                  const resp = await getConversations({ limit: 30, assignedTo: userId });
+                  userConvResults.push({ userId, conversations: resp.conversations });
+                } catch {
+                  userConvResults.push({ userId, conversations: [] });
+                }
+              }
             })
           );
 
@@ -311,9 +325,7 @@ export async function GET() {
           // is missing from the GHL payload.
           const convQueue: Array<{ conv: GHLConversation; queriedUserId: string }> = [];
           const seenConvIds = new Set<string>();
-          for (const result of userConvLists) {
-            if (result.status !== "fulfilled") continue;
-            const { userId, conversations } = result.value;
+          for (const { userId, conversations } of userConvResults) {
             for (const conv of conversations) {
               if (seenConvIds.has(conv.id)) continue;
               seenConvIds.add(conv.id);

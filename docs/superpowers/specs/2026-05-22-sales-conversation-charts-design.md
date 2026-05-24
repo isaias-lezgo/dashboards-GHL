@@ -1,42 +1,42 @@
 # Design: Sales Dashboard — Conversation Charts
 
 **Date:** 2026-05-22  
-**Status:** Approved
+**Status:** Approved (revised 2026-05-22 — per-user sampling)
 
 ---
 
 ## Summary
 
-Add two new charts to the sales dashboard:
+Add three charts to the sales dashboard:
 1. **Conversaciones únicas por día** — daily count of distinct conversation threads with activity
-2. **Tiempo promedio de respuesta del asesor** — average advisor response time (last 30 conversations, business hours only)
+2. **Tiempo promedio de respuesta del asesor** — average advisor response time (last 30 conversations per advisor, business hours only)
+3. **Conversaciones únicas por asesor** — monthly stacked breakdown of unique conversations attributed to each advisor
 
-Chart 3 (Tasa de cierre) was discarded as redundant with the existing Win/Loss chart.
+Chart "Tasa de cierre" was discarded as redundant with the existing Win/Loss chart.
 
 ---
 
 ## 1. Data Layer Changes
 
 ### `route.ts`
-Replace the current "first 5 contacts" loop with a direct fetch of the last 30 active conversations:
+Fan out conversation fetching per user so every advisor with recent activity appears in the charts (a single `limit: 30` call would surface only the few advisors who happen to own the most recent threads).
 
 ```
-getConversations({ limit: 30 })  // no contactId filter
-→ for each conversation, getMessages(conv.id, { limit: 50 })
-→ transform each message with ghlMessageToInternal(msg, conv.contactId)
+for each user in userMap (parallel):
+  getConversations({ limit: 30, assignedTo: userId })
+→ dedupe conversation IDs across users (a reassigned conv can return twice)
+→ bounded concurrency (≤6) of getMessages(conv.id, { limit: 50 })
+→ transform each message with ghlMessageToInternal, resolving
+  assignedTo through userMap so the Message carries the advisor's name
+  rather than their GHL user ID
 ```
 
-This provides a representative sample of recent activity without per-contact iteration.
+Trade-off: with N users the worst case is N×30 message fetches. The
+`CONCURRENCY = 6` cap plus the existing 429 retry/backoff in `ghlFetch`
+keeps this within rate limits for normal team sizes (≤20 advisors).
 
 ### `lib/types.ts`
 Add `conversationId?: string` to the `Message` interface. This is required to group messages into threads for response-time calculation — without it, multiple conversations from the same contact would be merged incorrectly.
-
-### `lib/mock-data.ts`
-Enrich existing mock messages with:
-- `conversationId` field on each message
-- Coverage across more contacts (not just first 5)
-- Realistic inbound/outbound pairs with timestamp deltas that exercise the response-time algorithm
-- Dates spread across the last 30 days
 
 ---
 
@@ -73,7 +73,7 @@ for (const msg of messages) {
 **Location:** `"Rendimiento Individual"` section, full-width row below the existing Win/Loss + Ingreso Ganado row.
 
 ### Definition
-For the last 30 loaded conversations, calculate per-advisor: average time between an inbound message and the next outbound message in the same thread, counting only intervals that start within business hours.
+Per advisor, average the time between an inbound message and the next outbound message in the same thread, counting only intervals that start within business hours. The sample is the last 30 conversations **per advisor** (see §1) so every advisor with recent activity appears, not just the few who hold the most-recently-touched threads globally. Advisor labels come from `userMap` (names, not IDs).
 
 ### Business Hours
 - **Timezone:** America/Mexico_City (UTC-6)
@@ -109,7 +109,35 @@ For the last 30 loaded conversations, calculate per-advisor: average time betwee
 
 ---
 
-## 4. Layout Summary
+## 4. Chart 3 — Conversaciones únicas por asesor
+
+**Location:** `"Actividad de Conversaciones"` section, full-width, directly below `"Conversaciones únicas por día"`.
+
+### Definition
+Pivot the loaded thread sample into `month → advisor → unique conversation count`, then render as a stacked bar chart with one stack segment per advisor. The chart answers "how is each advisor's conversation volume trending month over month" rather than "who has the most conversations overall."
+
+### Algorithm (client-side, `useMemo`)
+```
+// Group messages → threads by conversationId, sort each thread by createdAt ASC
+// For each thread:
+//   advisor = first outbound non-activity message's assignedTo
+//             ?? thread[0].assignedTo
+//   month   = thread[0].createdAt.slice(0, 7)   // "YYYY-MM"
+//   advisorSet.add(advisor); monthMap[month][advisor]++
+// Sort months ASC, advisors alphabetically
+// Emit rows: { month, label: localized "mmm yyyy", [advisor]: count, … }
+```
+
+### Visual
+- `BarChart` with X = month label (`"may 2026"`), Y = unique-conversation count
+- One `<Bar stackId="conv">` per advisor, color from `COLOR_PALETTE`
+- `<Legend>` to map color → advisor
+- Height: 320 px fixed
+- Empty state: `"Sin datos de conversaciones"`
+
+---
+
+## 5. Layout Summary
 
 ```
 [ existing KPI cards ]
@@ -123,7 +151,8 @@ For the last 30 loaded conversations, calculate per-advisor: average time betwee
 [ Valor en Pipeline ]  [ Nuevas Oportunidades ]
 
 ── Actividad de Conversaciones ─────────────
-[ Conversaciones únicas por día  (full width) ]
+[ Conversaciones únicas por día        (full width) ]
+[ Conversaciones únicas por asesor     (full width) ]
 
 ── Análisis de Pérdidas ────────────────────
 [ Razones de Pérdida por Asesor ]
@@ -131,13 +160,12 @@ For the last 30 loaded conversations, calculate per-advisor: average time betwee
 
 ---
 
-## 5. Files to Change
+## 6. Files to Change
 
 | File | Change |
 |------|--------|
 | `lib/types.ts` | Add `conversationId?: string` to `Message` |
-| `lib/mock-data.ts` | Enrich messages with conversationId + more coverage |
-| `app/api/dashboard/route.ts` | Replace 5-contact loop with 30-conversation fetch |
-| `components/dashboard/sales-dashboard.tsx` | Add 2 new charts + new section header |
+| `app/api/dashboard/route.ts` | Per-user `getConversations({ limit: 30, assignedTo })` fan-out, dedupe, bounded-concurrency message fetch, resolve `assignedTo` → name via `userMap` |
+| `components/dashboard/sales-dashboard.tsx` | Add the 3 new charts + new section header |
 
 No new files needed. No changes to `SalesDashboardProps` — `messages` is already a prop.

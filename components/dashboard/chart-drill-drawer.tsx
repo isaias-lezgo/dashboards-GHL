@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { DetailDrawer } from "./detail-drawer"
 import type { Opportunity, Contact, Task, Call, Pauta } from "@/lib/types"
-import { DollarSign, User, Tag, FileText, ChevronRight } from "lucide-react"
+import { DollarSign, User, Tag, FileText, ChevronRight, TrendingUp } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
   "Primera Cita":            "bg-blue-100 text-blue-700",
@@ -42,6 +42,7 @@ export interface DrillState {
   subtitle?: string
   opportunities: Opportunity[]
   pautas?: Pauta[]
+  members?: string[]
 }
 
 export const DRILL_CLOSED: DrillState = { open: false, title: "", opportunities: [] }
@@ -69,8 +70,13 @@ export function ChartDrillDrawer({
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
-  const showPautas = drill.opportunities.length === 0 && (drill.pautas?.length ?? 0) > 0
-  const count = showPautas ? (drill.pautas?.length ?? 0) : drill.opportunities.length
+  const showMembers = (drill.members?.length ?? 0) > 0
+  const showPautas = !showMembers && drill.opportunities.length === 0 && (drill.pautas?.length ?? 0) > 0
+  const count = showMembers
+    ? (drill.members?.length ?? 0)
+    : showPautas
+      ? (drill.pautas?.length ?? 0)
+      : drill.opportunities.length
 
   return (
     <>
@@ -95,7 +101,9 @@ export function ChartDrillDrawer({
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-            {showPautas ? (
+            {showMembers ? (
+              <MembersList members={drill.members!} opportunities={drill.opportunities} />
+            ) : showPautas ? (
               <PautasList pautas={drill.pautas!} />
             ) : count === 0 ? (
               <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
@@ -177,6 +185,46 @@ export function ChartDrillDrawer({
         calls={calls}
         locationId={locationId}
       />
+    </>
+  )
+}
+
+function MembersList({ members, opportunities }: { members: string[]; opportunities: Opportunity[] }) {
+  const stats = members.map((member) => {
+    const opps = opportunities.filter((o) => o.assignedTo === member)
+    const won = opps.filter((o) => o.status === "won").length
+    const revenue = opps.filter((o) => o.status === "won").reduce((s, o) => s + o.value, 0)
+    return { member, total: opps.length, won, revenue }
+  }).sort((a, b) => b.total - a.total)
+
+  return (
+    <>
+      {stats.map((s, i) => (
+        <motion.div
+          key={s.member}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: Math.min(i * 0.04, 0.5), duration: 0.18 }}
+          className="rounded-xl border border-border bg-card px-4 py-3 flex items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground truncate">{s.member}</span>
+          </div>
+          <div className="flex items-center gap-4 shrink-0 text-xs text-muted-foreground">
+            <span className="tabular-nums">{s.total} opps</span>
+            <span className="flex items-center gap-1 text-emerald-600 font-medium tabular-nums">
+              <TrendingUp className="h-3 w-3" />{s.won} ganadas
+            </span>
+            {s.revenue > 0 && (
+              <span className="flex items-center gap-0.5 font-semibold text-foreground tabular-nums">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                {s.revenue.toLocaleString("es-MX")}
+              </span>
+            )}
+          </div>
+        </motion.div>
+      ))}
     </>
   )
 }
