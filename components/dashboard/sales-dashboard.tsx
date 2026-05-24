@@ -17,15 +17,27 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Call, Message, Task } from "@/lib/types"
+import type { Opportunity, Contact, Call, Message, Task, Appointment } from "@/lib/types"
 import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import {
+  AppointmentDrillDrawer,
+  APPT_DRILL_CLOSED,
+  type ApptDrillState,
+} from "./appointment-drill-drawer"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface SalesDashboardProps {
   opportunities: Opportunity[]
   contacts: Contact[]
   calls: Call[]
   messages: Message[]
+  appointments: Appointment[]
   tasks?: Task[]
   members?: string[]
   locationId?: string
@@ -53,6 +65,26 @@ const WIN_LOSS_CONFIG = {
 } as const
 
 const PIPELINE_STAGE_ORDER = ["Discovery", "Proposal", "Negotiation"]
+
+const APPT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  showed:    { label: "Asistió",    color: "#10b981" },
+  confirmed: { label: "Confirmada", color: "#3b82f6" },
+  new:       { label: "Pendiente",  color: "#f59e0b" },
+  noshow:    { label: "No asistió", color: "#ef4444" },
+  cancelled: { label: "Cancelada",  color: "#94a3b8" },
+  invalid:   { label: "Inválida",   color: "#a855f7" },
+}
+
+const KNOWN_APPT_STATUS_ORDER = ["showed", "confirmed", "new", "noshow", "cancelled", "invalid"]
+
+function apptStatusVisual(status: string, fallbackIndex: number): { label: string; color: string } {
+  const known = APPT_STATUS_CONFIG[status]
+  if (known) return known
+  return {
+    label: status.charAt(0).toUpperCase() + status.slice(1),
+    color: COLOR_PALETTE[fallbackIndex % COLOR_PALETTE.length],
+  }
+}
 
 function stageColor(stage: string, index: number): string {
   return STAGE_COLORS[stage] ?? COLOR_PALETTE[index % COLOR_PALETTE.length]
@@ -114,6 +146,23 @@ function TotalBadge({ value }: { value: number | string }) {
   )
 }
 
+function InfoTooltip({ content }: { content: string }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-help shrink-0 inline-flex ml-1">
+            <Info size={14} className="text-muted-foreground" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[260px] text-xs leading-relaxed">
+          {content}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3 pt-2">
@@ -125,12 +174,18 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], tasks = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], tasks = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
+  const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
   }, [])
+
+  const openDrillContacts = useCallback((title: string, contactIds: string[]) => {
+    const idSet = new Set(contactIds)
+    openDrill(title, opportunities.filter((o) => idSet.has(o.contactId)))
+  }, [opportunities, openDrill])
 
   const kpiMetrics = useMemo(() => {
     const total = opportunities.length
@@ -304,14 +359,17 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
 
   const dailyConvData = useMemo(() => {
     if (messages.length === 0) return []
-    const dailyMap = new Map<string, Set<string>>()
+    const dailyConvMap = new Map<string, Set<string>>()
+    const dailyContactMap = new Map<string, Set<string>>()
     for (const msg of messages) {
       if (!msg.conversationId) continue
       const date = msg.createdAt.slice(0, 10)
-      if (!dailyMap.has(date)) dailyMap.set(date, new Set())
-      dailyMap.get(date)!.add(msg.conversationId)
+      if (!dailyConvMap.has(date)) dailyConvMap.set(date, new Set())
+      dailyConvMap.get(date)!.add(msg.conversationId)
+      if (!dailyContactMap.has(date)) dailyContactMap.set(date, new Set())
+      dailyContactMap.get(date)!.add(msg.contactId)
     }
-    return [...dailyMap.entries()]
+    return [...dailyConvMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, convSet]) => ({
         date,
@@ -320,10 +378,11 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           month: "short",
         }),
         count: convSet.size,
+        contactIds: [...(dailyContactMap.get(date) ?? new Set<string>())],
       }))
   }, [messages])
 
-  const convByAdvisorData = useMemo(() => {
+  const convByAdvisorMonthData = useMemo(() => {
     const threads = new Map<string, typeof messages>()
     for (const msg of messages) {
       if (!msg.conversationId) continue
@@ -334,19 +393,46 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     }
 
-    const advisorConvs = new Map<string, Set<string>>()
-    for (const [convId, thread] of threads.entries()) {
+    // Pivot: month (YYYY-MM) → advisor → unique conv count
+    const advisorSet = new Set<string>()
+    const monthMap = new Map<string, Map<string, number>>()
+    const contactIdMap = new Map<string, Map<string, string[]>>()
+    let totalConvs = 0
+    for (const [, thread] of threads.entries()) {
       const advisor =
         thread.find((m) => m.direction === "outbound" && m.kind !== "activity")?.assignedTo
         ?? thread[0]?.assignedTo
-      if (!advisor) continue
-      if (!advisorConvs.has(advisor)) advisorConvs.set(advisor, new Set())
-      advisorConvs.get(advisor)!.add(convId)
+      if (!advisor || thread.length === 0) continue
+      const month = thread[0].createdAt.slice(0, 7) // "YYYY-MM"
+      const contactId = thread[0].contactId
+      advisorSet.add(advisor)
+      if (!monthMap.has(month)) monthMap.set(month, new Map())
+      const row = monthMap.get(month)!
+      row.set(advisor, (row.get(advisor) ?? 0) + 1)
+      if (contactId) {
+        if (!contactIdMap.has(month)) contactIdMap.set(month, new Map())
+        const monthContacts = contactIdMap.get(month)!
+        if (!monthContacts.has(advisor)) monthContacts.set(advisor, [])
+        monthContacts.get(advisor)!.push(contactId)
+      }
+      totalConvs++
     }
 
-    return [...advisorConvs.entries()]
-      .map(([member, convSet]) => ({ member, count: convSet.size }))
-      .sort((a, b) => b.count - a.count)
+    const advisors = [...advisorSet].sort()
+    const months = [...monthMap.keys()].sort()
+    const data = months.map((month) => {
+      const [y, m] = month.split("-").map(Number)
+      const label = new Date(y, m - 1, 1).toLocaleDateString("es-MX", {
+        month: "short",
+        year: "numeric",
+      })
+      const row: Record<string, string | number> = { month, label }
+      for (const advisor of advisors) {
+        row[advisor] = monthMap.get(month)!.get(advisor) ?? 0
+      }
+      return row
+    })
+    return { data, advisors, totalConvs, contactIdMap }
   }, [messages])
 
   const responseTimeData = useMemo(() => {
@@ -388,6 +474,53 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       }))
       .sort((a, b) => a.avgMinutes - b.avgMinutes)
   }, [messages])
+
+  const apptByStatusByAdvisor = useMemo(() => {
+    const memberMap = new Map<string, Map<string, number>>()
+    const statusSet = new Set<string>()
+    for (const appt of appointments) {
+      if (!appt.assignedTo) continue
+      statusSet.add(appt.status)
+      if (!memberMap.has(appt.assignedTo)) memberMap.set(appt.assignedTo, new Map())
+      const row = memberMap.get(appt.assignedTo)!
+      row.set(appt.status, (row.get(appt.status) ?? 0) + 1)
+    }
+
+    const statuses = [...statusSet].sort((a, b) => {
+      const ai = KNOWN_APPT_STATUS_ORDER.indexOf(a)
+      const bi = KNOWN_APPT_STATUS_ORDER.indexOf(b)
+      if (ai === -1 && bi === -1) return a.localeCompare(b)
+      if (ai === -1) return 1
+      if (bi === -1) return -1
+      return ai - bi
+    })
+
+    const data = [...memberMap.entries()]
+      .map(([member, statusCounts]) => {
+        const row: Record<string, string | number> = { member }
+        let total = 0
+        for (const status of statuses) {
+          const n = statusCounts.get(status) ?? 0
+          row[status] = n
+          total += n
+        }
+        row._total = total
+        return row
+      })
+      .sort((a, b) => (b._total as number) - (a._total as number))
+
+    return { data, statuses, total: appointments.filter((a) => a.assignedTo).length }
+  }, [appointments])
+
+  const apptChartConfig = useMemo(
+    () => Object.fromEntries(
+      apptByStatusByAdvisor.statuses.map((status, i) => [
+        status,
+        apptStatusVisual(status, i),
+      ])
+    ),
+    [apptByStatusByAdvisor.statuses]
+  )
 
   const chartData = useMemo(() => {
     return members.map((member) => {
@@ -648,8 +781,9 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       {responseTimeData.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold">
+            <CardTitle className="text-base font-semibold flex items-center">
               Tiempo promedio de respuesta del asesor
+              <InfoTooltip content="Tiempo promedio que tarda un asesor en responder un mensaje entrante, calculado solo en horario laboral (lun–vie 9am–6pm). Considera únicamente la primera respuesta saliente por hilo de conversación." />
             </CardTitle>
             <TotalBadge value={`${responseTimeData.length} asesores`} />
           </CardHeader>
@@ -815,14 +949,9 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       <SectionHeader title="Actividad de Conversaciones" />
       <Card>
         <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-1">
+          <CardTitle className="text-base font-semibold flex items-center">
             Conversaciones únicas por día
-            <span
-              title="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora."
-              className="cursor-help shrink-0 inline-flex"
-            >
-              <Info size={14} className="text-muted-foreground" />
-            </span>
+            <InfoTooltip content="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora." />
           </CardTitle>
           <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
         </CardHeader>
@@ -832,67 +961,171 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
               Sin datos de conversaciones
             </div>
           ) : (
-            <ChartContainer
-              config={{ count: { label: "Conversaciones", color: "#06b6d4" } }}
-              style={{ height: 220 }}
-              className="w-full"
-            >
-              <BarChart
-                data={dailyConvData}
-                margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
+            <>
+              <ChartContainer
+                config={{ count: { label: "Conversaciones", color: "#06b6d4" } }}
+                style={{ height: 220 }}
+                className="w-full"
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  angle={dailyConvData.length > 10 ? -35 : 0}
-                  textAnchor={dailyConvData.length > 10 ? "end" : "middle"}
-                  interval={0}
-                />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="count" fill="#06b6d4" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
+                <BarChart
+                  data={dailyConvData}
+                  margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11 }}
+                    angle={dailyConvData.length > 10 ? -35 : 0}
+                    textAnchor={dailyConvData.length > 10 ? "end" : "middle"}
+                    interval={0}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar
+                    dataKey="count"
+                    fill="#06b6d4"
+                    radius={[3, 3, 0, 0]}
+                    cursor="pointer"
+                    onClick={(data: any) =>
+                      openDrillContacts(`Conversaciones del ${data.label}`, data.contactIds ?? [])
+                    }
+                  />
+                </BarChart>
+              </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los contactos</p>
+            </>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold">
+          <CardTitle className="text-base font-semibold flex items-center">
             Conversaciones únicas por asesor
+            <InfoTooltip content="Número de conversaciones únicas atendidas por cada asesor, agrupadas por el mes del primer mensaje del hilo." />
           </CardTitle>
-          <TotalBadge value={convByAdvisorData.reduce((s, d) => s + d.count, 0)} />
+          <TotalBadge value={convByAdvisorMonthData.totalConvs} />
         </CardHeader>
         <CardContent>
-          {convByAdvisorData.length === 0 ? (
+          {convByAdvisorMonthData.data.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
               Sin datos de conversaciones
             </div>
           ) : (
-            <ChartContainer
-              config={{ count: { label: "Conversaciones", color: "#06b6d4" } }}
-              style={{ height: Math.max(220, convByAdvisorData.length * 48) }}
-              className="w-full"
-            >
-              <BarChart
-                data={convByAdvisorData}
-                margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
+            <>
+              <ChartContainer
+                config={Object.fromEntries(
+                  convByAdvisorMonthData.advisors.map((advisor, i) => [
+                    advisor,
+                    { label: advisor, color: COLOR_PALETTE[i % COLOR_PALETTE.length] },
+                  ])
+                )}
+                style={{ height: 320 }}
+                className="w-full"
               >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="member" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="count" fill="#06b6d4" radius={[3, 3, 0, 0]}>
-                  <LabelList
-                    dataKey="count"
-                    position="top"
-                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                <BarChart
+                  data={convByAdvisorMonthData.data}
+                  margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {convByAdvisorMonthData.advisors.map((advisor, i) => (
+                    <Bar
+                      key={advisor}
+                      dataKey={advisor}
+                      stackId="conv"
+                      fill={COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                      radius={
+                        i === convByAdvisorMonthData.advisors.length - 1
+                          ? [3, 3, 0, 0]
+                          : [0, 0, 0, 0]
+                      }
+                      cursor="pointer"
+                      onClick={(data: any) => {
+                        const ids = convByAdvisorMonthData.contactIdMap.get(data.month as string)?.get(advisor) ?? []
+                        openDrillContacts(`${advisor} · ${data.label}`, ids)
+                      }}
+                    />
+                  ))}
+                </BarChart>
+              </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los contactos</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Citas ──────────────────────────────────── */}
+      <SectionHeader title="Citas" />
+      <Card>
+        <CardHeader className="flex flex-row items-center pb-2">
+          <CardTitle className="text-base font-semibold flex items-center">
+            Citas por estatus por asesor
+            <InfoTooltip content="Citas (calendar events) por estatus, agrupadas por el asesor asignado. Ventana fija: últimos 90 días." />
+          </CardTitle>
+          <TotalBadge value={apptByStatusByAdvisor.total} />
+        </CardHeader>
+        <CardContent>
+          {apptByStatusByAdvisor.data.length === 0 ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              Sin citas para mostrar
+            </div>
+          ) : (
+            <>
+              <ChartContainer
+                config={apptChartConfig}
+                style={{ height: 320 }}
+                className="w-full"
+              >
+                <BarChart
+                  data={apptByStatusByAdvisor.data}
+                  margin={{ left: 8, right: 8, top: 16, bottom: apptByStatusByAdvisor.data.length > 6 ? 56 : 32 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="member"
+                    tick={{ fontSize: 11 }}
+                    angle={apptByStatusByAdvisor.data.length > 6 ? -35 : 0}
+                    textAnchor={apptByStatusByAdvisor.data.length > 6 ? "end" : "middle"}
+                    interval={0}
                   />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {apptByStatusByAdvisor.statuses.map((status, i) => (
+                    <Bar
+                      key={status}
+                      dataKey={status}
+                      stackId="appt"
+                      fill={apptChartConfig[status]?.color ?? COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                      radius={
+                        i === apptByStatusByAdvisor.statuses.length - 1
+                          ? [3, 3, 0, 0]
+                          : [0, 0, 0, 0]
+                      }
+                      cursor="pointer"
+                      onClick={(data: any) => {
+                        const member = data.member as string
+                        const matched = appointments.filter(
+                          (a) => a.assignedTo === member && a.status === status
+                        )
+                        setApptDrill({
+                          open: true,
+                          title: `${member} · ${apptChartConfig[status]?.label ?? status}`,
+                          appointments: matched,
+                        })
+                      }}
+                    />
+                  ))}
+                </BarChart>
+              </ChartContainer>
+              <p className="mt-2 text-center text-[10px] text-muted-foreground">
+                Haz clic en un segmento para ver las citas
+              </p>
+            </>
           )}
         </CardContent>
       </Card>
@@ -955,6 +1188,13 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           )}
         </CardContent>
       </Card>
+
+      {/* Appointment drill-down drawer */}
+      <AppointmentDrillDrawer
+        drill={apptDrill}
+        onDrillChange={setApptDrill}
+        contacts={contacts}
+      />
 
       {/* Drill-down drawer */}
       <ChartDrillDrawer
