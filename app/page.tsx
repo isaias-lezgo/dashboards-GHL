@@ -1,14 +1,12 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
-import { FilterBar, type Filters } from "@/components/dashboard/filter-bar"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsDashboard } from "@/components/dashboard/conversations-dashboard"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
-import { filterOpportunities, filterContacts, filterCalls, filterMessages, filterAppointments } from "@/lib/filter-helpers"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import {
   TrendingUp,
@@ -26,93 +24,22 @@ import { Button } from "@/components/ui/button"
 
 type DashboardTab = "marketing" | "sales" | "conversations"
 
-function getDateRangeParams(dateRange: string): { startDate?: string; endDate?: string } {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  const d = now.getDate()
-
-  switch (dateRange) {
-    case "Today":
-      return { startDate: new Date(y, m, d).toISOString(), endDate: now.toISOString() }
-    case "Last 7 Days":
-      return { startDate: new Date(y, m, d - 7).toISOString(), endDate: now.toISOString() }
-    case "Last 30 Days":
-      return { startDate: new Date(y, m, d - 30).toISOString(), endDate: now.toISOString() }
-    case "This Month":
-      return { startDate: new Date(y, m, 1).toISOString(), endDate: now.toISOString() }
-    case "This Quarter":
-      return { startDate: new Date(y, Math.floor(m / 3) * 3, 1).toISOString(), endDate: now.toISOString() }
-    case "This Year":
-      return { startDate: new Date(y, 0, 1).toISOString(), endDate: now.toISOString() }
-    default:
-      return {}
-  }
-}
-
 export default function DashboardPage() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
-  const [filters, setFilters] = useState<Filters>({
-    dateRange: "All Time",
-    pipelines: [],
-    members: [],
-    tags: [],
-    search: "",
-  })
 
   useEffect(() => { setMounted(true) }, [])
 
-  const dateParams = useMemo(() => getDateRangeParams(filters.dateRange), [filters.dateRange])
-  const { data, isLoading, isError, progress, refresh } = useDashboardData(dateParams)
+  const { data, isLoading, isError, progress, refresh } = useDashboardData({})
 
   const contacts = data?.contacts ?? []
   const opportunities = data?.opportunities ?? []
   const calls = data?.calls ?? []
   const messages = data?.messages ?? []
   const appointments = data?.appointments ?? []
-
-  // Stable options: persist the last successfully-loaded set so dropdowns
-  // don't vanish when a narrow date range returns fewer options.
-  const [stablePipelines, setStablePipelines] = useState<string[]>([])
-  const [stableMembers, setStableMembers] = useState<string[]>([])
-  const [stableTags, setStableTags] = useState<string[]>([])
-
-  useEffect(() => {
-    if (isLoading || isError || !data) return
-    const pipelines = data.pipelines?.map((p) => p.name) ?? []
-    const members = data.members ?? []
-    const tags = data.tags ?? []
-    if (pipelines.length) setStablePipelines(pipelines)
-    if (members.length) setStableMembers(members)
-    if (tags.length) setStableTags(tags)
-  }, [isLoading, isError, data])
-
-  const availablePipelines = stablePipelines
-  const availableMembers = stableMembers
-  const availableTags = stableTags
-
-  const filteredOpportunities = useMemo(
-    () => filterOpportunities(opportunities, contacts, filters),
-    [opportunities, contacts, filters]
-  )
-  const filteredContacts = useMemo(
-    () => filterContacts(contacts, filters),
-    [contacts, filters]
-  )
-  const filteredCalls = useMemo(
-    () => filterCalls(calls, filters),
-    [calls, filters]
-  )
-  const filteredMessages = useMemo(
-    () => filterMessages(messages, filters),
-    [messages, filters]
-  )
-  const filteredAppointments = useMemo(
-    () => filterAppointments(appointments, filters),
-    [appointments, filters]
-  )
+  const availableMembers = data?.members ?? []
+  const availableTags = data?.tags ?? []
 
   const isInitialLoad = isLoading && !data
 
@@ -241,50 +168,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Filter Bar — blocked during loading to prevent state corruption */}
-      <div className="relative">
-        <FilterBar
-          filters={filters}
-          onFiltersChange={setFilters}
-          availablePipelines={availablePipelines}
-          availableMembers={availableMembers}
-          availableTags={availableTags}
-        />
-        {isLoading && !!data && (
-          <div
-            className="absolute inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-[2px]"
-            style={{ pointerEvents: "all", cursor: "not-allowed" }}
-            aria-label="Cargando datos, filtros deshabilitados"
-          >
-            <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-4 py-2.5 shadow-lg">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-              <span className="text-[13px] font-medium text-foreground">
-                {progress || "Cargando…"}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-
-
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
         {activeTab === "marketing" ? (
           <MarketingDashboard
-            opportunities={filteredOpportunities}
-            contacts={filteredContacts}
+            opportunities={opportunities}
+            contacts={contacts}
             pautas={data?.pautas ?? []}
             tasks={data?.tasks ?? []}
-            calls={filteredCalls}
+            calls={calls}
             locationId={data?.locationId ?? ""}
           />
         ) : activeTab === "sales" ? (
           <SalesDashboard
-            opportunities={filteredOpportunities}
-            contacts={filteredContacts}
-            calls={filteredCalls}
-            messages={filteredMessages}
-            appointments={filteredAppointments}
+            opportunities={opportunities}
+            contacts={contacts}
+            calls={calls}
+            messages={messages}
+            appointments={appointments}
             tasks={data?.tasks ?? []}
             members={availableMembers}
             locationId={data?.locationId ?? ""}

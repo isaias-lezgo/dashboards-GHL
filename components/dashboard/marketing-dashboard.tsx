@@ -33,6 +33,16 @@ interface MarketingDashboardProps {
   locationId?: string
 }
 
+// Normalize any createdAt format → "YYYY-MM-DD" (UTC). Handles ISO strings,
+// Unix-ms numbers, numeric strings, and null/undefined.
+function toUTCDateStr(val: string | number | null | undefined): string {
+  if (val === null || val === undefined || val === "") return ""
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10)
+  const num = typeof val === "number" ? val : /^\d{10,}$/.test(val) ? Number(val) : NaN
+  const d = new Date(isNaN(num) ? (val as string) : num)
+  return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
+}
+
 // Stage colors — consistent across all stacked charts
 const STAGE_COLORS: Record<string, string> = {
   "Primera Cita": "#3b82f6",
@@ -286,231 +296,59 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       .map(([nombre, count]) => ({ nombre, count }))
   }, [pautas])
 
+  // Last 30 days from today, grouped by adType (fuente del CRM).
+  const { oppsByDayRows, oppsByDayKeys } = useMemo(() => {
+    if (opportunities.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
+
+    // Build 30-day window ending today (UTC)
+    const todayMs = new Date(new Date().toISOString().slice(0, 10) + "T12:00:00Z").getTime()
+    const days: string[] = []
+    for (let i = 29; i >= 0; i--) {
+      days.push(new Date(todayMs - i * 86_400_000).toISOString().slice(0, 10))
+    }
+    const daySet = new Set(days)
+
+    // Map each opportunity to its UTC date string
+    const oppDates = opportunities.map((o) => toUTCDateStr(o.createdAt as string | number | null | undefined))
+
+    // Unique adType keys in window, ranked by volume
+    const adTypeTotals = new Map<string, number>()
+    for (let i = 0; i < opportunities.length; i++) {
+      if (!daySet.has(oppDates[i])) continue
+      const key = opportunities[i].adType || "Otro"
+      adTypeTotals.set(key, (adTypeTotals.get(key) ?? 0) + 1)
+    }
+    const keys = Array.from(adTypeTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => k)
+
+    if (keys.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
+
+    const rows = days.map((isoDay) => {
+      const row: Record<string, string | number> = { day: isoDay.slice(5) }
+      for (const k of keys) row[k] = 0
+      for (let i = 0; i < opportunities.length; i++) {
+        if (oppDates[i] !== isoDay) continue
+        const k = opportunities[i].adType || "Otro"
+        row[k] = (row[k] as number) + 1
+      }
+      return row
+    })
+
+    return { oppsByDayRows: rows, oppsByDayKeys: keys }
+  }, [opportunities])
+
   return (
     <div className="flex flex-col gap-4 px-6 pb-6">
 
-      {/* Row 1: Leads por Campaña + Leads por Fuente */}
+      {/* Row 1: Oportunidades por fuente del CRM + Pautas por Tipo */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-        {/* 1. Leads por Campaña */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <Megaphone className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Leads por Campaña</CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={{ count: { label: "Leads", color: "#2563eb" } }} className="h-[300px] aspect-auto">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leadsByCampaign} margin={{ top: 5, right: 10, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="campaign" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={72} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
-                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.campaign ?? String(_)} />} />
-                  <Bar
-                    dataKey="count"
-                    radius={[6, 6, 0, 0]}
-                    name="Leads"
-                    maxBarSize={52}
-                    cursor="pointer"
-                    onClick={(data: any) => openDrill(
-                      `Campaña: ${data.campaign}`,
-                      opportunities.filter((o) => (o.campaign || "Sin campaña") === data.campaign)
-                    )}
-                  >
-                    {leadsByCampaign.map((entry, i) => (
-                      <Cell key={entry.campaign} fill={barColor(i)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
-          </CardContent>
-        </Card>
-
-        {/* 2. Leads por Fuente */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <Globe className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Leads por Fuente</CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={{ count: { label: "Leads", color: "#2563eb" } }} className="h-[300px] aspect-auto">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leadsBySource} margin={{ top: 5, right: 10, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="source" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={72} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
-                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.source ?? String(_)} />} />
-                  <Bar
-                    dataKey="count"
-                    radius={[6, 6, 0, 0]}
-                    name="Leads"
-                    maxBarSize={52}
-                    cursor="pointer"
-                    onClick={(data: any) => openDrill(
-                      `Fuente: ${data.source}`,
-                      opportunities.filter((o) => sourceLabel(o) === data.source)
-                    )}
-                  >
-                    {leadsBySource.map((entry, i) => (
-                      <Cell key={entry.source} fill={barColor(i)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
-          </CardContent>
-        </Card>
-
-      </div>
-
-      {/* Row 2: Campaña por Etapa + Fuente por Etapa */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
-        {/* 3. Campaña por Etapa del Pipeline */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <BarChart3 className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Campaña por Etapa del Pipeline</CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={stageChartConfig} className="h-[420px] aspect-auto">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={campaignByStage} margin={{ top: 5, right: 10, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="campaign" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={80} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
-                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.campaign ?? String(_)} />} />
-                  <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
-                  {stageOrder.map((stage, i) => (
-                    <Bar
-                      key={stage}
-                      dataKey={stage}
-                      stackId="a"
-                      fill={stageColor(stage, i)}
-                      radius={i === stageOrder.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const campaign = data.campaign as string
-                        openDrill(
-                          `${campaign} · ${stage}`,
-                          opportunities.filter((o) => (o.campaign || "Sin campaña") === campaign && o.stage === stage)
-                        )
-                      }}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
-          </CardContent>
-        </Card>
-
-        {/* 4. Fuente por Etapa del Pipeline */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <Layers className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Fuente por Etapa del Pipeline</CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={stageChartConfig} className="h-[420px] aspect-auto">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sourceByStage} margin={{ top: 5, right: 10, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="source" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={80} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
-                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.source ?? String(_)} />} />
-                  <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
-                  {stageOrder.map((stage, i) => (
-                    <Bar
-                      key={stage}
-                      dataKey={stage}
-                      stackId="a"
-                      fill={stageColor(stage, i)}
-                      radius={i === stageOrder.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const source = data.source as string
-                        openDrill(
-                          `${source} · ${stage}`,
-                          opportunities.filter((o) => sourceLabel(o) === source && o.stage === stage)
-                        )
-                      }}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
-          </CardContent>
-        </Card>
-
-      </div>
-
-      {/* Row 3: Leads Perdidos + Tipo de Anuncio */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
-        {/* 5. Leads Perdidos por Campaña y Razón */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <TrendingDown className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Leads Perdidos por Campaña y Razón</CardTitle>
-            <span className="ml-auto inline-flex items-center rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-destructive">
-              Perdidos: {lostOpps.length}
-            </span>
-          </CardHeader>
-          <CardContent>
-            {lostByCampaignReason.length === 0 ? (
-              <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
-                Sin leads perdidos en el filtro actual.
-              </div>
-            ) : (
-              <>
-                <ChartContainer config={lostReasonConfig} className="h-[360px] aspect-auto">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={lostByCampaignReason} margin={{ top: 5, right: 10, left: 0, bottom: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis dataKey="campaign" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} angle={-45} textAnchor="end" height={72} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v} />
-                      <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: any, p: any) => p?.[0]?.payload?.campaign ?? String(_)} />} />
-                      <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 10, paddingTop: 12 }} />
-                      {lostReasons.map((reason, i) => (
-                        <Bar
-                          key={reason}
-                          dataKey={reason}
-                          fill={LOST_REASON_PALETTE[i % LOST_REASON_PALETTE.length]}
-                          radius={[4, 4, 0, 0]}
-                          maxBarSize={20}
-                          cursor="pointer"
-                          onClick={(data: any) => {
-                            const campaign = data.campaign as string
-                            openDrill(
-                              `${campaign} · ${reason}`,
-                              lostOpps.filter((o) => (o.campaign || "Sin campaña") === campaign && (o.lostReason || "Sin razón") === reason)
-                            )
-                          }}
-                        />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-                <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 6. Leads por Tipo de Anuncio — donut + bar breakdown */}
+        {/* Donut + ranked bar list by ad type */}
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center gap-2 pb-2">
             <Tag className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Leads por Tipo de Anuncio</CardTitle>
+            <CardTitle className="text-sm font-semibold">Oportunidades por fuente del CRM</CardTitle>
             <TotalBadge value={opportunities.length} />
           </CardHeader>
           <CardContent>
@@ -523,7 +361,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
               const maxVal = leadsByAdType[0].value
               return (
                 <div className="flex items-center gap-4">
-                  {/* Left: compact donut with absolutely-positioned center label */}
+                  {/* Donut — center label via absolute positioning (more reliable than SVG text in Recharts) */}
                   <div style={{ width: 160, height: 200, flexShrink: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -559,7 +397,6 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         </Pie>
                       </PieChart>
                     </ResponsiveContainer>
-                    {/* Center text overlay — absolute positioning is more reliable than SVG text children in Recharts */}
                     <div
                       style={{
                         position: "absolute",
@@ -575,7 +412,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                     </div>
                   </div>
 
-                  {/* Right: ranked bar list */}
+                  {/* Ranked bar list */}
                   <div className="flex flex-1 flex-col gap-y-2.5">
                     {leadsByAdType.map((entry, i) => {
                       const pct = total > 0 ? Math.round((entry.value / total) * 100) : 0
@@ -618,65 +455,6 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
             </p>
           </CardContent>
         </Card>
-
-      </div>
-
-      {/* Row 4: Paid Social Funnel */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center gap-2 pb-2">
-          <Layers className={iconCls} />
-          <CardTitle className="text-sm font-semibold">Embudo Paid Social</CardTitle>
-          <TotalBadge value={paidSocialFunnel.reduce((s, f) => s + f.count, 0)} />
-        </CardHeader>
-        <CardContent>
-          {paidSocialFunnel.length === 0 ? (
-            <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-              Sin datos Paid Social en el filtro actual.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 py-2">
-              {paidSocialFunnel.map((item, i) => {
-                const topCount = paidSocialFunnel[0].count
-                const widthPct = (item.count / topCount) * 100
-                const convFromPrev = i === 0 ? null : (item.count / paidSocialFunnel[i - 1].count) * 100
-                return (
-                  <div key={item.stage} className="flex items-center gap-4">
-                    <span className="w-48 shrink-0 text-right text-xs font-medium text-muted-foreground truncate">
-                      {item.stage}
-                    </span>
-                    <div className="flex flex-1 items-center justify-center h-9">
-                      <button
-                        type="button"
-                        className="h-full rounded flex items-center justify-center transition-all hover:opacity-80 cursor-pointer"
-                        style={{ width: `${widthPct}%`, backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                        onClick={() => openDrill(
-                          `Paid Social · ${item.stage}`,
-                          opportunities.filter((o) => isPaidSocial(o) && o.stage === item.stage)
-                        )}
-                      >
-                        {widthPct > 15 && (
-                          <span className="text-xs font-semibold text-white px-2 truncate">
-                            {item.count} leads
-                          </span>
-                        )}
-                      </button>
-                    </div>
-                    <div className="w-28 shrink-0 flex items-center gap-2 text-xs">
-                      {widthPct <= 15 && <span className="font-semibold text-foreground tabular-nums">{item.count}</span>}
-                      <span className="text-muted-foreground tabular-nums">{widthPct.toFixed(0)}%</span>
-                      {convFromPrev !== null && <span className="text-destructive font-medium">↓{convFromPrev.toFixed(0)}%</span>}
-                    </div>
-                  </div>
-                )
-              })}
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Row 5: Pautas por Tipo + Pautas por Nombre */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
         {/* Pautas por Tipo */}
         <Card className="shadow-sm">
@@ -723,52 +501,123 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
           </CardContent>
         </Card>
 
-        {/* Pautas por Nombre Pauta */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <FileText className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Pautas por Nombre (Top 30)</CardTitle>
-            <TotalBadge value={pautas.length} />
-          </CardHeader>
-          <CardContent>
-            {pautasByNombre.length === 0 ? (
-              <div className="flex h-[520px] items-center justify-center text-sm text-muted-foreground">
-                Sin datos de Pautas.
-              </div>
-            ) : (
-              <>
-                <ChartContainer config={{ count: { label: "Pautas", color: "#2563eb" } }} className="aspect-auto" style={{ height: Math.max(300, pautasByNombre.length * 28 + 20) }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart layout="vertical" data={pautasByNombre} margin={{ top: 5, right: 30, left: 8, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                      <XAxis type="number" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10, fill: "#6b7280" }} tickLine={false} axisLine={false} width={180} tickFormatter={(v: string) => v.length > 26 ? v.slice(0, 26) + "…" : v} />
-                      <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
-                      <Bar
-                        dataKey="count"
-                        radius={[0, 6, 6, 0]}
-                        name="Pautas"
-                        maxBarSize={22}
-                        cursor="pointer"
-                        onClick={(data: any) => openPautaDrill(
-                          `Pauta: ${data.nombre}`,
-                          pautas.filter((p) => p.nombrePauta === data.nombre)
-                        )}
-                      >
-                        {pautasByNombre.map((entry, i) => (
-                          <Cell key={entry.nombre} fill={barColor(i)} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-                <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver las pautas</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
       </div>
+
+      {/* Row 2: Oportunidades creadas por tiempo y fuente — full width */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <BarChart3 className={iconCls} />
+          <CardTitle className="text-sm font-semibold">Oportunidades creadas por tiempo y fuente (últimos 30 días)</CardTitle>
+          <TotalBadge value={oppsByDayRows.reduce((s, r) => s + oppsByDayKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0), 0)} />
+        </CardHeader>
+        <CardContent>
+          {oppsByDayKeys.length === 0 ? (
+            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
+              Sin datos en los últimos 30 días.
+            </div>
+          ) : (
+            <>
+              <ChartContainer
+                config={Object.fromEntries(
+                  oppsByDayKeys.map((k, i) => [k, { label: k, color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+                )}
+                className="aspect-auto"
+                style={{ height: 280 }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={oppsByDayRows} margin={{ top: 5, right: 16, left: 8, bottom: 5 }} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={4}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <ChartTooltip content={<NonZeroTooltipContent />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                    />
+                    {oppsByDayKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        radius={i === oppsByDayKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <p className="mt-1 text-center text-[10px] text-muted-foreground">Apilado por fuente del CRM · eje X cada 5 días</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Row 3: Pautas por Nombre — full width */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <FileText className={iconCls} />
+          <CardTitle className="text-sm font-semibold">Pautas por Nombre (Top 30)</CardTitle>
+          <TotalBadge value={pautas.length} />
+        </CardHeader>
+        <CardContent>
+          {pautasByNombre.length === 0 ? (
+            <div className="flex h-[520px] items-center justify-center text-sm text-muted-foreground">
+              Sin datos de Pautas.
+            </div>
+          ) : (
+            <>
+              <ChartContainer config={{ count: { label: "Pautas", color: "#2563eb" } }} className="aspect-auto" style={{ height: 380 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pautasByNombre} margin={{ top: 5, right: 16, left: 8, bottom: 120 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="nombre"
+                      type="category"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                      tickFormatter={(v: string) => v.length > 28 ? v.slice(0, 28) + "…" : v}
+                    />
+                    <YAxis type="number" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
+                    <Bar
+                      dataKey="count"
+                      radius={[6, 6, 0, 0]}
+                      name="Pautas"
+                      maxBarSize={32}
+                      cursor="pointer"
+                      onClick={(data: any) => openPautaDrill(
+                        `Pauta: ${data.nombre}`,
+                        pautas.filter((p) => p.nombrePauta === data.nombre)
+                      )}
+                    >
+                      {pautasByNombre.map((entry, i) => (
+                        <Cell key={entry.nombre} fill={barColor(i)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver las pautas</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Drill-down drawer */}
       <ChartDrillDrawer

@@ -44,21 +44,21 @@ interface SalesDashboardProps {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  Discovery:    "#3b82f6",
-  Proposal:     "#8b5cf6",
-  Negotiation:  "#f59e0b",
-  "Closed Won": "#10b981",
+  Discovery:    "#335577",
+  Proposal:     "#5a8ab5",
+  Negotiation:  "#F59B1B",
+  "Closed Won": "#F59B1B",
   "Closed Lost":"#ef4444",
 }
 
 const COLOR_PALETTE = [
-  "#3b82f6","#8b5cf6","#f59e0b","#10b981","#ef4444",
+  "#F59B1B","#335577","#10b981","#8b5cf6","#ef4444",
   "#f97316","#06b6d4","#84cc16","#ec4899","#a855f7",
 ]
 
 const WIN_LOSS_CONFIG = {
-  won:       { label: "Ganado",           color: "#10b981" },
-  open:      { label: "Abierto",          color: "#3b82f6" },
+  won:       { label: "Ganado",           color: "#F59B1B" },
+  open:      { label: "Abierto",          color: "#335577" },
   lost:      { label: "Perdido",          color: "#ef4444" },
   abandoned: { label: "Abandonado",       color: "#94a3b8" },
   winRate:   { label: "Tasa de Ganancia", color: "transparent" },
@@ -68,11 +68,11 @@ const PIPELINE_STAGE_ORDER = ["Discovery", "Proposal", "Negotiation"]
 
 const APPT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   showed:    { label: "Asistió",    color: "#10b981" },
-  confirmed: { label: "Confirmada", color: "#3b82f6" },
-  new:       { label: "Pendiente",  color: "#f59e0b" },
+  confirmed: { label: "Confirmada", color: "#335577" },
+  new:       { label: "Pendiente",  color: "#F59B1B" },
   noshow:    { label: "No asistió", color: "#ef4444" },
   cancelled: { label: "Cancelada",  color: "#94a3b8" },
-  invalid:   { label: "Inválida",   color: "#a855f7" },
+  invalid:   { label: "Inválida",   color: "#6b7280" },
 }
 
 const KNOWN_APPT_STATUS_ORDER = ["showed", "confirmed", "new", "noshow", "cancelled", "invalid"]
@@ -127,7 +127,7 @@ function nextBusinessOpenMs(isoStr: string): number {
 
 function responseColor(minutes: number): string {
   if (minutes < 30) return "#10b981"
-  if (minutes <= 60) return "#f59e0b"
+  if (minutes <= 60) return "#F59B1B"
   return "#ef4444"
 }
 
@@ -572,7 +572,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Oportunidades</p>
                 <p className="text-3xl font-bold mt-1">{kpiMetrics.total.toLocaleString()}</p>
               </div>
-              <Target className="h-5 w-5 text-blue-500 mt-1" />
+              <Target className="h-5 w-5 text-muted-foreground mt-1" />
             </div>
           </CardContent>
         </Card>
@@ -588,7 +588,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 <p className="text-3xl font-bold mt-1">{kpiMetrics.activeMembers}</p>
                 <p className="text-xs text-muted-foreground mt-1">{kpiMetrics.activeMembers} en total</p>
               </div>
-              <Users className="h-5 w-5 text-blue-500 mt-1" />
+              <Users className="h-5 w-5 mt-1" style={{ color: "#335577" }} />
             </div>
           </CardContent>
         </Card>
@@ -604,7 +604,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 <p className="text-3xl font-bold mt-1">{kpiMetrics.conversionRate.toFixed(1)}%</p>
                 <p className="text-xs text-muted-foreground mt-1">{kpiMetrics.won} ganadas</p>
               </div>
-              <TrendingUp className="h-5 w-5 text-blue-500 mt-1" />
+              <TrendingUp className="h-5 w-5 text-primary mt-1" />
             </div>
           </CardContent>
         </Card>
@@ -621,7 +621,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   {kpiMetrics.wonRevenue.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })}
                 </p>
               </div>
-              <DollarSign className="h-5 w-5 text-blue-500 mt-1" />
+              <DollarSign className="h-5 w-5 text-primary mt-1" />
             </div>
           </CardContent>
         </Card>
@@ -642,7 +642,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             <>
               <ChartContainer config={chartConfig} style={{ height: Math.max(200, chartData.length * 64) }} className="w-full">
                 <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                   <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -699,7 +699,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                   <YAxis
                     dataKey="member"
                     type="category"
@@ -754,7 +754,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             ) : (
               <>
               <ChartContainer
-                config={{ revenue: { label: "Ingreso Ganado", color: "#10b981" } }}
+                config={{ revenue: { label: "Ingreso Ganado", color: "#F59B1B" } }}
                 style={{ height: Math.max(200, revenueData.length * 64) }}
                 className="w-full"
               >
@@ -763,7 +763,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                   <YAxis
                     dataKey="member"
                     type="category"
@@ -786,7 +786,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Bar dataKey="revenue" fill="#10b981" cursor="pointer"
+                  <Bar dataKey="revenue" fill="#F59B1B" cursor="pointer"
                     onClick={(data: any) => openDrill(`${data.member} · Ingreso Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
                   />
                 </BarChart>
@@ -810,7 +810,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           </CardHeader>
           <CardContent>
             <ChartContainer
-              config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#10b981" } }}
+              config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#F59B1B" } }}
               style={{ height: Math.max(200, responseTimeData.length * 64) }}
               className="w-full"
             >
@@ -819,7 +819,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 layout="vertical"
                 margin={{ left: 8, right: 80, top: 8, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                 <YAxis
                   dataKey="member"
                   type="category"
@@ -877,7 +877,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             ) : (
               <>
               <ChartContainer
-                config={{ value: { label: "Valor en Pipeline", color: "#3b82f6" } }}
+                config={{ value: { label: "Valor en Pipeline", color: "#335577" } }}
                 style={{ height: Math.max(200, pipelineValueData.length * 64) }}
                 className="w-full"
               >
@@ -886,7 +886,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                   <YAxis
                     dataKey="stage"
                     type="category"
@@ -909,7 +909,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Bar dataKey="value" fill="#3b82f6" cursor="pointer"
+                  <Bar dataKey="value" fill="#335577" cursor="pointer"
                     onClick={(data: any) => openDrill(`Pipeline: ${data.stage}`, opportunities.filter((o) => o.status === "open" && o.stage === data.stage))}
                   />
                 </BarChart>
@@ -936,7 +936,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             ) : (
               <>
               <ChartContainer
-                config={{ count: { label: "Nuevas Oportunidades", color: "#8b5cf6" } }}
+                config={{ count: { label: "Nuevas Oportunidades", color: "#F59B1B" } }}
                 style={{ height: 220 }}
                 className="w-full"
               >
@@ -944,7 +944,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={trendData}
                   margin={{ left: 8, right: 8, top: 8, bottom: 48 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
                   <XAxis
                     dataKey="period"
                     tick={{ fontSize: 11 }}
@@ -954,7 +954,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <YAxis tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} cursor="pointer"
+                  <Bar dataKey="count" fill="#F59B1B" radius={[3, 3, 0, 0]} cursor="pointer"
                     onClick={(data: any) => openDrill(`Período: ${data.period}`, data.opps ?? [])}
                   />
                 </BarChart>
@@ -992,7 +992,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={dailyConvData}
                   margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
                   <XAxis
                     dataKey="label"
                     tick={{ fontSize: 11 }}
@@ -1048,7 +1048,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={convByAdvisorMonthData.data}
                   margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -1105,7 +1105,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={apptByMonthByAdvisor.data}
                   margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -1193,7 +1193,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 layout="vertical"
                 margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
                 <YAxis
                   dataKey="member"
                   type="category"

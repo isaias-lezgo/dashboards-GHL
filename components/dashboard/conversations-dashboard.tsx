@@ -682,7 +682,7 @@ export function ConversationsDashboard({
                 ? "Selecciona un contacto"
                 : (threadMap[selectedContactId]?.length ?? 0) === 0
                   ? "El contacto seleccionado no tiene mensajes"
-                  : "Analizar la conversación seleccionada con Claude Haiku"
+                  : "Analizar la conversación seleccionada con Claude Sonnet"
             }
           >
             {analysisLoading && analysisMode === "single" ? (
@@ -703,7 +703,7 @@ export function ConversationsDashboard({
                 ? "No hay conversaciones con mensajes para analizar"
                 : `Analizar ${batchAnalyzeCount} conversación${
                     batchAnalyzeCount === 1 ? "" : "es"
-                  } con Claude Haiku (máx. ${MAX_BATCH_ANALYSIS})`
+                  } con Claude Sonnet (máx. ${MAX_BATCH_ANALYSIS})`
             }
           >
             {analysisLoading && analysisMode === "batch" ? (
@@ -824,8 +824,8 @@ export function ConversationsDashboard({
             </SheetTitle>
             <SheetDescription className="text-xs">
               {analysisTitle
-                ? `${analysisTitle} · Claude Haiku 4.5`
-                : "Claude Haiku 4.5"}
+                ? `${analysisTitle} · Claude Sonnet 4.6`
+                : "Claude Sonnet 4.6"}
             </SheetDescription>
           </SheetHeader>
 
