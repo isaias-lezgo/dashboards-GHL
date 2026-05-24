@@ -1,4 +1,4 @@
-import type { Contact, Opportunity, Call, Message } from "./types"
+import type { Contact, Opportunity, Call, Message, Appointment } from "./types"
 import type { Filters } from "@/components/dashboard/filter-bar"
 
 export function filterOpportunities(
@@ -62,6 +62,13 @@ export function filterCalls(calls: Call[], filters: Filters): Call[] {
 export function filterMessages(messages: Message[], filters: Filters): Message[] {
   return messages.filter((m) => {
     if (filters.members.length > 0 && m.assignedTo && !filters.members.includes(m.assignedTo)) return false
+    return true
+  })
+}
+
+export function filterAppointments(appointments: Appointment[], filters: Filters): Appointment[] {
+  return appointments.filter((a) => {
+    if (filters.members.length > 0 && a.assignedTo && !filters.members.includes(a.assignedTo)) return false
     return true
   })
 }
