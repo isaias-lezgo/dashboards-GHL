@@ -1083,13 +1083,13 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       <Card>
         <CardHeader className="flex flex-row items-center pb-2">
           <CardTitle className="text-base font-semibold flex items-center">
-            Citas por estatus por asesor
-            <InfoTooltip content="Citas (calendar events) por estatus, agrupadas por el asesor asignado. Ventana fija: últimos 90 días." />
+            Citas por mes por asesor
+            <InfoTooltip content="Citas (calendar events) agrupadas por mes. Cada mes muestra una barra por asesor, desglosada por estatus. Ventana fija: últimos 90 días." />
           </CardTitle>
-          <TotalBadge value={apptByStatusByAdvisor.total} />
+          <TotalBadge value={apptByMonthByAdvisor.total} />
         </CardHeader>
         <CardContent>
-          {apptByStatusByAdvisor.data.length === 0 ? (
+          {apptByMonthByAdvisor.data.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
               Sin citas para mostrar
             </div>
@@ -1101,45 +1101,59 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 className="w-full"
               >
                 <BarChart
-                  data={apptByStatusByAdvisor.data}
-                  margin={{ left: 8, right: 8, top: 16, bottom: apptByStatusByAdvisor.data.length > 6 ? 56 : 32 }}
+                  data={apptByMonthByAdvisor.data}
+                  margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="member"
-                    tick={{ fontSize: 11 }}
-                    angle={apptByStatusByAdvisor.data.length > 6 ? -35 : 0}
-                    textAnchor={apptByStatusByAdvisor.data.length > 6 ? "end" : "middle"}
-                    interval={0}
-                  />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  {apptByStatusByAdvisor.statuses.map((status, i) => (
-                    <Bar
-                      key={status}
-                      dataKey={status}
-                      stackId="appt"
-                      fill={apptChartConfig[status]?.color ?? COLOR_PALETTE[i % COLOR_PALETTE.length]}
-                      radius={
-                        i === apptByStatusByAdvisor.statuses.length - 1
-                          ? [3, 3, 0, 0]
-                          : [0, 0, 0, 0]
-                      }
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const member = data.member as string
-                        const matched = appointments.filter(
-                          (a) => a.assignedTo === member && a.status === status
-                        )
-                        setApptDrill({
-                          open: true,
-                          title: `${member} · ${apptChartConfig[status]?.label ?? status}`,
-                          appointments: matched,
-                        })
-                      }}
-                    />
-                  ))}
+                  <Legend
+                    content={() => (
+                      <div className="flex flex-wrap gap-3 justify-center pt-2">
+                        {apptByMonthByAdvisor.statuses.map((status, i) => {
+                          const { label, color } = apptStatusVisual(status, i)
+                          return (
+                            <span key={status} className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+                              {label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  />
+                  {apptByMonthByAdvisor.advisors.flatMap((advisor) =>
+                    apptByMonthByAdvisor.statuses.map((status, si) => (
+                      <Bar
+                        key={`${advisor}_${status}`}
+                        dataKey={`${advisor}_${status}`}
+                        stackId={advisor}
+                        fill={apptStatusVisual(status, si).color}
+                        name={`${advisor} · ${apptStatusVisual(status, si).label}`}
+                        legendType="none"
+                        cursor="pointer"
+                        radius={
+                          si === apptByMonthByAdvisor.statuses.length - 1
+                            ? [3, 3, 0, 0]
+                            : [0, 0, 0, 0]
+                        }
+                        onClick={(data: any) => {
+                          const matched = appointments.filter(
+                            (a) =>
+                              a.assignedTo === advisor &&
+                              a.startTime.slice(0, 7) === (data.month as string) &&
+                              a.status === status
+                          )
+                          setApptDrill({
+                            open: true,
+                            title: `${advisor} · ${apptStatusVisual(status, si).label} · ${data.label as string}`,
+                            appointments: matched,
+                          })
+                        }}
+                      />
+                    ))
+                  )}
                 </BarChart>
               </ChartContainer>
               <p className="mt-2 text-center text-[10px] text-muted-foreground">
