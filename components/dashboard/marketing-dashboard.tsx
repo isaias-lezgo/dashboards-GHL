@@ -381,6 +381,43 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     0
   )
 
+  // Pautas grouped by calendar month (YYYY-MM), stacked by tipo.
+  const { pautasByMonthRows, pautasByMonthKeys } = useMemo(() => {
+    if (pautas.length === 0) return { pautasByMonthRows: [], pautasByMonthKeys: [] }
+
+    const byMonth = new Map<string, Map<string, number>>()
+    const tipoTotals = new Map<string, number>()
+
+    for (const p of pautas) {
+      const dateStr = toUTCDateStr(p.createdAt)
+      if (!dateStr) continue
+      const monthKey = dateStr.slice(0, 7) // "YYYY-MM"
+      const tipo = p.tipo || "Sin tipo"
+
+      if (!byMonth.has(monthKey)) byMonth.set(monthKey, new Map())
+      const tipoMap = byMonth.get(monthKey)!
+      tipoMap.set(tipo, (tipoMap.get(tipo) ?? 0) + 1)
+      tipoTotals.set(tipo, (tipoTotals.get(tipo) ?? 0) + 1)
+    }
+
+    const keys = Array.from(tipoTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => k)
+
+    const sortedMonths = Array.from(byMonth.keys()).sort()
+
+    const rows = sortedMonths.map((monthKey) => {
+      const label = new Date(monthKey + "-15T12:00:00Z")
+        .toLocaleDateString("es-MX", { month: "short", year: "2-digit" })
+      const row: Record<string, string | number> = { monthKey, monthLabel: label }
+      const tipoMap = byMonth.get(monthKey)!
+      for (const k of keys) row[k] = tipoMap.get(k) ?? 0
+      return row
+    })
+
+    return { pautasByMonthRows: rows, pautasByMonthKeys: keys }
+  }, [pautas])
+
   // Last 30 days from today, grouped by adType (fuente del CRM).
   const { oppsByDayRows, oppsByDayKeys } = useMemo(() => {
     if (opportunities.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
