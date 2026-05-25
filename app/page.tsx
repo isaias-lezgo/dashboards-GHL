@@ -59,8 +59,7 @@ export default function DashboardPage() {
               <BarChart3 className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-[15px] font-bold leading-tight text-foreground">GHL Analíticas</h1>
-              <p className="text-[11px] text-muted-foreground">Panel de Marketing y Ventas</p>
+              <h1 className="text-[15px] font-bold leading-tight text-foreground">Lezgo Suite Analíticas</h1>
             </div>
           </div>
 
