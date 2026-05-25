@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import type { Opportunity, Contact, Task, Call } from "@/lib/types"
+import type { Opportunity, Contact, Task, Call, Appointment } from "@/lib/types"
 import {
   Phone,
   Clock,
@@ -37,17 +37,6 @@ import {
   CalendarClock,
 } from "lucide-react"
 
-interface GHLAppointment {
-  id: string
-  title?: string
-  startTime: string
-  endTime: string
-  status: string
-  appointmentStatus?: string
-  notes?: string
-  assignedUserId?: string
-}
-
 interface DetailDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -56,6 +45,7 @@ interface DetailDrawerProps {
   contacts: Contact[]
   tasks: Task[]
   calls: Call[]
+  appointments?: Appointment[]
   locationId?: string
 }
 
@@ -95,6 +85,7 @@ export function DetailDrawer({
   contacts,
   tasks,
   calls,
+  appointments = [],
   locationId = "",
 }: DetailDrawerProps) {
   const [taskFilter, setTaskFilter] = useState<"all" | "open" | "completed">("all")
@@ -102,9 +93,7 @@ export function DetailDrawer({
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
-  const [appointments, setAppointments] = useState<GHLAppointment[]>([])
-  const [appointmentsLoading, setAppointmentsLoading] = useState(false)
-  const [appointmentsLoaded, setAppointmentsLoaded] = useState(false)
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
 
   const opportunity = opportunities.find((o) => o.id === opportunityId)
   if (!opportunity) {
@@ -125,27 +114,14 @@ export function DetailDrawer({
   const contactCalls = calls
     .filter((c) => c.contactId === opportunity.contactId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const contactAppointments = appointments.filter(
+    (a) => a.contactId === opportunity.contactId
+  )
 
   const filteredTasks =
     taskFilter === "all"
       ? oppTasks
       : oppTasks.filter((t) => t.status === taskFilter)
-
-  async function handleTabChange(value: string) {
-    if (value !== "appointments" || appointmentsLoaded || appointmentsLoading) return
-    setAppointmentsLoading(true)
-    try {
-      const res = await fetch(`/api/contact-appointments?opportunityId=${opportunity.id}`)
-      const data = await res.json()
-      setAppointments(data.appointments ?? [])
-      setAppointmentsLoaded(true)
-    } catch {
-      setAppointments([])
-      setAppointmentsLoaded(true)
-    } finally {
-      setAppointmentsLoading(false)
-    }
-  }
 
   async function handleAnalyze() {
     if (!opportunity || !contact) return
@@ -292,7 +268,7 @@ export function DetailDrawer({
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="overview" className="px-6 pt-4" onValueChange={handleTabChange}>
+        <Tabs defaultValue="overview" className="px-6 pt-4">
           <TabsList className="w-full">
             <TabsTrigger value="overview" className="flex-1 text-xs">Resumen</TabsTrigger>
             <TabsTrigger value="tasks" className="flex-1 text-xs">Tareas</TabsTrigger>
@@ -402,24 +378,17 @@ export function DetailDrawer({
 
           {/* Appointments Tab */}
           <TabsContent value="appointments" className="mt-4 pb-6">
-            {appointmentsLoading ? (
-              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Cargando citas…</span>
-              </div>
-            ) : !appointmentsLoaded ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Selecciona esta pestaña para cargar las citas.</p>
-            ) : appointments.length === 0 ? (
+            {contactAppointments.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Sin citas registradas.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {appointments
+                {contactAppointments
                   .slice()
                   .sort((a, b) => b.startTime.localeCompare(a.startTime))
                   .map((appt) => {
-                    const status = appt.appointmentStatus ?? appt.status ?? ""
-                    const isConfirmed = ["confirmed", "showed"].includes(status.toLowerCase())
-                    const isCancelled = ["cancelled", "noshow", "no_show"].includes(status.toLowerCase())
+                    const status = (appt.status ?? "").toLowerCase()
+                    const isConfirmed = ["confirmed", "showed"].includes(status)
+                    const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
                     const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
                     const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
                     const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-amber-600"
@@ -432,7 +401,12 @@ export function DetailDrawer({
                     const dateStr = startDate.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
                     const timeStr = startDate.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
                     return (
-                      <div key={appt.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
+                      <button
+                        key={appt.id}
+                        type="button"
+                        onClick={() => setSelectedAppointment(appt)}
+                        className="flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent/30 transition-colors"
+                      >
                         <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
                           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
                         </div>
@@ -452,9 +426,9 @@ export function DetailDrawer({
                           variant="outline"
                           className={`text-[10px] shrink-0 capitalize ${badgeClass}`}
                         >
-                          {status || "pendiente"}
+                          {appt.status || "pendiente"}
                         </Badge>
-                      </div>
+                      </button>
                     )
                   })}
               </div>
@@ -482,7 +456,121 @@ export function DetailDrawer({
             )}
           </DialogContent>
         </Dialog>
+
+        <AppointmentDetailDialog
+          appointment={selectedAppointment}
+          onClose={() => setSelectedAppointment(null)}
+        />
       </SheetContent>
     </Sheet>
+  )
+}
+
+function AppointmentDetailDialog({
+  appointment,
+  onClose,
+}: {
+  appointment: Appointment | null
+  onClose: () => void
+}) {
+  const open = appointment !== null
+  const status = (appointment?.status ?? "").toLowerCase()
+  const isConfirmed = ["confirmed", "showed"].includes(status)
+  const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
+  const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
+  const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
+  const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-amber-600"
+  const badgeClass = isConfirmed
+    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+    : isCancelled
+    ? "bg-red-50 text-red-600 border-red-200"
+    : "bg-amber-50 text-amber-700 border-amber-200"
+
+  let dateStr = ""
+  let startTimeStr = ""
+  let endTimeStr = ""
+  let durationStr = ""
+  if (appointment) {
+    const start = new Date(appointment.startTime)
+    const end = new Date(appointment.endTime)
+    dateStr = start.toLocaleDateString("es-MX", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    })
+    startTimeStr = start.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+    endTimeStr = end.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+    const mins = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000))
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60)
+      const m = mins % 60
+      durationStr = m > 0 ? `${h}h ${m}min` : `${h}h`
+    } else if (mins > 0) {
+      durationStr = `${mins} min`
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
+              <Icon className={`h-4 w-4 ${iconColor}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-base leading-snug">
+                {appointment?.title ?? "Cita"}
+              </DialogTitle>
+              <DialogDescription className="text-xs mt-1 capitalize">
+                <Badge variant="outline" className={`text-[10px] capitalize ${badgeClass}`}>
+                  {appointment?.status || "pendiente"}
+                </Badge>
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 mt-2">
+          <div className="rounded-lg border border-border p-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Fecha</p>
+            </div>
+            <p className="text-sm text-foreground capitalize">{dateStr}</p>
+            <div className="flex items-center gap-2 mt-2 text-sm text-foreground">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>
+                {startTimeStr} – {endTimeStr}
+                {durationStr && <span className="text-muted-foreground"> · {durationStr}</span>}
+              </span>
+            </div>
+          </div>
+
+          {appointment?.assignedTo && (
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <User className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Asignado a</p>
+              </div>
+              <p className="text-sm text-foreground">{appointment.assignedTo}</p>
+            </div>
+          )}
+
+          {appointment?.notes && (
+            <div className="rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Notas</p>
+              </div>
+              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                {appointment.notes}
+              </p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

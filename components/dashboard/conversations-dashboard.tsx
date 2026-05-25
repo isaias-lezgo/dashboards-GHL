@@ -12,6 +12,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { MultiSelect } from "@/components/ui/multi-select"
+import { Input } from "@/components/ui/input"
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
 import {
   Sheet,
   SheetContent,
@@ -45,6 +55,10 @@ import {
   Sparkles,
   AlertCircle,
   ExternalLink,
+  CalendarIcon,
+  Clock,
+  X,
+  ArrowRight,
 } from "lucide-react"
 import type { Contact, Opportunity, Message, Pipeline } from "@/lib/types"
 
@@ -113,23 +127,58 @@ function formatPreviewTime(dateStr: string) {
   })
 }
 
-// Sentinel used instead of empty string in shadcn Select to avoid quirks
-const ALL = "_all_"
+function summarizeMulti(label: string, values: string[]): string | null {
+  if (values.length === 0) return null
+  if (values.length === 1) return `${label}: ${values[0]}`
+  return `${label}: ${values.length}`
+}
 
 function buildFilterSummary(
-  assignedTo: string,
-  tag: string,
-  pipeline: string,
-  stage: string,
+  assignedTo: string[],
+  tags: string[],
+  pipelines: string[],
+  stages: string[],
+  createdFrom: Date | undefined,
+  createdTo: Date | undefined,
   loadedCount: number
 ): string {
   const parts: string[] = []
-  if (assignedTo) parts.push(`Usuario: ${assignedTo}`)
-  if (tag) parts.push(`Tag: ${tag}`)
-  if (pipeline) parts.push(`Pipeline: ${pipeline}`)
-  if (stage) parts.push(`Etapa: ${stage}`)
+  const u = summarizeMulti("Usuario", assignedTo)
+  const t = summarizeMulti("Tag", tags)
+  const p = summarizeMulti("Pipeline", pipelines)
+  const s = summarizeMulti("Etapa", stages)
+  if (u) parts.push(u)
+  if (t) parts.push(t)
+  if (p) parts.push(p)
+  if (s) parts.push(s)
+  if (createdFrom || createdTo) {
+    const a = createdFrom
+      ? format(createdFrom, "dd MMM", { locale: es })
+      : "•"
+    const b = createdTo ? format(createdTo, "dd MMM", { locale: es }) : "•"
+    parts.push(`Creado: ${a} → ${b}`)
+  }
   parts.push(`${loadedCount} contacto${loadedCount !== 1 ? "s" : ""}`)
   return parts.join(" · ")
+}
+
+function endOfDay(d: Date): number {
+  const x = new Date(d)
+  x.setHours(23, 59, 59, 999)
+  return x.getTime()
+}
+
+function startOfDay(d: Date): number {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x.getTime()
+}
+
+function formatUnrepliedDuration(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const hrs = minutes / 60
+  if (hrs < 24) return `${hrs.toFixed(hrs < 10 ? 1 : 0)} h`
+  return `${Math.floor(hrs / 24)} d`
 }
 
 function exportCSV(contacts: Contact[], threads: ThreadData[]) {
@@ -206,6 +255,79 @@ const LOAD_MORE_OPTIONS = [10, 25, 50]
 const LOAD_MORE_MAX = 50
 const MAX_BATCH_ANALYSIS = 20
 
+// ─── Helpers: date picker button ──────────────────────────────────────────────
+
+interface DateButtonProps {
+  value: Date | undefined
+  onChange: (d: Date | undefined) => void
+  placeholder: string
+  fromDate?: Date
+  toDate?: Date
+}
+
+function DateButton({
+  value,
+  onChange,
+  placeholder,
+  fromDate,
+  toDate,
+}: DateButtonProps) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className={`w-full justify-start font-normal ${
+            value ? "" : "text-muted-foreground"
+          }`}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+          <span className="flex-1 truncate text-left">
+            {value ? format(value, "dd MMM yyyy", { locale: es }) : placeholder}
+          </span>
+          {value && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                onChange(undefined)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onChange(undefined)
+                }
+              }}
+              className="rounded-sm opacity-60 hover:opacity-100 hover:bg-muted p-0.5 ml-1"
+              aria-label="Limpiar fecha"
+            >
+              <X className="h-3 w-3" />
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={value}
+          onSelect={(d) => {
+            onChange(d ?? undefined)
+            setOpen(false)
+          }}
+          fromDate={fromDate}
+          toDate={toDate}
+          locale={es}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ConversationsDashboard({
@@ -221,12 +343,19 @@ export function ConversationsDashboard({
   const [loadMoreDialogOpen, setLoadMoreDialogOpen] = useState(false)
   const [loadMoreCount, setLoadMoreCount] = useState(25)
 
-  // Filter selections (empty string = no filter applied)
-  const [selectedUser, setSelectedUser] = useState("")
-  const [selectedTag, setSelectedTag] = useState("")
-  const [selectedPipeline, setSelectedPipeline] = useState("")
-  const [selectedStage, setSelectedStage] = useState("")
+  // Filter selections (empty array = no filter applied)
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedPipelines, setSelectedPipelines] = useState<string[]>([])
+  const [selectedStages, setSelectedStages] = useState<string[]>([])
+  const [createdFrom, setCreatedFrom] = useState<Date | undefined>(undefined)
+  const [createdTo, setCreatedTo] = useState<Date | undefined>(undefined)
   const [howMany, setHowMany] = useState(10)
+
+  // Post-load filters (applied to already-loaded threads)
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([])
+  const [unrepliedValue, setUnrepliedValue] = useState<string>("")
+  const [unrepliedUnit, setUnrepliedUnit] = useState<"min" | "hr">("hr")
 
   // Loaded data
   const [loadedThreads, setLoadedThreads] = useState<ThreadData[]>([])
@@ -249,29 +378,66 @@ export function ConversationsDashboard({
   const [analysisTitle, setAnalysisTitle] = useState("")
   const [analysisMode, setAnalysisMode] = useState<"single" | "batch">("single")
 
-  const pipelineStages = useMemo(
-    () => pipelines.find((p) => p.name === selectedPipeline)?.stages ?? [],
-    [pipelines, selectedPipeline]
-  )
+  // Union of stages across all selected pipelines (de-duped, original order)
+  const pipelineStages = useMemo(() => {
+    if (selectedPipelines.length === 0) return []
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const p of pipelines) {
+      if (!selectedPipelines.includes(p.name)) continue
+      for (const stage of p.stages) {
+        if (!seen.has(stage)) {
+          seen.add(stage)
+          result.push(stage)
+        }
+      }
+    }
+    return result
+  }, [pipelines, selectedPipelines])
 
-  // ANDs all active filters to produce a sorted list of matching contactIds
+  // Drop any selected stages that no longer exist after pipeline change
+  useEffect(() => {
+    if (selectedStages.length === 0) return
+    const valid = new Set(pipelineStages)
+    const pruned = selectedStages.filter((s) => valid.has(s))
+    if (pruned.length !== selectedStages.length) setSelectedStages(pruned)
+  }, [pipelineStages, selectedStages])
+
+  // ANDs across fields, ORs within each field, to produce matching contactIds
   function computeFilteredIds(): string[] {
     let filtered = [...contacts]
-    if (selectedUser)
-      filtered = filtered.filter((c) => c.assignedTo === selectedUser)
-    if (selectedTag)
-      filtered = filtered.filter((c) => c.tags.includes(selectedTag))
-    if (selectedPipeline) {
+    if (selectedUsers.length > 0)
+      filtered = filtered.filter(
+        (c) => !!c.assignedTo && selectedUsers.includes(c.assignedTo)
+      )
+    if (selectedTags.length > 0)
+      filtered = filtered.filter((c) =>
+        c.tags.some((t) => selectedTags.includes(t))
+      )
+    if (selectedPipelines.length > 0) {
       const matchingContactIds = new Set(
         opportunities
           .filter(
             (o) =>
-              o.pipelineName === selectedPipeline &&
-              (!selectedStage || o.stage === selectedStage)
+              selectedPipelines.includes(o.pipelineName) &&
+              (selectedStages.length === 0 ||
+                selectedStages.includes(o.stage))
           )
           .map((o) => o.contactId)
       )
       filtered = filtered.filter((c) => matchingContactIds.has(c.id))
+    }
+    if (createdFrom) {
+      const from = startOfDay(createdFrom)
+      filtered = filtered.filter(
+        (c) => new Date(c.createdAt).getTime() >= from
+      )
+    }
+    if (createdTo) {
+      const to = endOfDay(createdTo)
+      filtered = filtered.filter(
+        (c) => new Date(c.createdAt).getTime() <= to
+      )
     }
     return filtered.map((c) => c.id)
   }
@@ -296,6 +462,8 @@ export function ConversationsDashboard({
     const ids = computeFilteredIds()
     setFilteredContactIds(ids)
     setLoadedCount(howMany)
+    setSelectedChannels([])
+    setUnrepliedValue("")
     setWizardState("loading")
     try {
       await fetchThreads(ids.slice(0, howMany), false)
@@ -319,7 +487,11 @@ export function ConversationsDashboard({
 
   function handleExport() {
     setWizardState("exporting")
-    exportCSV(contacts, loadedThreads)
+    const visibleIds = new Set(visibleContacts.map((c) => c.id))
+    const visibleThreads = loadedThreads.filter((t) =>
+      visibleIds.has(t.contactId)
+    )
+    exportCSV(contacts, visibleThreads)
     setWizardState("loaded")
   }
 
@@ -381,7 +553,7 @@ export function ConversationsDashboard({
   }
 
   async function handleAnalyzeAll() {
-    const conversations = loadedContacts
+    const conversations = visibleContacts
       .map((contact) => {
         const messages = threadMap[contact.id] ?? []
         if (messages.length === 0) return null
@@ -406,8 +578,8 @@ export function ConversationsDashboard({
     setAnalysisMode("batch")
     setAnalysisTitle(
       `Lote de ${conversations.length} conversaciones${
-        loadedContacts.length > conversations.length
-          ? ` (de ${loadedContacts.length} cargadas)`
+        visibleContacts.length > conversations.length
+          ? ` (de ${visibleContacts.length} visibles)`
           : ""
       }`
     )
@@ -428,11 +600,16 @@ export function ConversationsDashboard({
     setFilteredContactIds([])
     setLoadedCount(0)
     setSelectedContactId("")
-    setSelectedUser("")
-    setSelectedTag("")
-    setSelectedPipeline("")
-    setSelectedStage("")
+    setSelectedUsers([])
+    setSelectedTags([])
+    setSelectedPipelines([])
+    setSelectedStages([])
+    setCreatedFrom(undefined)
+    setCreatedTo(undefined)
     setHowMany(10)
+    setSelectedChannels([])
+    setUnrepliedValue("")
+    setUnrepliedUnit("hr")
   }
 
   // Preserve original contact order from loadedThreads
@@ -459,6 +636,76 @@ export function ConversationsDashboard({
     return map
   }, [loadedThreads])
 
+  // Last NON-activity message per contact — used for channel & "sin responder"
+  const lastChatMap = useMemo(() => {
+    const map: Record<string, Message> = {}
+    for (const t of loadedThreads) {
+      for (let i = t.messages.length - 1; i >= 0; i--) {
+        const m = t.messages[i]
+        if (m.kind !== "activity") {
+          map[t.contactId] = m
+          break
+        }
+      }
+    }
+    return map
+  }, [loadedThreads])
+
+  // Channels actually present in the loaded data — drives the Canal dropdown
+  const availableChannels = useMemo(() => {
+    const set = new Set<string>()
+    for (const t of loadedThreads) {
+      for (const m of t.messages) {
+        if (m.kind === "activity") continue
+        if (m.source && m.source !== "system") set.add(m.source)
+      }
+    }
+    return Array.from(set).sort()
+  }, [loadedThreads])
+
+  // Parsed threshold in minutes (NaN/<=0 means filter is off)
+  const unrepliedThresholdMin = useMemo(() => {
+    const n = Number(unrepliedValue)
+    if (!Number.isFinite(n) || n <= 0) return 0
+    return n * (unrepliedUnit === "hr" ? 60 : 1)
+  }, [unrepliedValue, unrepliedUnit])
+
+  // Post-load filtered contacts (Canal + Sin responder)
+  const visibleContacts = useMemo(() => {
+    const now = Date.now()
+    return loadedContacts.filter((c) => {
+      const messages = threadMap[c.id] ?? []
+      const chat = messages.filter((m) => m.kind !== "activity")
+
+      if (selectedChannels.length > 0) {
+        const has = chat.some((m) => selectedChannels.includes(m.source))
+        if (!has) return false
+      }
+
+      if (unrepliedThresholdMin > 0) {
+        const last = chat[chat.length - 1]
+        if (!last || last.direction !== "inbound") return false
+        const diffMin = (now - new Date(last.createdAt).getTime()) / 60000
+        if (diffMin < unrepliedThresholdMin) return false
+      }
+
+      return true
+    })
+  }, [
+    loadedContacts,
+    threadMap,
+    selectedChannels,
+    unrepliedThresholdMin,
+  ])
+
+  // Keep selectedContactId valid when filters hide the current selection
+  useEffect(() => {
+    if (visibleContacts.length === 0) return
+    if (!visibleContacts.some((c) => c.id === selectedContactId)) {
+      setSelectedContactId(visibleContacts[0].id)
+    }
+  }, [visibleContacts, selectedContactId])
+
   const selectedContact = useMemo(
     () => loadedContacts.find((c) => c.id === selectedContactId),
     [loadedContacts, selectedContactId]
@@ -472,153 +719,226 @@ export function ConversationsDashboard({
   const hasMore = loadedCount < filteredContactIds.length
 
   const conversationsWithMessages = useMemo(
-    () => loadedThreads.filter((t) => t.messages.length > 0).length,
-    [loadedThreads]
+    () =>
+      visibleContacts.filter((c) => (threadMap[c.id]?.length ?? 0) > 0).length,
+    [visibleContacts, threadMap]
   )
   const batchAnalyzeCount = Math.min(conversationsWithMessages, MAX_BATCH_ANALYSIS)
+
+  const postLoadFilterCount =
+    (selectedChannels.length > 0 ? 1 : 0) +
+    (unrepliedThresholdMin > 0 ? 1 : 0)
 
   // ─── Idle / Loading: filter form ────────────────────────────────────────────
 
   if (wizardState === "idle" || wizardState === "loading") {
+    const hasAnyFilter =
+      selectedUsers.length > 0 ||
+      selectedTags.length > 0 ||
+      selectedPipelines.length > 0 ||
+      selectedStages.length > 0 ||
+      !!createdFrom ||
+      !!createdTo
+
+    function clearWizardFilters() {
+      setSelectedUsers([])
+      setSelectedTags([])
+      setSelectedPipelines([])
+      setSelectedStages([])
+      setCreatedFrom(undefined)
+      setCreatedTo(undefined)
+    }
+
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-196px)] px-6">
-        <Card className="w-full max-w-lg p-8">
-          <h2 className="text-base font-semibold mb-6">
-            Cargar conversaciones
-          </h2>
-          <div className="space-y-4">
-            {/* Assigned user */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Usuario asignado
-              </Label>
-              <Select
-                value={selectedUser || ALL}
-                onValueChange={(v) => setSelectedUser(v === ALL ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los usuarios" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todos los usuarios</SelectItem>
-                  {members.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="px-6 py-10 flex items-start justify-center min-h-[calc(100vh-196px)]">
+        <Card className="w-full max-w-3xl overflow-hidden">
+          {/* Header */}
+          <div className="px-8 pt-7 pb-6">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+              Filtros de conversaciones
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Acota los contactos antes de cargar sus mensajes.
+              <span className="ml-2 inline-flex items-center gap-1.5 align-middle text-xs">
+                <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+                <span className="tabular-nums font-medium text-foreground/80">
+                  {contacts.length.toLocaleString("es-MX")}
+                </span>
+                <span>contactos disponibles</span>
+              </span>
+            </p>
+          </div>
 
-            {/* Tag */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Tag</Label>
-              <Select
-                value={selectedTag || ALL}
-                onValueChange={(v) => setSelectedTag(v === ALL ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los tags" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todos los tags</SelectItem>
-                  {availableTags.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Pipeline */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Pipeline</Label>
-              <Select
-                value={selectedPipeline || ALL}
-                onValueChange={(v) => {
-                  setSelectedPipeline(v === ALL ? "" : v)
-                  setSelectedStage("")
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos los pipelines" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todos los pipelines</SelectItem>
-                  {pipelines.map((p) => (
-                    <SelectItem key={p.id} value={p.name}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Stage — disabled until a pipeline is selected */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Etapa</Label>
-              <Select
-                value={selectedStage || ALL}
-                onValueChange={(v) => setSelectedStage(v === ALL ? "" : v)}
-                disabled={!selectedPipeline}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      selectedPipeline
-                        ? "Todas las etapas"
-                        : "Selecciona un pipeline primero"
+          {/* Sections */}
+          <div className="px-8 pb-7 space-y-7">
+            {/* Asignación */}
+            <section>
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/80">
+                Asignación
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Usuario asignado
+                  </Label>
+                  <MultiSelect
+                    options={members}
+                    value={selectedUsers}
+                    onChange={setSelectedUsers}
+                    placeholder="Todos los usuarios"
+                    searchPlaceholder="Buscar usuario…"
+                    formatLabel={(sel) =>
+                      sel.length === 1 ? sel[0] : `${sel.length} usuarios`
                     }
                   />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Todas las etapas</SelectItem>
-                  {pipelineStages.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Tags</Label>
+                  <MultiSelect
+                    options={availableTags}
+                    value={selectedTags}
+                    onChange={setSelectedTags}
+                    placeholder="Todos los tags"
+                    searchPlaceholder="Buscar tag…"
+                    formatLabel={(sel) =>
+                      sel.length === 1 ? sel[0] : `${sel.length} tags`
+                    }
+                  />
+                </div>
+              </div>
+            </section>
 
-            {/* How many */}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
-                Cuántos contactos
-              </Label>
+            {/* Pipeline */}
+            <section>
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/80">
+                Pipeline
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Pipelines
+                  </Label>
+                  <MultiSelect
+                    options={pipelines.map((p) => p.name)}
+                    value={selectedPipelines}
+                    onChange={(next) => {
+                      setSelectedPipelines(next)
+                      if (next.length === 0) setSelectedStages([])
+                    }}
+                    placeholder="Todos los pipelines"
+                    searchPlaceholder="Buscar pipeline…"
+                    formatLabel={(sel) =>
+                      sel.length === 1 ? sel[0] : `${sel.length} pipelines`
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label
+                    className={`text-xs text-muted-foreground ${
+                      selectedPipelines.length === 0 ? "opacity-60" : ""
+                    }`}
+                  >
+                    Etapas
+                  </Label>
+                  <MultiSelect
+                    options={pipelineStages}
+                    value={selectedStages}
+                    onChange={setSelectedStages}
+                    disabled={selectedPipelines.length === 0}
+                    placeholder={
+                      selectedPipelines.length === 0
+                        ? "Selecciona un pipeline"
+                        : "Todas las etapas"
+                    }
+                    searchPlaceholder="Buscar etapa…"
+                    formatLabel={(sel) =>
+                      sel.length === 1 ? sel[0] : `${sel.length} etapas`
+                    }
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Periodo de creación */}
+            <section>
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/80">
+                Periodo de creación
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Desde</Label>
+                  <DateButton
+                    value={createdFrom}
+                    onChange={setCreatedFrom}
+                    placeholder="Cualquier fecha"
+                    toDate={createdTo}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Hasta</Label>
+                  <DateButton
+                    value={createdTo}
+                    onChange={setCreatedTo}
+                    placeholder="Cualquier fecha"
+                    fromDate={createdFrom}
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Footer: count + actions */}
+          <div className="border-t border-border bg-muted/30 px-8 py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Cargar</span>
               <Select
                 value={String(howMany)}
                 onValueChange={(v) => setHowMany(Number(v))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9 w-[72px] tabular-nums">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {HOW_MANY_OPTIONS.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
+                    <SelectItem key={n} value={String(n)} className="tabular-nums">
                       {n}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <span>contactos</span>
             </div>
 
-            <Button
-              className="w-full mt-2"
-              onClick={handleLoad}
-              disabled={wizardState === "loading"}
-            >
-              {wizardState === "loading" ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Cargando…
-                </>
-              ) : (
-                "Cargar conversaciones"
+            <div className="flex items-center gap-2">
+              {hasAnyFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 text-sm text-muted-foreground hover:text-foreground"
+                  onClick={clearWizardFilters}
+                  disabled={wizardState === "loading"}
+                >
+                  Limpiar filtros
+                </Button>
               )}
-            </Button>
+              <Button
+                onClick={handleLoad}
+                disabled={wizardState === "loading"}
+                className="h-9 gap-1.5 px-4"
+              >
+                {wizardState === "loading" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Cargando…
+                  </>
+                ) : (
+                  <>
+                    Cargar
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
@@ -642,10 +962,12 @@ export function ConversationsDashboard({
           </Button>
           <span className="text-xs text-muted-foreground truncate">
             {buildFilterSummary(
-              selectedUser,
-              selectedTag,
-              selectedPipeline,
-              selectedStage,
+              selectedUsers,
+              selectedTags,
+              selectedPipelines,
+              selectedStages,
+              createdFrom,
+              createdTo,
               loadedContacts.length
             )}
           </span>
@@ -903,15 +1225,123 @@ export function ConversationsDashboard({
       <div className="flex gap-4 flex-1 overflow-hidden">
         {/* Contact list */}
         <Card className="w-72 flex-shrink-0 flex flex-col overflow-hidden">
-          <div className="px-3 py-2.5 border-b">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Contactos
-            </p>
+          <div className="px-3 py-2.5 border-b space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Contactos
+              </p>
+              <span className="text-[10px] text-muted-foreground">
+                {postLoadFilterCount > 0
+                  ? `${visibleContacts.length} de ${loadedContacts.length}`
+                  : `${loadedContacts.length}`}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              {/* Channel filter */}
+              <MultiSelect
+                options={availableChannels}
+                value={selectedChannels.filter((c) =>
+                  availableChannels.includes(c)
+                )}
+                onChange={setSelectedChannels}
+                placeholder="Canal"
+                searchPlaceholder="Buscar canal…"
+                disabled={availableChannels.length === 0}
+                className="h-7 text-xs px-2"
+                renderLabel={(c) => CHANNEL_LABEL[c] ?? c}
+                formatLabel={(sel) =>
+                  sel.length === 1
+                    ? (CHANNEL_LABEL[sel[0]] ?? sel[0])
+                    : `${sel.length} canales`
+                }
+              />
+              {/* Sin responder filter */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={`h-7 text-xs px-2 flex-1 justify-start font-normal ${
+                      unrepliedThresholdMin > 0
+                        ? ""
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    <Clock className="h-3 w-3 mr-1.5 opacity-70" />
+                    <span className="truncate">
+                      {unrepliedThresholdMin > 0
+                        ? `≥ ${unrepliedValue} ${unrepliedUnit === "hr" ? "h" : "min"}`
+                        : "Sin responder"}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-3" align="start">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">
+                      Tiempo sin responder al cliente
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Mostrar conversaciones donde el cliente envió el último
+                      mensaje y nadie ha respondido en al menos:
+                    </p>
+                    <div className="flex gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={unrepliedValue}
+                        onChange={(e) => setUnrepliedValue(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                      <Select
+                        value={unrepliedUnit}
+                        onValueChange={(v) =>
+                          setUnrepliedUnit(v as "min" | "hr")
+                        }
+                      >
+                        <SelectTrigger className="h-8 text-xs w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="min">Minutos</SelectItem>
+                          <SelectItem value="hr">Horas</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {unrepliedThresholdMin > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full h-7 text-xs"
+                        onClick={() => setUnrepliedValue("")}
+                      >
+                        Quitar filtro
+                      </Button>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
           <ul className="overflow-y-auto flex-1">
-            {loadedContacts.map((contact) => {
+            {visibleContacts.length === 0 && loadedContacts.length > 0 && (
+              <li className="px-3 py-6 text-center text-xs text-muted-foreground">
+                Sin contactos que coincidan con los filtros
+              </li>
+            )}
+            {visibleContacts.map((contact) => {
               const last = lastMessageMap[contact.id]
+              const chatLast = lastChatMap[contact.id]
               const isSelected = contact.id === selectedContactId
+              const unrepliedMin =
+                chatLast && chatLast.direction === "inbound"
+                  ? (Date.now() - new Date(chatLast.createdAt).getTime()) /
+                    60000
+                  : null
               return (
                 <li
                   key={contact.id}
@@ -944,7 +1374,13 @@ export function ConversationsDashboard({
                         </p>
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-1 mt-1.5">
+                    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                      {unrepliedMin !== null && unrepliedMin >= 1 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 leading-none border border-amber-200">
+                          <Clock className="h-2.5 w-2.5" />
+                          {formatUnrepliedDuration(unrepliedMin)}
+                        </span>
+                      )}
                       {contact.tags.slice(0, 2).map((tag) => (
                         <span
                           key={tag}

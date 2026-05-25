@@ -1,0 +1,105 @@
+[     773ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     912ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     996ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[   35505ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35506ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35522ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35522ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35590ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35591ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35618ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   35619ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   50261ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   50262ms] [LOG] [Fast Refresh] done in 103ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   96140ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   96177ms] [LOG] [Fast Refresh] done in 123ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  106186ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  106212ms] [LOG] [Fast Refresh] done in 107ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  116062ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  116082ms] [LOG] [Fast Refresh] done in 72ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120081ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120136ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120136ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120144ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120144ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120191ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120192ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120209ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120209ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  120254ms] [LOG] [Fast Refresh] done in 105ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  123893ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  123912ms] [LOG] [Fast Refresh] done in 101ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  125943ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  125997ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  125997ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126002ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126002ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126042ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126042ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126059ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126059ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126106ms] [LOG] [Fast Refresh] done in 83ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126794ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  126824ms] [LOG] [Fast Refresh] done in 80ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131748ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131805ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131805ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131809ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131809ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131848ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131848ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131864ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131864ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  131895ms] [LOG] [Fast Refresh] done in 71ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  136606ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  136645ms] [LOG] [Fast Refresh] done in 126ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138045ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138112ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138112ms] [WARNING] The width(511) and height(220) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138117ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138117ms] [WARNING] The width(1087) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138159ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138159ms] [WARNING] The width(1087) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138179ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138179ms] [WARNING] The width(1087) and height(360) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  138258ms] [LOG] [Fast Refresh] done in 80ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

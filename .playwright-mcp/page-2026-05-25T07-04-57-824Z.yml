@@ -1,0 +1,1630 @@
+- generic:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - heading [level=1]: GHL Analíticas
+            - paragraph: Panel de Marketing y Ventas
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - text: 2,903
+            - generic:
+              - img
+              - text: "307"
+            - generic:
+              - img
+              - text: "771"
+          - generic: Actualizado 12:59 a.m.
+          - button:
+            - img
+            - text: Actualizar
+          - button:
+            - img
+    - generic:
+      - generic:
+        - button:
+          - img
+          - text: Marketing
+        - button:
+          - img
+          - text: Ventas
+        - button:
+          - img
+          - text: Conversaciones
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Total Oportunidades
+                  - paragraph: "307"
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Miembros Activos
+                  - paragraph: "10"
+                  - paragraph: 10 en total
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Tasa de Conversión
+                  - paragraph: 16.3%
+                  - paragraph: 50 ganadas
+                - img
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Ingreso Ganado
+                  - paragraph: $224,399
+                - img
+        - generic:
+          - generic:
+            - generic: Leads por Miembro por Etapa del Pipeline
+            - generic: "Total: 307"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Iván SalazarLedezma
+                        - generic:
+                          - generic: Isaías Ríos
+                        - generic:
+                          - generic: Juan CarlosMartinezHernandez
+                        - generic:
+                          - generic: JacoboYescas
+                        - generic:
+                          - generic: EstrategasDomus
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "55"
+                        - generic:
+                          - generic: "110"
+                        - generic:
+                          - generic: "165"
+                        - generic:
+                          - generic: "220"
+                  - generic:
+                    - list:
+                      - listitem:
+                        - img
+                        - text: Primera Cita
+                      - listitem:
+                        - img
+                        - text: Prospecto Perdido
+                      - listitem:
+                        - img
+                        - text: Cliente Activo
+                      - listitem:
+                        - img
+                        - text: Segunda Cita
+                      - listitem:
+                        - img
+                        - text: Activo con Servicio Técnico Dedicado
+                      - listitem:
+                        - img
+                        - text: Proceso de Implementación
+                      - listitem:
+                        - img
+                        - text: Servicio Terminado
+                      - listitem:
+                        - img
+                        - text: Envío de liga de pago
+                      - listitem:
+                        - img
+                        - text: Envío de propuesta
+            - paragraph: Haz clic en un segmento para ver los leads
+        - generic:
+          - generic: Rendimiento Individual
+        - generic:
+          - generic:
+            - generic:
+              - generic: Win/Loss por Asesor
+              - generic: "Total: 307"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Iván SalazarLedezma
+                          - generic:
+                            - generic: Isaías Ríos
+                          - generic:
+                            - generic: Juan CarlosMartinezHernandez
+                          - generic:
+                            - generic: JacoboYescas
+                          - generic:
+                            - generic: EstrategasDomus
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "55"
+                          - generic:
+                            - generic: "110"
+                          - generic:
+                            - generic: "165"
+                          - generic:
+                            - generic: "220"
+                      - generic:
+                        - generic:
+                          - generic: 0.5%
+                          - generic: 97.2%
+                          - generic: 100.0%
+                          - generic: 0.0%
+                          - generic: 0.0%
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - text: won
+                        - listitem:
+                          - img
+                          - text: open
+                        - listitem:
+                          - img
+                          - text: lost
+                        - listitem:
+                          - img
+                          - text: abandoned
+              - paragraph: Haz clic en un segmento para ver los leads
+          - generic:
+            - generic:
+              - generic: Ingreso Ganado por Asesor
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Isaías Ríos
+                          - generic:
+                            - generic: Juan CarlosMartinezHernandez
+                          - generic:
+                            - generic: Iván SalazarLedezma
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "45000"
+                          - generic:
+                            - generic: "90000"
+                          - generic:
+                            - generic: "135000"
+                          - generic:
+                            - generic: "180000"
+              - paragraph: Haz clic en una barra para ver los leads
+        - generic:
+          - generic:
+            - generic:
+              - text: Tiempo promedio de respuesta del asesor
+              - generic:
+                - img
+            - generic: "Total: 6 asesores"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: JacoboYescas
+                        - generic:
+                          - generic: MarcelaGarcía
+                        - generic:
+                          - generic: Isaías Ríos
+                        - generic:
+                          - generic: Iván SalazarLedezma
+                        - generic:
+                          - generic: Juan CarlosMartinezHernandez
+                        - generic:
+                          - generic: EstrategasDomus
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 0m
+                        - generic:
+                          - generic: 4500m
+                        - generic:
+                          - generic: 9000m
+                        - generic:
+                          - generic: 13500m
+                        - generic:
+                          - generic: 18000m
+                    - generic:
+                      - generic:
+                        - generic: 8h10min
+                        - generic: 16h32min
+                        - generic: 27h 60min
+                        - generic: 39h 56min
+                        - generic: 45h 31min
+                        - generic: 281h 42min
+        - generic:
+          - generic: Salud del Pipeline
+        - generic:
+          - generic:
+            - generic:
+              - generic: Valor en Pipeline por Etapa
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Envío de ligade pago
+                          - generic:
+                            - generic: Envío depropuesta
+                          - generic:
+                            - generic: Primera Cita
+                          - generic:
+                            - generic: ProspectoPerdido
+                          - generic:
+                            - generic: Segunda Cita
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "4000"
+                          - generic:
+                            - generic: "8000"
+                          - generic:
+                            - generic: "12000"
+                          - generic:
+                            - generic: "16000"
+              - paragraph: Haz clic en una barra para ver los leads
+          - generic:
+            - generic:
+              - generic: Nuevas Oportunidades por Período
+              - generic: "Total: 307"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: jul 2025
+                          - generic:
+                            - generic: ago 2025
+                          - generic:
+                            - generic: sep 2025
+                          - generic:
+                            - generic: oct 2025
+                          - generic:
+                            - generic: nov 2025
+                          - generic:
+                            - generic: dic 2025
+                          - generic:
+                            - generic: ene 2026
+                          - generic:
+                            - generic: feb 2026
+                          - generic:
+                            - generic: mar 2026
+                          - generic:
+                            - generic: abr 2026
+                          - generic:
+                            - generic: may 2026
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "15"
+                          - generic:
+                            - generic: "30"
+                          - generic:
+                            - generic: "45"
+                          - generic:
+                            - generic: "60"
+              - paragraph: Haz clic en una barra para ver los leads
+        - generic:
+          - generic: Actividad de Conversaciones
+        - generic:
+          - generic:
+            - generic:
+              - text: Conversaciones únicas por día
+              - generic:
+                - img
+            - generic: "Total: 93"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: 26-abr
+                        - generic:
+                          - generic: 27-abr
+                        - generic:
+                          - generic: 28-abr
+                        - generic:
+                          - generic: 29-abr
+                        - generic:
+                          - generic: 30-abr
+                        - generic:
+                          - generic: 01-may
+                        - generic:
+                          - generic: 02-may
+                        - generic:
+                          - generic: 03-may
+                        - generic:
+                          - generic: 04-may
+                        - generic:
+                          - generic: 05-may
+                        - generic:
+                          - generic: 06-may
+                        - generic:
+                          - generic: 07-may
+                        - generic:
+                          - generic: 08-may
+                        - generic:
+                          - generic: 09-may
+                        - generic:
+                          - generic: 10-may
+                        - generic:
+                          - generic: 11-may
+                        - generic:
+                          - generic: 12-may
+                        - generic:
+                          - generic: 13-may
+                        - generic:
+                          - generic: 14-may
+                        - generic:
+                          - generic: 15-may
+                        - generic:
+                          - generic: 16-may
+                        - generic:
+                          - generic: 17-may
+                        - generic:
+                          - generic: 18-may
+                        - generic:
+                          - generic: 19-may
+                        - generic:
+                          - generic: 20-may
+                        - generic:
+                          - generic: 21-may
+                        - generic:
+                          - generic: 22-may
+                        - generic:
+                          - generic: 23-may
+                        - generic:
+                          - generic: 24-may
+                        - generic:
+                          - generic: 25-may
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "5"
+                        - generic:
+                          - generic: "10"
+                        - generic:
+                          - generic: "15"
+                        - generic:
+                          - generic: "20"
+            - paragraph: Haz clic en una barra para ver los contactos
+        - generic:
+          - generic:
+            - generic:
+              - text: Conversaciones únicas por asesor
+              - generic:
+                - img
+            - generic: "Total: 93"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: jul 2025
+                        - generic:
+                          - generic: oct 2025
+                        - generic:
+                          - generic: nov 2025
+                        - generic:
+                          - generic: dic 2025
+                        - generic:
+                          - generic: ene 2026
+                        - generic:
+                          - generic: feb 2026
+                        - generic:
+                          - generic: mar 2026
+                        - generic:
+                          - generic: abr 2026
+                        - generic:
+                          - generic: may 2026
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "9"
+                        - generic:
+                          - generic: "18"
+                        - generic:
+                          - generic: "27"
+                        - generic:
+                          - generic: "36"
+                  - generic:
+                    - list:
+                      - listitem:
+                        - img
+                        - text: Estrategas Domus
+                      - listitem:
+                        - img
+                        - text: Isaías Ríos
+                      - listitem:
+                        - img
+                        - text: Iván Salazar Ledezma
+                      - listitem:
+                        - img
+                        - text: Jacobo Yescas
+                      - listitem:
+                        - img
+                        - text: Juan Carlos Martinez Hernandez
+                      - listitem:
+                        - img
+                        - text: Marcela García
+            - paragraph: Haz clic en un segmento para ver los contactos
+        - generic:
+          - generic: Citas
+        - generic:
+          - generic:
+            - generic:
+              - text: Citas por mes por asesor
+              - generic:
+                - img
+            - generic: "Total: 138"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: feb 2026
+                        - generic:
+                          - generic: mar 2026
+                        - generic:
+                          - generic: abr 2026
+                        - generic:
+                          - generic: may 2026
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "7"
+                        - generic:
+                          - generic: "14"
+                        - generic:
+                          - generic: "21"
+                        - generic:
+                          - generic: "28"
+                  - generic:
+                    - generic:
+                      - generic: Asistió
+                      - generic: Confirmada
+                      - generic: No asistió
+                      - generic: Cancelada
+            - paragraph: Haz clic en un segmento para ver las citas
+        - generic:
+          - generic: Análisis de Pérdidas
+        - generic:
+          - generic:
+            - generic: Razones de Pérdida por Asesor
+            - generic: "Total: 146"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - img:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Iván SalazarLedezma
+                        - generic:
+                          - generic: EstrategasDomus
+                        - generic:
+                          - generic: Isaías Ríos
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "40"
+                        - generic:
+                          - generic: "80"
+                        - generic:
+                          - generic: "120"
+                        - generic:
+                          - generic: "160"
+                  - generic:
+                    - list:
+                      - listitem:
+                        - img
+                        - text: Sin razón
+            - paragraph: Haz clic en un segmento para ver los leads
+  - generic [ref=e113] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e114]:
+      - img [ref=e115]
+    - generic [ref=e3046]:
+      - button "Open issues overlay" [ref=e3047]:
+        - generic [ref=e3048]:
+          - generic [ref=e3049]: "1"
+          - generic [ref=e3050]: "2"
+        - generic [ref=e3051]:
+          - text: Issue
+          - generic [ref=e3052]: s
+      - button "Collapse issues badge" [ref=e3053]:
+        - img [ref=e3054]
+  - alert
+  - generic: 42min
+  - dialog:
+    - generic:
+      - generic:
+        - heading [level=2]: Iván Salazar Ledezma · Primera Cita
+      - generic:
+        - generic: 53 registros
+    - generic:
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yolanda lara
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Lara -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: silvana valdes hernandez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Silvana - Vivienda e industrial
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: christian ignacio magno
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Christian - Flipping house
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: ricardo gonzalez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Ricardo -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alberto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alberto -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: antonio lopez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Antonio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gerardo medina
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Gerardo - Fábricamos equipo medico
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: hiedra wendy pérez lópez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Hiedra - Agencia de viajes
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: arq. emiliano nuri
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Arq. - Bienes raíces
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mariela herrera r
+          - generic:
+            - generic: open
+            - img
+        - paragraph: M&M -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: asesor christian tronco
+          - generic:
+            - generic: open
+            - img
+        - paragraph: ASESOR - Todo el sector inmobiliario en especial terrenos y casas en venta y renta
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: arturo ruiz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: King - Agencia de Marketing Digital
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge ortiz
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jorge - Servicios de salud
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alberto argaez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alberto -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: guillermo
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Guillermo - 4 personas
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: giovanni resendiz chavez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Giovanni - De uniformes de futbol
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: vladimir yeh
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Vladimir -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: neal sustaita
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Neal - real estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rosaura flores
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Rosaura -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: edgar mora
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Edgar -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: santiago figueroa sterling
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Santiago - Inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: yessenia basurto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Yessenia - Residencial y comercial
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: raisa valdés
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Raisa - inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alondra vázquez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alondra - Casas usadas
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: karyna sánchez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Karyna - Inmobiliario Desarrollo
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé bayro núñez mora
+          - generic:
+            - generic: open
+            - img
+        - paragraph: José - Venta de lotes de 10x20 Es una lotificacion
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: alexia yulisa higuera sánchez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Alexia -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: pablo carlos santiago carmona
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Pablo -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: piedad farías
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Piedad - Solo Inmobiliairia
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: gerardo orellana
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Gerardo - Inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jorge fuentes
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fuecor -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: elizabeth guerra
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Elizabeth -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: jose mauricio ortega
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Jose - Casa habitación, naves industriales, locales comerciales y macrolotes
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luis alberto michel flores
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Luis - Inmobiliarios
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: roberto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Consultor -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julián carrizosa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Julián - Real Estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: vivian garcia
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Vivian -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: javier montoya
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Javier - Laboratorio de análisis clínicos
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: luzmaria hernandez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: LuzMaria - Iniciando Bien inmuebles además de. Réditos de nómina a personal de gobierno
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: moisés santaella
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Moisés -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: eduardo ochoa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Eduardo - Bienes raíces
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: nancy martinez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Nancy - Bienes inmuebles
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: araceli roura
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Araceli -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: mario humberto andrade aguilar
+          - generic:
+            - generic: open
+            - img
+        - paragraph: FR -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: sergio
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Sergio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: "10"
+          - generic:
+            - generic: open
+            - img
+        - paragraph: 10 - 100% en comercialización de inmuebles
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: josé francisco olvera pedraza
+          - generic:
+            - generic: open
+            - img
+        - paragraph: JOSÉ - Agente de ventas de internet infinitum Telmex
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: bruno italo ceja sosa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Bruno - Es inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: fabian nieto
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Fabian - Habitacional
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: valeria de la peña
+          - generic:
+            - generic: open
+            - img
+        - paragraph: VALERIA - inmobiliaria
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: israel baez
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Israel - Real estate
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: julio roa
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Julio - lotificacion en preventa
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+      - button:
+        - generic:
+          - generic:
+            - img
+            - generic: rogelio rey
+          - generic:
+            - generic: open
+            - img
+        - paragraph: Rogelio -
+        - generic:
+          - generic: Primera Cita
+          - generic:
+            - img
+            - text: "0"
+        - generic:
+          - generic:
+            - img
+            - text: Iván Salazar Ledezma
+    - button:
+      - img
+      - generic: Close
+  - dialog:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading [level=2]: silvana valdes hernandez
+            - paragraph: svaldesh80@outlook.com · +5217293010145
+        - generic: open
+      - generic:
+        - generic: stop bot
+        - generic: cita agendada 1
+      - generic:
+        - link:
+          - /url: https://login.lezgosuite.com/v2/location/uRFrk77agXq9is0a0gkp/opportunities/9G0s4tUDyUd7k7pKMepd?tab=Opportunity+Details
+          - img
+          - text: Ver oportunidad
+        - link:
+          - /url: https://login.lezgosuite.com/v2/location/uRFrk77agXq9is0a0gkp/contacts/detail/hikckjH2GhBBhj0nDdax
+          - img
+          - text: Ver contacto
+        - button:
+          - img
+          - text: Analizar con IA
+    - generic:
+      - tablist:
+        - tab: Resumen
+        - tab: Tareas
+        - tab [selected]: Citas
+      - tabpanel:
+        - generic:
+          - button:
+            - generic:
+              - img
+            - generic:
+              - generic: Lezgo Suite & Silvana Valdes Hernandez
+              - generic:
+                - generic: 25 may 2026
+                - generic: 10:00 a.m.
+            - generic: confirmed
+    - button:
+      - img
+      - generic: Close
+  - dialog "Lezgo Suite & Silvana Valdes Hernandez" [ref=e3057]:
+    - generic [ref=e3059]:
+      - img [ref=e3061]
+      - generic [ref=e3064]:
+        - heading "Lezgo Suite & Silvana Valdes Hernandez" [level=2] [ref=e3065]
+        - paragraph [ref=e3066]:
+          - generic [ref=e3067]: confirmed
+    - generic [ref=e3068]:
+      - generic [ref=e3069]:
+        - generic [ref=e3070]:
+          - img [ref=e3071]
+          - paragraph [ref=e3073]: Fecha
+        - paragraph [ref=e3074]: lunes, 25 de mayo de 2026
+        - generic [ref=e3075]:
+          - img [ref=e3076]
+          - generic [ref=e3079]:
+            - text: 10:00 a.m. – 10:45 a.m.
+            - generic [ref=e3080]: · 45 min
+      - generic [ref=e3081]:
+        - generic [ref=e3082]:
+          - img [ref=e3083]
+          - paragraph [ref=e3086]: Asignado a
+        - paragraph [ref=e3087]: Jacobo Yescas
+    - button "Close" [active] [ref=e3088] [cursor=pointer]:
+      - img [ref=e3089]
+      - generic [ref=e3092]: Close

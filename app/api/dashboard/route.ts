@@ -84,8 +84,8 @@ function transformOpportunity(
     pipelineId: ghl.pipelineId,
     pipelineName: pipeline?.name || "Unknown",
     contactId: ghl.contact.id,
-    createdAt: ghl.dateAdded,
-    updatedAt: ghl.dateUpdated || ghl.dateAdded,
+    createdAt: ghl.createdAt,
+    updatedAt: ghl.updatedAt || ghl.createdAt,
     source: firstAttr(ghl.attributions)?.utmSource || firstAttr(ghl.attributions)?.adSource || ghl.source,
     campaign: buildCampaignLabel(
       firstAttr(ghl.attributions)?.utmContent,
@@ -103,24 +103,12 @@ function enc(obj: unknown): string {
   return JSON.stringify(obj) + "\n";
 }
 
-function resolveContactIdFromAssociations(associations: Record<string, unknown> | undefined): string | undefined {
-  if (!associations) return undefined;
-
-  const candidates = [
-    associations["contact"],
-    associations["contacts"],
-    associations["Contact"],
-  ];
-
-  for (const val of candidates) {
-    if (typeof val === "string" && val.trim()) return val.trim();
-    if (Array.isArray(val) && typeof val[0] === "string" && val[0].trim()) return val[0].trim();
-    if (Array.isArray(val) && val[0] && typeof (val[0] as any).id === "string") {
-      return (val[0] as any).id;
-    }
-  }
-
-  return undefined;
+function resolveContactIdFromRelations(
+  relations: import("@/lib/ghl-client").GHLCustomObjectRelation[] | undefined
+): string | undefined {
+  if (!relations?.length) return undefined;
+  const contactRelation = relations.find((r) => r.objectKey === "contact");
+  return contactRelation?.recordId ?? undefined;
 }
 
 async function fetchAllPautas(): Promise<Pauta[]> {
@@ -139,12 +127,6 @@ async function fetchAllPautas(): Promise<Pauta[]> {
 
     const records = await getAllCustomObjectRecords(stub.key);
 
-    if (records[0]?.associations !== undefined) {
-      console.log("[GHL] Pauta associations sample:", JSON.stringify(records[0].associations));
-    } else {
-      console.warn("[GHL] Pauta record has no 'associations' field — contactId will be empty. Raw keys:", Object.keys(records[0] ?? {}));
-    }
-
     const SKIP_PROPERTY_KEYS = new Set(["tipo", "nombre_pauta", "id"]);
 
     return records.map((r) => {
@@ -161,7 +143,7 @@ async function fetchAllPautas(): Promise<Pauta[]> {
         tipo: String(r.properties["tipo"] ?? "") || "Sin tipo",
         nombrePauta: String(r.properties["nombre_pauta"] ?? "") || "Sin nombre",
         createdAt: r.createdAt ?? new Date().toISOString(),
-        contactId: resolveContactIdFromAssociations(r.associations),
+        contactId: resolveContactIdFromRelations(r.relations),
         properties,
       };
     });
@@ -301,7 +283,7 @@ export async function GET() {
             email: embedded.email || "",
             phone: embedded.phone || "",
             tags: embedded.tags || [],
-            createdAt: raw.dateAdded,
+            createdAt: raw.createdAt,
             source: attr?.utmSource || attr?.adSource || raw.source || "direct",
             campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
             adType: attr?.utmMedium || attr?.utmSessionSource,

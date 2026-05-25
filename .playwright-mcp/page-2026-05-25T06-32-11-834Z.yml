@@ -1,0 +1,180 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e33]:
+    - banner [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - img [ref=e38]
+          - generic [ref=e40]:
+            - heading "GHL Analíticas" [level=1] [ref=e41]
+            - paragraph [ref=e42]: Panel de Marketing y Ventas
+        - generic [ref=e43]:
+          - generic [ref=e109]:
+            - generic "Contactos cargados" [ref=e110]:
+              - img [ref=e111]
+              - text: 2,903
+            - generic "Oportunidades cargadas" [ref=e116]:
+              - img [ref=e117]
+              - text: "307"
+          - generic [ref=e44]: Actualizado 12:32 a.m.
+          - button "Actualizar" [ref=e121] [cursor=pointer]:
+            - img
+            - text: Actualizar
+          - button "Cambiar tema" [ref=e47] [cursor=pointer]:
+            - img
+    - generic [ref=e49]:
+      - button "Marketing" [ref=e50] [cursor=pointer]:
+        - img [ref=e51]
+        - text: Marketing
+      - button "Ventas" [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+        - text: Ventas
+      - button "Conversaciones" [ref=e57] [cursor=pointer]:
+        - img [ref=e58]
+        - text: Conversaciones
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - img [ref=e65]
+            - generic [ref=e68]: Oportunidades por fuente del CRM
+            - generic [ref=e69]: "Total: 307"
+          - generic [ref=e70]:
+            - generic [ref=e71]:
+              - generic [ref=e122]:
+                - img [ref=e125]:
+                  - generic [ref=e127]:
+                    - img [ref=e129]
+                    - img [ref=e131]
+                    - img [ref=e133]
+                    - img [ref=e135]
+                    - img [ref=e137]
+                    - img [ref=e139]
+                    - img [ref=e141]
+                - generic:
+                  - generic: "307"
+                  - generic: LEADS
+              - generic [ref=e142]:
+                - generic [ref=e144] [cursor=pointer]:
+                  - generic [ref=e145]: Paid Social
+                  - generic [ref=e146]: 172 · 56%
+                - generic [ref=e150] [cursor=pointer]:
+                  - generic [ref=e151]: CRM UI
+                  - generic [ref=e152]: 43 · 14%
+                - generic [ref=e156] [cursor=pointer]:
+                  - generic [ref=e157]: Social media
+                  - generic [ref=e158]: 39 · 13%
+                - generic [ref=e162] [cursor=pointer]:
+                  - generic [ref=e163]: Otro
+                  - generic [ref=e164]: 28 · 9%
+                - generic [ref=e168] [cursor=pointer]:
+                  - generic [ref=e169]: Direct traffic
+                  - generic [ref=e170]: 22 · 7%
+                - generic [ref=e174] [cursor=pointer]:
+                  - generic [ref=e175]: Referral
+                  - generic [ref=e176]: 2 · 1%
+                - generic [ref=e180] [cursor=pointer]:
+                  - generic [ref=e181]: Organic Search
+                  - generic [ref=e182]: 1 · 0%
+            - paragraph [ref=e72]: Haz clic en una fila para ver los leads
+        - generic [ref=e73]:
+          - generic [ref=e74]:
+            - img [ref=e75]
+            - generic [ref=e78]: Pautas por Tipo
+            - generic [ref=e79]: "Total: 771"
+          - generic [ref=e80]:
+            - img [ref=e189]:
+              - generic [ref=e193]:
+                - generic [ref=e195]: "0"
+                - generic [ref=e197]: "200"
+                - generic [ref=e199]: "400"
+                - generic [ref=e201]: "600"
+                - generic [ref=e203]: "800"
+              - generic [ref=e207]: Mensaje WhatsApp
+            - paragraph [ref=e213]: Haz clic en una barra para ver las pautas
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - img [ref=e84]
+          - generic [ref=e86]: Oportunidades creadas por tiempo y fuente (últimos 30 días)
+          - generic [ref=e87]: "Total: 37"
+        - generic [ref=e88]:
+          - generic [ref=e217]:
+            - img [ref=e218]:
+              - generic [ref=e222]:
+                - generic [ref=e224]: 04-26
+                - generic [ref=e226]: 05-01
+                - generic [ref=e228]: 05-06
+                - generic [ref=e230]: 05-11
+                - generic [ref=e232]: 05-16
+                - generic [ref=e234]: 05-21
+              - generic [ref=e236]:
+                - generic [ref=e238]: "0"
+                - generic [ref=e240]: "2"
+                - generic [ref=e242]: "4"
+                - generic [ref=e244]: "6"
+                - generic [ref=e246]: "8"
+            - list [ref=e307]:
+              - listitem [ref=e308]:
+                - img [ref=e309]
+                - generic [ref=e311]: Paid Social
+              - listitem [ref=e312]:
+                - img [ref=e313]
+                - generic [ref=e315]: Social media
+              - listitem [ref=e316]:
+                - img [ref=e317]
+                - generic [ref=e319]: CRM UI
+              - listitem [ref=e320]:
+                - img [ref=e321]
+                - generic [ref=e323]: Direct traffic
+              - listitem [ref=e324]:
+                - img [ref=e325]
+                - generic [ref=e327]: Otro
+          - paragraph [ref=e328]: Apilado por fuente del CRM · eje X cada 5 días
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - img [ref=e92]
+          - generic [ref=e95]: Pautas por Nombre (Top 30)
+          - generic [ref=e96]: "Total: 771"
+        - generic [ref=e97]:
+          - img [ref=e333]:
+            - generic [ref=e337]:
+              - generic [ref=e339]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e341]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e343]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e345]: CRM TODO-EN-UNO IMPULSADO CO…
+              - generic [ref=e347]: EL CRM QUE IMPULSA TUS RESUL…
+              - generic [ref=e349]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e351]: EL CRM QUE ENTIENDE EL REAL …
+              - generic [ref=e353]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e355]: EL CRM QUE ENTIENDE EL REAL …
+              - generic [ref=e357]: TODAS TUS APPS EN UN SOLO CR…
+              - generic [ref=e359]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e361]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e363]: EL CRM QUE IMPULSA TUS RESUL…
+              - generic [ref=e365]: TODAS TUS APPS EN UN SOLO CR…
+              - generic [ref=e367]: CRM TODO-EN-UNO IMPULSADO CO…
+              - generic [ref=e369]: EL CRM QUE IMPULSA TUS RESUL…
+              - generic [ref=e371]: TODAS TUS APPS EN UN SOLO CR…
+              - generic [ref=e373]: TODAS TUS APPS EN UN SOLO CR…
+              - generic [ref=e375]: EL CRM QUE IMPULSA TUS RESUL…
+              - generic [ref=e377]: TU INMOBILIARIA, MÁS EFICIEN…
+              - generic [ref=e379]: EL CRM PARA DESARROLLADORAS …
+              - generic [ref=e381]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e383]: EL CRM PARA DESARROLLADORAS …
+              - generic [ref=e385]: TODAS TUS APPS EN UN SOLO CR…
+              - generic [ref=e387]: EL CRM QUE ENTIENDE EL REAL …
+              - generic [ref=e389]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e391]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e393]: EL CRM PARA DESARROLLADORAS …
+              - generic [ref=e395]: EL CRM DISEÑADO PARA REAL ST…
+              - generic [ref=e397]: EL CRM QUE IMPULSA TUS RESUL…
+            - generic [ref=e399]:
+              - generic [ref=e401]: "0"
+              - generic [ref=e403]: "25"
+              - generic [ref=e405]: "50"
+              - generic [ref=e407]: "75"
+              - generic [ref=e409]: "100"
+          - paragraph [ref=e473]: Haz clic en una barra para ver las pautas
+  - button "Open Next.js Dev Tools" [ref=e104] [cursor=pointer]:
+    - img [ref=e105]
+  - alert [ref=e108]
+  - generic [ref=e474]: "25"

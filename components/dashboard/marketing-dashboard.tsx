@@ -625,6 +625,88 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
 
       </div>
 
+      {/* Pautas creadas por Mes — full width stacked bar */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <Calendar className={iconCls} />
+          <CardTitle className="text-sm font-semibold">Pautas creadas por Mes</CardTitle>
+          <TotalBadge value={pautas.length} />
+        </CardHeader>
+        <CardContent>
+          {pautasByMonthKeys.length === 0 ? (
+            <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
+              Sin datos de Pautas.
+            </div>
+          ) : (
+            <>
+              <ChartContainer
+                config={Object.fromEntries(
+                  pautasByMonthKeys.map((k, i) => [k, { label: k, color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+                )}
+                className="aspect-auto"
+                style={{ height: 280 }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={pautasByMonthRows}
+                    margin={{ top: 5, right: 16, left: 8, bottom: 60 }}
+                    barCategoryGap="20%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="monthLabel"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <ChartTooltip content={<NonZeroTooltipContent />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                    />
+                    {pautasByMonthKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        radius={i === pautasByMonthKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const monthKey = data.monthKey as string
+                          const monthLabel = data.monthLabel as string
+                          const items = pautas.filter(
+                            (p) =>
+                              toUTCDateStr(p.createdAt).slice(0, 7) === monthKey &&
+                              (p.tipo || "Sin tipo") === key
+                          )
+                          openPautaDrill(`${key} · ${monthLabel}`, items)
+                        }}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <p className="mt-1 text-center text-[10px] text-muted-foreground">
+                Apilado por tipo · haz clic en un segmento para ver las pautas
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Row 2: Oportunidades creadas por tiempo y fuente — full width */}
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-center gap-2 pb-2">

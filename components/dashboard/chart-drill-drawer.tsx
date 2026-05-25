@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { DetailDrawer } from "./detail-drawer"
-import type { Opportunity, Contact, Task, Call, Pauta } from "@/lib/types"
+import type { Opportunity, Contact, Task, Call, Pauta, Appointment } from "@/lib/types"
 import { DollarSign, User, Tag, FileText, ChevronRight, TrendingUp, Mail, Phone } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
@@ -55,6 +55,7 @@ interface ChartDrillDrawerProps {
   calls: Call[]
   /** Full opportunity list needed by DetailDrawer to resolve the selected ID */
   allOpportunities: Opportunity[]
+  appointments?: Appointment[]
   locationId?: string
 }
 
@@ -65,6 +66,7 @@ export function ChartDrillDrawer({
   tasks,
   calls,
   allOpportunities,
+  appointments = [],
   locationId = "",
 }: ChartDrillDrawerProps) {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
@@ -183,6 +185,7 @@ export function ChartDrillDrawer({
         contacts={contacts}
         tasks={tasks}
         calls={calls}
+        appointments={appointments}
         locationId={locationId}
       />
     </>

@@ -97,12 +97,32 @@ export async function GET() {
     step = "getAllCustomObjectRecords (first 5)";
     const allRecords = await getAllCustomObjectRecords(stub.key);
 
+    // Also fetch 1 record directly to compare structure
+    const firstId = allRecords[0]?.id;
+    let directRecord: unknown = null;
+    if (firstId) {
+      try {
+        const res = await fetch(`https://services.leadconnectorhq.com/objects/${stub.key}/records/${firstId}`, {
+          headers: {
+            Authorization: `Bearer ${process.env.GHL_API_TOKEN}`,
+            Version: "2023-02-21",
+            Accept: "application/json",
+          },
+        });
+        directRecord = await res.json();
+      } catch (e) {
+        directRecord = String(e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       pautaKey: stub.key,
       fields: fieldNames,
       totalRecords: allRecords.length,
-      sample: allRecords.slice(0, 2).map(r => r.properties),
+      // Full raw record — shows ALL keys including associations
+      rawSample: allRecords.slice(0, 2),
+      directRecordFetch: directRecord,
     });
   } catch (err) {
     return NextResponse.json({ error: String(err), step });

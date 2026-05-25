@@ -19,8 +19,10 @@ import {
   MessageSquare,
   Users,
   Target,
+  ClipboardList,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 type DashboardTab = "marketing" | "sales" | "conversations"
 
@@ -70,22 +72,39 @@ export default function DashboardPage() {
               </div>
             )}
             {!isLoading && data && (
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground"
-                  title="Contactos cargados"
-                >
-                  <Users className="h-3 w-3 text-muted-foreground" />
-                  {data.contacts.length.toLocaleString("es-MX")}
-                </span>
-                <span
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground"
-                  title="Oportunidades cargadas"
-                >
-                  <Target className="h-3 w-3 text-muted-foreground" />
-                  {data.opportunities.length.toLocaleString("es-MX")}
-                </span>
-              </div>
+              <TooltipProvider delayDuration={200}>
+                <div className="flex items-center gap-1.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        {data.contacts.length.toLocaleString("es-MX")}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Contactos cargados</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground">
+                        <Target className="h-3 w-3 text-muted-foreground" />
+                        {data.opportunities.length.toLocaleString("es-MX")}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Oportunidades cargadas</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] font-medium text-foreground">
+                        <ClipboardList className="h-3 w-3 text-muted-foreground" />
+                        {(data?.pautas ?? []).length.toLocaleString("es-MX")}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Pautas cargadas</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
             )}
             <span className="text-[11px] text-muted-foreground">
               {isLoading
@@ -177,6 +196,7 @@ export default function DashboardPage() {
             pautas={data?.pautas ?? []}
             tasks={data?.tasks ?? []}
             calls={calls}
+            appointments={appointments}
             locationId={data?.locationId ?? ""}
           />
         ) : activeTab === "sales" ? (

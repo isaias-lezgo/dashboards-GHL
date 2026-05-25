@@ -720,8 +720,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color} cursor="pointer"
                     onClick={(data: any) => openDrill(`${data.member} · Abandonado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "abandoned"))}
-                  />
-                  <Bar dataKey="_total" stackId="b" fill="transparent" legendType="none">
+                  >
                     <LabelList
                       dataKey="winRate"
                       position="right"
@@ -1239,6 +1238,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        appointments={appointments}
         locationId={locationId}
       />
     </div>

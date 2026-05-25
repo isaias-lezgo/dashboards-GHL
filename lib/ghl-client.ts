@@ -204,8 +204,8 @@ export interface GHLOpportunity {
     tags?: string[];
   };
   assignedTo?: string;
-  dateAdded: string;
-  dateUpdated?: string;
+  createdAt: string;
+  updatedAt?: string;
   lastStatusChangeAt?: string;
   lostReasonId?: string;
   customFields?: Array<{ id: string; key?: string; value?: string; fieldValueString?: string; type?: string }>;
@@ -493,11 +493,21 @@ export interface GHLCustomObjectsResponse {
   objects: GHLCustomObjectSchema[];
 }
 
+export interface GHLCustomObjectRelation {
+  associationId: string;
+  relationId: string;
+  objectKey: string;
+  recordId: string;
+  createdAt?: string;
+}
+
 export interface GHLCustomObjectRecord {
   id: string;
   properties: Record<string, string | string[] | null>;
   createdAt?: string;
   updatedAt?: string;
+  relations?: GHLCustomObjectRelation[];
+  /** @deprecated GHL returns `relations`, not `associations` */
   associations?: Record<string, unknown>;
 }
 
