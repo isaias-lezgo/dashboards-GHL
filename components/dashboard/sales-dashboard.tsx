@@ -11,7 +11,7 @@ import {
   LabelList,
   Cell,
 } from "recharts"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
@@ -20,6 +20,23 @@ import {
 import type { Opportunity, Contact, Call, Message, Task, Appointment } from "@/lib/types"
 import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import {
+  BRAND_AMBER,
+  STRUCTURAL_NAVY,
+  CHART_PALETTE,
+  CHART_GRID_STROKE,
+  CHART_TICK,
+  chartPaletteColor,
+  DashboardShell,
+  DashboardCard,
+  ChartCardHeader,
+  ChartCardContent,
+  ChartEmpty,
+  ChartHint,
+  KpiCard,
+  SectionHeader,
+  TotalBadge,
+} from "./dashboard-ui"
 import {
   AppointmentDrillDrawer,
   APPT_DRILL_CLOSED,
@@ -51,10 +68,7 @@ const STAGE_COLORS: Record<string, string> = {
   "Closed Lost":"#ef4444",
 }
 
-const COLOR_PALETTE = [
-  "#F59B1B","#335577","#10b981","#8b5cf6","#ef4444",
-  "#f97316","#06b6d4","#84cc16","#ec4899","#a855f7",
-]
+// CHART_PALETTE from dashboard-ui (amber-led)
 
 const WIN_LOSS_CONFIG = {
   won:       { label: "Ganado",           color: "#F59B1B" },
@@ -82,12 +96,12 @@ function apptStatusVisual(status: string, fallbackIndex: number): { label: strin
   if (known) return known
   return {
     label: status.charAt(0).toUpperCase() + status.slice(1),
-    color: COLOR_PALETTE[fallbackIndex % COLOR_PALETTE.length],
+    color: chartPaletteColor(fallbackIndex),
   }
 }
 
 function stageColor(stage: string, index: number): string {
-  return STAGE_COLORS[stage] ?? COLOR_PALETTE[index % COLOR_PALETTE.length]
+  return STAGE_COLORS[stage] ?? chartPaletteColor(index)
 }
 
 function isBusinessHoursStr(isoStr: string): boolean {
@@ -138,14 +152,6 @@ function formatMinutes(minutes: number): string {
   return m > 0 ? `${h}h ${m}min` : `${h}h`
 }
 
-function TotalBadge({ value }: { value: number | string }) {
-  return (
-    <span className="ml-auto inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
-      Total: {typeof value === "number" ? value.toLocaleString() : value}
-    </span>
-  )
-}
-
 function InfoTooltip({ content }: { content: string }) {
   return (
     <TooltipProvider delayDuration={200}>
@@ -160,17 +166,6 @@ function InfoTooltip({ content }: { content: string }) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return (
-    <div className="flex items-center gap-3 pt-2">
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-        {title}
-      </span>
-      <div className="flex-1 h-px bg-border" />
-    </div>
   )
 }
 
@@ -351,7 +346,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       Object.fromEntries(
         lostReasonsData.reasons.map((reason, i) => [
           reason,
-          { label: reason, color: COLOR_PALETTE[i % COLOR_PALETTE.length] },
+          { label: reason, color: CHART_PALETTE[i % CHART_PALETTE.length] },
         ])
       ),
     [lostReasonsData.reasons]
@@ -559,90 +554,71 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
   )
 
   return (
-    <div className="px-6 py-4 space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card
-          className="cursor-pointer hover:border-primary/40 hover:bg-accent/20 transition-all"
+    <DashboardShell>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+        <KpiCard
+          variant="hero"
+          label="Ingreso ganado"
+          value={kpiMetrics.wonRevenue.toLocaleString("es-MX", {
+            style: "currency",
+            currency: "MXN",
+            maximumFractionDigits: 0,
+          })}
+          sublabel={`${kpiMetrics.won} oportunidades ganadas`}
+          icon={DollarSign}
+          onClick={() =>
+            openDrill(
+              "Oportunidades Ganadas",
+              opportunities.filter((o) => o.status === "won"),
+              "Ingreso ganado total",
+            )
+          }
+        />
+        <KpiCard
+          label="Oportunidades"
+          value={kpiMetrics.total.toLocaleString("es-MX")}
+          icon={Target}
           onClick={() => openDrill("Todas las Oportunidades", opportunities)}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Oportunidades</p>
-                <p className="text-3xl font-bold mt-1">{kpiMetrics.total.toLocaleString()}</p>
-              </div>
-              <Target className="h-5 w-5 text-muted-foreground mt-1" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:border-primary/40 hover:bg-accent/20 transition-all"
-          onClick={() => setDrill({ open: true, title: "Miembros del Equipo", subtitle: `${kpiMetrics.activeMembers} asesores`, opportunities, members: membersProp.length > 0 ? membersProp : [...new Set(opportunities.map((o) => o.assignedTo).filter(Boolean) as string[])] })}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Miembros Activos</p>
-                <p className="text-3xl font-bold mt-1">{kpiMetrics.activeMembers}</p>
-                <p className="text-xs text-muted-foreground mt-1">{kpiMetrics.activeMembers} en total</p>
-              </div>
-              <Users className="h-5 w-5 mt-1" style={{ color: "#335577" }} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:border-primary/40 hover:bg-accent/20 transition-all"
+        />
+        <KpiCard
+          label="Conversión"
+          value={`${kpiMetrics.conversionRate.toFixed(1)}%`}
+          sublabel={`${kpiMetrics.won} ganadas`}
+          icon={TrendingUp}
           onClick={() => openDrill("Oportunidades Ganadas", opportunities.filter((o) => o.status === "won"))}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Tasa de Conversión</p>
-                <p className="text-3xl font-bold mt-1">{kpiMetrics.conversionRate.toFixed(1)}%</p>
-                <p className="text-xs text-muted-foreground mt-1">{kpiMetrics.won} ganadas</p>
-              </div>
-              <TrendingUp className="h-5 w-5 text-primary mt-1" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="cursor-pointer hover:border-primary/40 hover:bg-accent/20 transition-all"
-          onClick={() => openDrill("Oportunidades Ganadas", opportunities.filter((o) => o.status === "won"), "Ingreso ganado total")}
-        >
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">Ingreso Ganado</p>
-                <p className="text-3xl font-bold mt-1">
-                  {kpiMetrics.wonRevenue.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })}
-                </p>
-              </div>
-              <DollarSign className="h-5 w-5 text-primary mt-1" />
-            </div>
-          </CardContent>
-        </Card>
+        />
+        <KpiCard
+          label="Miembros activos"
+          value={String(kpiMetrics.activeMembers)}
+          icon={Users}
+          onClick={() =>
+            setDrill({
+              open: true,
+              title: "Miembros del Equipo",
+              subtitle: `${kpiMetrics.activeMembers} asesores`,
+              opportunities,
+              members:
+                membersProp.length > 0
+                  ? membersProp
+                  : [...new Set(opportunities.map((o) => o.assignedTo).filter(Boolean) as string[])],
+            })
+          }
+        />
       </div>
 
-      {/* Stacked Bar Chart */}
-      <Card>
-        <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold">Leads por Miembro por Etapa del Pipeline</CardTitle>
-          <TotalBadge value={opportunities.length} />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader
+          title="Leads por Miembro por Etapa del Pipeline"
+          total={opportunities.length}
+        />
+        <ChartCardContent>
           {opportunities.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Sin oportunidades para mostrar
-            </div>
+            <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
           ) : (
             <>
               <ChartContainer config={chartConfig} style={{ height: Math.max(200, chartData.length * 64) }} className="w-full">
                 <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                   <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -665,28 +641,21 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   ))}
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
+              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
       {/* ── Rendimiento Individual ─────────────────── */}
       <SectionHeader title="Rendimiento Individual" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Chart A: Win/Loss por Asesor */}
-        <Card>
-          <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold">
-              Win/Loss por Asesor
-            </CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader title="Win/Loss por Asesor" total={opportunities.length} />
+          <ChartCardContent>
             {winLossData.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                Sin oportunidades para mostrar
-              </div>
+              <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
             ) : (
               <>
               <ChartContainer
@@ -699,7 +668,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                   <YAxis
                     dataKey="member"
                     type="category"
@@ -732,24 +701,17 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   </Bar>
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
+              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
               </>
             )}
-          </CardContent>
-        </Card>
+          </ChartCardContent>
+        </DashboardCard>
 
-        {/* Chart B: Ingreso Ganado por Asesor */}
-        <Card>
-          <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold">
-              Ingreso Ganado por Asesor
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader title="Ingreso Ganado por Asesor" />
+          <ChartCardContent>
             {revenueData.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                Sin ingresos ganados
-              </div>
+              <ChartEmpty message="Sin ingresos ganados" height={192} />
             ) : (
               <>
               <ChartContainer
@@ -762,7 +724,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                   <YAxis
                     dataKey="member"
                     type="category"
@@ -790,24 +752,23 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
               </>
             )}
-          </CardContent>
-        </Card>
+          </ChartCardContent>
+        </DashboardCard>
       </div>
 
-      {/* Tiempo promedio de respuesta - full width */}
       {responseTimeData.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold flex items-center">
+        <DashboardCard>
+          <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+            <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
               Tiempo promedio de respuesta del asesor
               <InfoTooltip content="Tiempo promedio que tarda un asesor en responder un mensaje entrante, calculado solo en horario laboral (lun–vie 9am–6pm). Considera únicamente la primera respuesta saliente por hilo de conversación." />
             </CardTitle>
             <TotalBadge value={`${responseTimeData.length} asesores`} />
           </CardHeader>
-          <CardContent>
+          <ChartCardContent>
             <ChartContainer
               config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#F59B1B" } }}
               style={{ height: Math.max(200, responseTimeData.length * 64) }}
@@ -818,7 +779,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 layout="vertical"
                 margin={{ left: 8, right: 80, top: 8, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                 <YAxis
                   dataKey="member"
                   type="category"
@@ -854,29 +815,23 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </Bar>
               </BarChart>
             </ChartContainer>
-          </CardContent>
-        </Card>
+          </ChartCardContent>
+        </DashboardCard>
       )}
 
       {/* ── Salud del Pipeline ─────────────────────── */}
       <SectionHeader title="Salud del Pipeline" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Chart C: Valor en Pipeline por Etapa */}
-        <Card>
-          <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold">
-              Valor en Pipeline por Etapa
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader title="Valor en Pipeline por Etapa" />
+          <ChartCardContent>
             {pipelineValueData.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                Sin oportunidades abiertas
-              </div>
+              <ChartEmpty message="Sin oportunidades abiertas" height={192} />
             ) : (
               <>
               <ChartContainer
-                config={{ value: { label: "Valor en Pipeline", color: "#335577" } }}
+                config={{ value: { label: "Valor en Pipeline", color: STRUCTURAL_NAVY } }}
                 style={{ height: Math.max(200, pipelineValueData.length * 64) }}
                 className="w-full"
               >
@@ -885,7 +840,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   layout="vertical"
                   margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                   <YAxis
                     dataKey="stage"
                     type="category"
@@ -908,34 +863,26 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Bar dataKey="value" fill="#335577" cursor="pointer"
+                  <Bar dataKey="value" fill={STRUCTURAL_NAVY} cursor="pointer"
                     onClick={(data: any) => openDrill(`Pipeline: ${data.stage}`, opportunities.filter((o) => o.status === "open" && o.stage === data.stage))}
                   />
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
               </>
             )}
-          </CardContent>
-        </Card>
+          </ChartCardContent>
+        </DashboardCard>
 
-        {/* Chart D: Nuevas Oportunidades por Período */}
-        <Card>
-          <CardHeader className="flex flex-row items-center pb-2">
-            <CardTitle className="text-base font-semibold">
-              Nuevas Oportunidades por Período
-            </CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader title="Nuevas Oportunidades por Período" total={opportunities.length} />
+          <ChartCardContent>
             {trendData.length === 0 ? (
-              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-                Sin datos de tendencia
-              </div>
+              <ChartEmpty message="Sin datos de tendencia" height={192} />
             ) : (
               <>
               <ChartContainer
-                config={{ count: { label: "Nuevas Oportunidades", color: "#F59B1B" } }}
+                config={{ count: { label: "Nuevas Oportunidades", color: BRAND_AMBER } }}
                 style={{ height: 220 }}
                 className="w-full"
               >
@@ -943,7 +890,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={trendData}
                   margin={{ left: 8, right: 8, top: 8, bottom: 48 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis
                     dataKey="period"
                     tick={{ fontSize: 11 }}
@@ -953,37 +900,34 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <YAxis tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="#F59B1B" radius={[3, 3, 0, 0]} cursor="pointer"
+                  <Bar dataKey="count" fill={BRAND_AMBER} radius={[3, 3, 0, 0]} cursor="pointer"
                     onClick={(data: any) => openDrill(`Período: ${data.period}`, data.opps ?? [])}
                   />
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los leads</p>
+              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
               </>
             )}
-          </CardContent>
-        </Card>
+          </ChartCardContent>
+        </DashboardCard>
       </div>
 
-      {/* ── Actividad de Conversaciones ─────────────── */}
       <SectionHeader title="Actividad de Conversaciones" />
-      <Card>
-        <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold flex items-center">
+      <DashboardCard>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
             Conversaciones únicas por día
             <InfoTooltip content="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora." />
           </CardTitle>
           <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
         </CardHeader>
-        <CardContent>
+        <ChartCardContent>
           {dailyConvData.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Sin datos de conversaciones
-            </div>
+            <ChartEmpty message="Sin datos de conversaciones" height={192} />
           ) : (
             <>
               <ChartContainer
-                config={{ count: { label: "Conversaciones", color: "#06b6d4" } }}
+                config={{ count: { label: "Conversaciones", color: STRUCTURAL_NAVY } }}
                 style={{ height: 220 }}
                 className="w-full"
               >
@@ -991,7 +935,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={dailyConvData}
                   margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis
                     dataKey="label"
                     tick={{ fontSize: 11 }}
@@ -1003,7 +947,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Bar
                     dataKey="count"
-                    fill="#06b6d4"
+                    fill={STRUCTURAL_NAVY}
                     radius={[3, 3, 0, 0]}
                     cursor="pointer"
                     onClick={(data: any) =>
@@ -1012,32 +956,30 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver los contactos</p>
+              <ChartHint>Haz clic en una barra para ver los contactos</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold flex items-center">
+      <DashboardCard>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
             Conversaciones únicas por asesor
             <InfoTooltip content="Número de conversaciones únicas atendidas por cada asesor, agrupadas por el mes del primer mensaje del hilo." />
           </CardTitle>
           <TotalBadge value={convByAdvisorMonthData.totalConvs} />
         </CardHeader>
-        <CardContent>
+        <ChartCardContent>
           {convByAdvisorMonthData.data.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Sin datos de conversaciones
-            </div>
+            <ChartEmpty message="Sin datos de conversaciones" height={192} />
           ) : (
             <>
               <ChartContainer
                 config={Object.fromEntries(
                   convByAdvisorMonthData.advisors.map((advisor, i) => [
                     advisor,
-                    { label: advisor, color: COLOR_PALETTE[i % COLOR_PALETTE.length] },
+                    { label: advisor, color: CHART_PALETTE[i % CHART_PALETTE.length] },
                   ])
                 )}
                 style={{ height: 320 }}
@@ -1047,7 +989,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={convByAdvisorMonthData.data}
                   margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -1057,7 +999,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       key={advisor}
                       dataKey={advisor}
                       stackId="conv"
-                      fill={COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                      fill={CHART_PALETTE[i % CHART_PALETTE.length]}
                       radius={
                         i === convByAdvisorMonthData.advisors.length - 1
                           ? [3, 3, 0, 0]
@@ -1072,27 +1014,24 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   ))}
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los contactos</p>
+              <ChartHint>Haz clic en un segmento para ver los contactos</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* ── Citas ──────────────────────────────────── */}
       <SectionHeader title="Citas" />
-      <Card>
-        <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold flex items-center">
+      <DashboardCard>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
             Citas por mes por asesor
             <InfoTooltip content="Citas (calendar events) agrupadas por mes. Cada mes muestra una barra por asesor, desglosada por estatus. Ventana fija: últimos 90 días." />
           </CardTitle>
           <TotalBadge value={apptByMonthByAdvisor.total} />
         </CardHeader>
-        <CardContent>
+        <ChartCardContent>
           {apptByMonthByAdvisor.data.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Sin citas para mostrar
-            </div>
+            <ChartEmpty message="Sin citas para mostrar" height={192} />
           ) : (
             <>
               <ChartContainer
@@ -1104,7 +1043,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   data={apptByMonthByAdvisor.data}
                   margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#DDE2EA" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<ChartTooltipContent />} />
@@ -1156,30 +1095,21 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   )}
                 </BarChart>
               </ChartContainer>
-              <p className="mt-2 text-center text-[10px] text-muted-foreground">
-                Haz clic en un segmento para ver las citas
-              </p>
+              <ChartHint>Haz clic en un segmento para ver las citas</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* ── Análisis de Pérdidas ───────────────────── */}
       <SectionHeader title="Análisis de Pérdidas" />
-      <Card>
-        <CardHeader className="flex flex-row items-center pb-2">
-          <CardTitle className="text-base font-semibold">
-            Razones de Pérdida por Asesor
-          </CardTitle>
-          <TotalBadge
-            value={opportunities.filter((o) => o.status === "lost").length}
-          />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader
+          title="Razones de Pérdida por Asesor"
+          total={opportunities.filter((o) => o.status === "lost").length}
+        />
+        <ChartCardContent>
           {lostReasonsData.data.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              Sin oportunidades perdidas
-            </div>
+            <ChartEmpty message="Sin oportunidades perdidas" height={192} />
           ) : (
             <>
             <ChartContainer
@@ -1192,7 +1122,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 layout="vertical"
                 margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#DDE2EA" />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                 <YAxis
                   dataKey="member"
                   type="category"
@@ -1207,7 +1137,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     key={reason}
                     dataKey={reason}
                     stackId="a"
-                    fill={COLOR_PALETTE[i % COLOR_PALETTE.length]}
+                    fill={CHART_PALETTE[i % CHART_PALETTE.length]}
                     cursor="pointer"
                     onClick={(data: any) => openDrill(
                       `${data.member} · ${reason}`,
@@ -1217,11 +1147,11 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 ))}
               </BarChart>
             </ChartContainer>
-            <p className="mt-2 text-center text-[10px] text-muted-foreground">Haz clic en un segmento para ver los leads</p>
+              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
       {/* Appointment drill-down drawer */}
       <AppointmentDrillDrawer
@@ -1241,6 +1171,6 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         appointments={appointments}
         locationId={locationId}
       />
-    </div>
+    </DashboardShell>
   )
 }

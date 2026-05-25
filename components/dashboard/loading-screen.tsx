@@ -116,7 +116,7 @@ export function LoadingScreen({ progress }: LoadingScreenProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.35 }}
             >
-              Lezgo SuiteAnalíticas
+              Lezgo Suite Analíticas
             </motion.h2>
             <motion.p
               className="mt-2 text-sm text-muted-foreground"

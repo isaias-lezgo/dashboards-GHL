@@ -14,15 +14,28 @@ import {
   Pie,
   Sector,
 } from "recharts"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
-import { Megaphone, Globe, BarChart3, Layers, TrendingDown, Tag, FileText, Calendar } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import {
+  BRAND_AMBER,
+  CHART_PALETTE,
+  CHART_GRID_STROKE,
+  CHART_TICK,
+  chartPaletteColor,
+  DashboardShell,
+  DashboardCard,
+  ChartCardHeader,
+  ChartCardContent,
+  ChartEmpty,
+  ChartHint,
+  MarketingSummaryStrip,
+} from "./dashboard-ui"
 
 interface MarketingDashboardProps {
   opportunities: Opportunity[]
@@ -61,11 +74,7 @@ const STAGE_COLORS: Record<string, string> = {
   "Closed Lost": "#ef4444",
 }
 
-const BAR_PALETTE = [
-  "#2563eb", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6",
-  "#06b6d4", "#f97316", "#22c55e", "#6366f1", "#84cc16",
-  "#ef4444", "#0ea5e9", "#a855f7", "#14b8a6",
-]
+// CHART_PALETTE imported from dashboard-ui (amber-led)
 
 const LOST_REASON_PALETTE = [
   "#ef4444", "#f59e0b", "#f97316", "#dc2626", "#6b7280",
@@ -73,13 +82,13 @@ const LOST_REASON_PALETTE = [
 ]
 
 const AD_TYPE_COLORS: Record<string, string> = {
-  Form: "#3b82f6",
-  DM: "#06b6d4",
+  Form: BRAND_AMBER,
+  DM: "#335577",
   Manual: "#10b981",
 }
 
 function adTypeColor(adType: string, index: number): string {
-  return AD_TYPE_COLORS[adType] ?? BAR_PALETTE[index % BAR_PALETTE.length]
+  return AD_TYPE_COLORS[adType] ?? chartPaletteColor(index)
 }
 
 const FUNNEL_COLORS = [
@@ -100,8 +109,7 @@ function isLostStage(stage: string): boolean {
   return s.includes("perdido") || s.includes("lost") || s.includes("terminado")
 }
 
-function barColor(i: number) { return BAR_PALETTE[i % BAR_PALETTE.length] }
-function stageColor(stage: string, index: number) { return STAGE_COLORS[stage] ?? BAR_PALETTE[index % BAR_PALETTE.length] }
+function stageColor(stage: string, index: number) { return STAGE_COLORS[stage] ?? chartPaletteColor(index) }
 
 // Pauta names from GHL look like "HEADLINE - URL - NUMERIC_ID" with the
 // headline repeating across many creatives. Truncating from the left collapses
@@ -136,16 +144,6 @@ function NonZeroTooltipContent(props: any) {
   if (!props.active || filtered.length === 0) return null
   return <ChartTooltipContent {...props} payload={filtered} />
 }
-
-function TotalBadge({ value }: { value: number | string }) {
-  return (
-    <span className="ml-auto inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
-      Total: {typeof value === "number" ? value.toLocaleString() : value}
-    </span>
-  )
-}
-
-const iconCls = "h-4 w-4 shrink-0 text-muted-foreground"
 
 export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "" }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
@@ -373,7 +371,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
   }, [opportunities, contactToPautas, stageOrder])
 
   const pautaByStageConfig = Object.fromEntries(
-    pautaByStageKeys.map((k, i) => [k, { label: shortPautaName(k), color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+    pautaByStageKeys.map((k, i) => [k, { label: shortPautaName(k), color: CHART_PALETTE[i % CHART_PALETTE.length] }])
   )
 
   const pautaByStageTotal = pautaByStageRows.reduce(
@@ -460,24 +458,29 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     return { oppsByDayRows: rows, oppsByDayKeys: keys }
   }, [opportunities])
 
+  const paidSocialLeadCount = useMemo(
+    () => opportunities.filter((o) => isPaidSocial(o)).length,
+    [opportunities],
+  )
+
   return (
-    <div className="flex flex-col gap-4 px-6 pb-6">
+    <DashboardShell>
+      <MarketingSummaryStrip
+        opportunities={opportunities.length}
+        pautas={pautas.length}
+        paidSocialLeads={paidSocialLeadCount}
+      />
 
-      {/* Row 1: Oportunidades por fuente del CRM + Pautas por Tipo */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-
-        {/* Donut + ranked bar list by ad type */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <Tag className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Oportunidades por fuente del CRM</CardTitle>
-            <TotalBadge value={opportunities.length} />
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader
+            title="Oportunidades por fuente del CRM"
+            total={opportunities.length}
+            icon={Tag}
+          />
+          <ChartCardContent>
             {leadsByAdType.length === 0 ? (
-              <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-                Sin datos de tipo de anuncio.
-              </div>
+              <ChartEmpty message="Sin datos de tipo de anuncio." height={200} />
             ) : (() => {
               const total = leadsByAdType.reduce((s, e) => s + e.value, 0)
               const maxVal = leadsByAdType[0].value
@@ -572,32 +575,23 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                 </div>
               )
             })()}
-            <p className="mt-2 text-center text-[10px] text-muted-foreground">
-              Haz clic en una fila para ver los leads
-            </p>
-          </CardContent>
-        </Card>
+            <ChartHint>Haz clic en una fila para ver los leads</ChartHint>
+          </ChartCardContent>
+        </DashboardCard>
 
-        {/* Pautas por Tipo */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center gap-2 pb-2">
-            <FileText className={iconCls} />
-            <CardTitle className="text-sm font-semibold">Pautas por Tipo</CardTitle>
-            <TotalBadge value={pautas.length} />
-          </CardHeader>
-          <CardContent>
+        <DashboardCard>
+          <ChartCardHeader title="Pautas por Tipo" total={pautas.length} icon={FileText} />
+          <ChartCardContent>
             {pautasByTipo.length === 0 ? (
-              <div className="flex h-[220px] items-center justify-center text-sm text-muted-foreground">
-                Sin datos de Pautas.
-              </div>
+              <ChartEmpty message="Sin datos de Pautas." height={220} />
             ) : (
               <>
-                <ChartContainer config={{ count: { label: "Pautas", color: "#2563eb" } }} className="aspect-auto" style={{ height: Math.max(220, pautasByTipo.length * 44 + 20) }}>
+                <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: Math.max(220, pautasByTipo.length * 44 + 20) }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart layout="vertical" data={pautasByTipo} margin={{ top: 5, right: 30, left: 8, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                      <XAxis type="number" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="tipo" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} width={150} />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} width={150} />
                       <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
                       <Bar
                         dataKey="count"
@@ -611,37 +605,29 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         )}
                       >
                         {pautasByTipo.map((entry, i) => (
-                          <Cell key={entry.tipo} fill={barColor(i)} />
+                          <Cell key={entry.tipo} fill={chartPaletteColor(i)} />
                         ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
-                <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver las pautas</p>
+                <ChartHint>Haz clic en una barra para ver las pautas</ChartHint>
               </>
             )}
-          </CardContent>
-        </Card>
-
+          </ChartCardContent>
+        </DashboardCard>
       </div>
 
-      {/* Pautas creadas por Mes — full width stacked bar */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center gap-2 pb-2">
-          <Calendar className={iconCls} />
-          <CardTitle className="text-sm font-semibold">Pautas creadas por Mes</CardTitle>
-          <TotalBadge value={pautas.length} />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader title="Pautas creadas por Mes" total={pautas.length} icon={Calendar} />
+        <ChartCardContent>
           {pautasByMonthKeys.length === 0 ? (
-            <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">
-              Sin datos de Pautas.
-            </div>
+            <ChartEmpty message="Sin datos de Pautas." height={280} />
           ) : (
             <>
               <ChartContainer
                 config={Object.fromEntries(
-                  pautasByMonthKeys.map((k, i) => [k, { label: k, color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+                  pautasByMonthKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
                 )}
                 className="aspect-auto"
                 style={{ height: 280 }}
@@ -652,10 +638,10 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                     margin={{ top: 5, right: 16, left: 8, bottom: 60 }}
                     barCategoryGap="20%"
                   >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="monthLabel"
-                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
                       tickLine={false}
                       axisLine={false}
                       interval={0}
@@ -663,7 +649,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       textAnchor="end"
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={{ ...CHART_TICK }}
                       tickLine={false}
                       axisLine={false}
                       allowDecimals={false}
@@ -678,7 +664,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
                         radius={i === pautasByMonthKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={40}
                         cursor="pointer"
@@ -699,47 +685,45 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">
-                Apilado por tipo · haz clic en un segmento para ver las pautas
-              </p>
+              <ChartHint>Apilado por tipo · haz clic en un segmento para ver las pautas</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* Row 2: Oportunidades creadas por tiempo y fuente — full width */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center gap-2 pb-2">
-          <BarChart3 className={iconCls} />
-          <CardTitle className="text-sm font-semibold">Oportunidades creadas por tiempo y fuente (últimos 30 días)</CardTitle>
-          <TotalBadge value={oppsByDayRows.reduce((s, r) => s + oppsByDayKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0), 0)} />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader
+          title="Oportunidades creadas por tiempo y fuente (últimos 30 días)"
+          total={oppsByDayRows.reduce(
+            (s, r) => s + oppsByDayKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
+            0,
+          )}
+          icon={BarChart3}
+        />
+        <ChartCardContent>
           {oppsByDayKeys.length === 0 ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
-              Sin datos en los últimos 30 días.
-            </div>
+            <ChartEmpty message="Sin datos en los últimos 30 días." height={260} />
           ) : (
             <>
               <ChartContainer
                 config={Object.fromEntries(
-                  oppsByDayKeys.map((k, i) => [k, { label: k, color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+                  oppsByDayKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
                 )}
                 className="aspect-auto"
                 style={{ height: 280 }}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={oppsByDayRows} margin={{ top: 5, right: 16, left: 8, bottom: 5 }} barCategoryGap="20%">
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="day"
-                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
                       tickLine={false}
                       axisLine={false}
                       interval={4}
                     />
                     <YAxis
-                      tick={{ fontSize: 11, fill: "#6b7280" }}
+                      tick={{ ...CHART_TICK }}
                       tickLine={false}
                       axisLine={false}
                       allowDecimals={false}
@@ -754,7 +738,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
                         radius={i === oppsByDayKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={40}
                         cursor="pointer"
@@ -778,34 +762,27 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">Apilado por fuente del CRM · eje X cada 5 días</p>
+              <ChartHint>Apilado por fuente del CRM · eje X cada 5 días</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* Row 3: Pautas por Nombre — full width */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center gap-2 pb-2">
-          <FileText className={iconCls} />
-          <CardTitle className="text-sm font-semibold">Pautas por Nombre (Top 30)</CardTitle>
-          <TotalBadge value={pautas.length} />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader title="Pautas por Nombre (Top 30)" total={pautas.length} icon={FileText} />
+        <ChartCardContent>
           {pautasByNombre.length === 0 ? (
-            <div className="flex h-[520px] items-center justify-center text-sm text-muted-foreground">
-              Sin datos de Pautas.
-            </div>
+            <ChartEmpty message="Sin datos de Pautas." height={380} />
           ) : (
             <>
-              <ChartContainer config={{ count: { label: "Pautas", color: "#2563eb" } }} className="aspect-auto" style={{ height: 380 }}>
+              <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: 380 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={pautasByNombre} margin={{ top: 5, right: 16, left: 8, bottom: 120 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="nombre"
                       type="category"
-                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
                       tickLine={false}
                       axisLine={false}
                       interval={0}
@@ -813,7 +790,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       textAnchor="end"
                       tickFormatter={(v: string) => v.length > 28 ? v.slice(0, 28) + "…" : v}
                     />
-                    <YAxis type="number" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                     <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
                     <Bar
                       dataKey="count"
@@ -827,39 +804,32 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       )}
                     >
                       {pautasByNombre.map((entry, i) => (
-                        <Cell key={entry.nombre} fill={barColor(i)} />
+                        <Cell key={entry.nombre} fill={chartPaletteColor(i)} />
                       ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">Haz clic en una barra para ver las pautas</p>
+              <ChartHint>Haz clic en una barra para ver las pautas</ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* Row 4: Pautas por Etapa del Pipeline — stacked bars (X: stage, Y: opp count, color: pauta) */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-row items-center gap-2 pb-2">
-          <Layers className={iconCls} />
-          <CardTitle className="text-sm font-semibold">Pautas por Etapa del Pipeline</CardTitle>
-          <TotalBadge value={pautaByStageTotal} />
-        </CardHeader>
-        <CardContent>
+      <DashboardCard>
+        <ChartCardHeader title="Pautas por Etapa del Pipeline" total={pautaByStageTotal} icon={Layers} />
+        <ChartCardContent>
           {pautaByStageKeys.length === 0 ? (
-            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-              Sin oportunidades vinculadas a pautas.
-            </div>
+            <ChartEmpty message="Sin oportunidades vinculadas a pautas." height={300} />
           ) : (
             <>
               <ChartContainer config={pautaByStageConfig} className="aspect-auto" style={{ height: 480 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={pautaByStageRows} margin={{ top: 5, right: 16, left: 8, bottom: 140 }} barCategoryGap="20%">
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="stage"
-                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
                       tickLine={false}
                       axisLine={false}
                       interval={0}
@@ -867,7 +837,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       textAnchor="end"
                       tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + "…" : v}
                     />
-                    <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                     <ChartTooltip content={<NonZeroTooltipContent />} />
                     <Legend
                       wrapperStyle={{ fontSize: 10, paddingTop: 8, lineHeight: "16px" }}
@@ -886,7 +856,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
                         radius={i === pautaByStageKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={56}
                         cursor="pointer"
@@ -910,15 +880,14 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
-              <p className="mt-1 text-center text-[10px] text-muted-foreground">
+              <ChartHint>
                 Apilado por Pauta · top 30 pautas · haz clic en un segmento para ver las oportunidades
-              </p>
+              </ChartHint>
             </>
           )}
-        </CardContent>
-      </Card>
+        </ChartCardContent>
+      </DashboardCard>
 
-      {/* Drill-down drawer */}
       <ChartDrillDrawer
         drill={drill}
         onDrillChange={setDrill}
@@ -929,6 +898,6 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         appointments={appointments}
         locationId={locationId}
       />
-    </div>
+    </DashboardShell>
   )
 }
