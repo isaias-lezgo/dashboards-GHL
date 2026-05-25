@@ -20,8 +20,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Pauta, Task, Call } from "@/lib/types"
-import { Megaphone, Globe, BarChart3, Layers, TrendingDown, Tag, FileText } from "lucide-react"
+import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
+import { Megaphone, Globe, BarChart3, Layers, TrendingDown, Tag, FileText, Calendar } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 
 interface MarketingDashboardProps {
@@ -30,6 +30,7 @@ interface MarketingDashboardProps {
   pautas: Pauta[]
   tasks?: Task[]
   calls?: Call[]
+  appointments?: Appointment[]
   locationId?: string
 }
 
@@ -102,6 +103,27 @@ function isLostStage(stage: string): boolean {
 function barColor(i: number) { return BAR_PALETTE[i % BAR_PALETTE.length] }
 function stageColor(stage: string, index: number) { return STAGE_COLORS[stage] ?? BAR_PALETTE[index % BAR_PALETTE.length] }
 
+// Pauta names from GHL look like "HEADLINE - URL - NUMERIC_ID" with the
+// headline repeating across many creatives. Truncating from the left collapses
+// them into identical strings, so we extract the headline plus a short token
+// from the URL path (e.g. Instagram shortcode, fb.me slug) for uniqueness.
+function shortPautaName(full: string): string {
+  const parts = full.split(" - ").map((s) => s.trim()).filter(Boolean)
+  const head = parts[0] ?? full
+  const url = parts[1] ?? ""
+  let token = ""
+  try {
+    const u = new URL(url)
+    const slug = u.pathname.split("/").filter(Boolean).pop() ?? ""
+    token = slug || u.hostname.replace(/^www\./, "")
+  } catch {
+    token = ""
+  }
+  if (token.length > 10) token = token.slice(0, 10)
+  const shortHead = head.length > 22 ? head.slice(0, 22) + "…" : head
+  return token ? `${shortHead} · ${token}` : shortHead
+}
+
 function sourceLabel(opp: Opportunity): string {
   const parts: string[] = []
   if (opp.adType) parts.push(opp.adType)
@@ -125,7 +147,7 @@ function TotalBadge({ value }: { value: number | string }) {
 
 const iconCls = "h-4 w-4 shrink-0 text-muted-foreground"
 
-export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], locationId = "" }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "" }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
 
@@ -296,6 +318,69 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       .map(([nombre, count]) => ({ nombre, count }))
   }, [pautas])
 
+  // contactId → { pautaName → Pauta[] } so we can both count opps per pauta
+  // and surface the matching pautas in the drill-down.
+  const contactToPautas = useMemo(() => {
+    const m = new Map<string, Map<string, Pauta[]>>()
+    for (const p of pautas) {
+      if (!p.contactId) continue
+      let byName = m.get(p.contactId)
+      if (!byName) {
+        byName = new Map<string, Pauta[]>()
+        m.set(p.contactId, byName)
+      }
+      const arr = byName.get(p.nombrePauta) ?? []
+      arr.push(p)
+      byName.set(p.nombrePauta, arr)
+    }
+    return m
+  }, [pautas])
+
+  // Pauta × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = pauta name).
+  // A contact may have multiple pautas — an opportunity is counted once per linked pauta,
+  // so stacked totals can exceed opp count when contacts have multiple pautas attached.
+  const { pautaByStageRows, pautaByStageKeys } = useMemo(() => {
+    const totals = new Map<string, number>()
+    const perStage = new Map<string, Map<string, number>>()
+    for (const stage of stageOrder) perStage.set(stage, new Map())
+
+    for (const opp of opportunities) {
+      const byName = contactToPautas.get(opp.contactId)
+      if (!byName) continue
+      const stageMap = perStage.get(opp.stage)
+      if (!stageMap) continue
+      for (const name of byName.keys()) {
+        stageMap.set(name, (stageMap.get(name) ?? 0) + 1)
+        totals.set(name, (totals.get(name) ?? 0) + 1)
+      }
+    }
+
+    const keys = Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([name]) => name)
+
+    const rows = stageOrder
+      .map((stage) => {
+        const row: Record<string, string | number> = { stage }
+        const stageMap = perStage.get(stage)!
+        for (const k of keys) row[k] = stageMap.get(k) ?? 0
+        return row
+      })
+      .filter((row) => keys.some((k) => (row[k] as number) > 0))
+
+    return { pautaByStageRows: rows, pautaByStageKeys: keys }
+  }, [opportunities, contactToPautas, stageOrder])
+
+  const pautaByStageConfig = Object.fromEntries(
+    pautaByStageKeys.map((k, i) => [k, { label: shortPautaName(k), color: BAR_PALETTE[i % BAR_PALETTE.length] }])
+  )
+
+  const pautaByStageTotal = pautaByStageRows.reduce(
+    (s, r) => s + pautaByStageKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
+    0
+  )
+
   // Last 30 days from today, grouped by adType (fuente del CRM).
   const { oppsByDayRows, oppsByDayKeys } = useMemo(() => {
     if (opportunities.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
@@ -325,7 +410,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     if (keys.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
 
     const rows = days.map((isoDay) => {
-      const row: Record<string, string | number> = { day: isoDay.slice(5) }
+      const row: Record<string, string | number> = { day: isoDay.slice(5), isoDay }
       for (const k of keys) row[k] = 0
       for (let i = 0; i < opportunities.length; i++) {
         if (oppDates[i] !== isoDay) continue
@@ -553,6 +638,22 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         fill={BAR_PALETTE[i % BAR_PALETTE.length]}
                         radius={i === oppsByDayKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={40}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const isoDate = data.isoDay as string
+                          const items = opportunities.filter(
+                            (o) =>
+                              toUTCDateStr(o.createdAt as string | number | null | undefined) === isoDate &&
+                              (o.adType || "Otro") === key
+                          )
+                          openDrill(
+                            `${key} · ${data.day}`,
+                            items,
+                            `${items.length} oportunidad${items.length !== 1 ? "es" : ""} el ${isoDate}`
+                          )
+                        }}
                       />
                     ))}
                   </BarChart>
@@ -619,6 +720,85 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         </CardContent>
       </Card>
 
+      {/* Row 4: Pautas por Etapa del Pipeline — stacked bars (X: stage, Y: opp count, color: pauta) */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <Layers className={iconCls} />
+          <CardTitle className="text-sm font-semibold">Pautas por Etapa del Pipeline</CardTitle>
+          <TotalBadge value={pautaByStageTotal} />
+        </CardHeader>
+        <CardContent>
+          {pautaByStageKeys.length === 0 ? (
+            <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+              Sin oportunidades vinculadas a pautas.
+            </div>
+          ) : (
+            <>
+              <ChartContainer config={pautaByStageConfig} className="aspect-auto" style={{ height: 480 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={pautaByStageRows} margin={{ top: 5, right: 16, left: 8, bottom: 140 }} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="stage"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + "…" : v}
+                    />
+                    <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <ChartTooltip content={<NonZeroTooltipContent />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 10, paddingTop: 8, lineHeight: "16px" }}
+                      iconSize={8}
+                      formatter={(value: string) => (
+                        <span
+                          style={{ color: "#374151", marginRight: 4 }}
+                          title={value}
+                        >
+                          {shortPautaName(value)}
+                        </span>
+                      )}
+                    />
+                    {pautaByStageKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={BAR_PALETTE[i % BAR_PALETTE.length]}
+                        radius={i === pautaByStageKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={56}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const stage = data.stage as string
+                          const items = opportunities.filter((o) => {
+                            if (o.stage !== stage) return false
+                            const byName = contactToPautas.get(o.contactId)
+                            return byName?.has(key) ?? false
+                          })
+                          openDrill(
+                            `${key} · ${stage}`,
+                            items,
+                            `${items.length} oportunidad${items.length !== 1 ? "es" : ""} en ${stage}`
+                          )
+                        }}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <p className="mt-1 text-center text-[10px] text-muted-foreground">
+                Apilado por Pauta · top 30 pautas · haz clic en un segmento para ver las oportunidades
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Drill-down drawer */}
       <ChartDrillDrawer
         drill={drill}
@@ -627,6 +807,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        appointments={appointments}
         locationId={locationId}
       />
     </div>
