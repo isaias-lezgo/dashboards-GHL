@@ -600,6 +600,42 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     return { rows, customKeysCount: customKeys.length, standardKeysCount: STANDARD_FIELDS.length }
   }, [opportunities])
 
+  const callsByAdvisorData = useMemo(() => {
+    const byAdvisor = new Map<
+      string,
+      { completed: number; missed: number; noAnswer: number; total: number; contactIds: { completed: string[]; missed: string[]; noAnswer: string[] } }
+    >()
+    for (const c of calls) {
+      if (!c.assignedTo) continue
+      if (!byAdvisor.has(c.assignedTo)) {
+        byAdvisor.set(c.assignedTo, {
+          completed: 0,
+          missed: 0,
+          noAnswer: 0,
+          total: 0,
+          contactIds: { completed: [], missed: [], noAnswer: [] },
+        })
+      }
+      const entry = byAdvisor.get(c.assignedTo)!
+      entry.total++
+      if (c.status === "completed") {
+        entry.completed++
+        entry.contactIds.completed.push(c.contactId)
+      } else if (c.status === "missed") {
+        entry.missed++
+        entry.contactIds.missed.push(c.contactId)
+      } else if (c.status === "no-answer") {
+        entry.noAnswer++
+        entry.contactIds.noAnswer.push(c.contactId)
+      }
+    }
+    const rows = [...byAdvisor.entries()]
+      .map(([member, v]) => ({ member, ...v }))
+      .sort((a, b) => b.total - a.total)
+    const totalCalls = rows.reduce((s, r) => s + r.total, 0)
+    return { rows, totalCalls }
+  }, [calls])
+
   const apptChartConfig = useMemo(
     () =>
       Object.fromEntries(
@@ -1260,6 +1296,74 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </BarChart>
               </ChartContainer>
               <ChartHint>Haz clic en una barra para ver las oportunidades</ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
+      <DashboardCard>
+        <ChartCardHeader title="Llamadas por asesor" total={callsByAdvisorData.totalCalls} />
+        <ChartCardContent>
+          {callsByAdvisorData.rows.length === 0 ? (
+            <ChartEmpty message="Sin llamadas registradas" height={192} />
+          ) : (
+            <>
+              <ChartContainer
+                config={{
+                  completed: { label: "Completadas", color: "#10b981" },
+                  missed: { label: "Perdidas", color: "#ef4444" },
+                  noAnswer: { label: "Sin respuesta", color: "#94a3b8" },
+                }}
+                style={{ height: Math.max(200, callsByAdvisorData.rows.length * 64) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={callsByAdvisorData.rows}
+                  layout="vertical"
+                  margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
+                  <Legend />
+                  <Bar
+                    dataKey="completed"
+                    stackId="calls"
+                    fill="#10b981"
+                    cursor="pointer"
+                    onClick={(data: any) =>
+                      openDrillContacts(`${data.member} · Completadas`, data.contactIds?.completed ?? [])
+                    }
+                  />
+                  <Bar
+                    dataKey="missed"
+                    stackId="calls"
+                    fill="#ef4444"
+                    cursor="pointer"
+                    onClick={(data: any) =>
+                      openDrillContacts(`${data.member} · Perdidas`, data.contactIds?.missed ?? [])
+                    }
+                  />
+                  <Bar
+                    dataKey="noAnswer"
+                    stackId="calls"
+                    fill="#94a3b8"
+                    cursor="pointer"
+                    onClick={(data: any) =>
+                      openDrillContacts(`${data.member} · Sin respuesta`, data.contactIds?.noAnswer ?? [])
+                    }
+                  >
+                    <LabelList
+                      dataKey="total"
+                      position="right"
+                      formatter={(v: unknown) => (typeof v === "number" ? String(v) : "")}
+                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+              <ChartHint>Haz clic en un segmento para ver los contactos</ChartHint>
             </>
           )}
         </ChartCardContent>
