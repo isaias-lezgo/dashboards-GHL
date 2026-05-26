@@ -636,6 +636,28 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     return { rows, totalCalls }
   }, [calls])
 
+  const visitFulfillmentData = useMemo(() => {
+    const byAdvisor = new Map<string, { agendadas: number; realizadas: number }>()
+    for (const a of appointments) {
+      if (!a.assignedTo) continue
+      if (!byAdvisor.has(a.assignedTo)) byAdvisor.set(a.assignedTo, { agendadas: 0, realizadas: 0 })
+      const entry = byAdvisor.get(a.assignedTo)!
+      entry.agendadas++
+      if (a.status === "showed") entry.realizadas++
+    }
+    const rows = [...byAdvisor.entries()]
+      .filter(([, v]) => v.agendadas > 0)
+      .map(([member, v]) => ({
+        member,
+        agendadas: v.agendadas,
+        realizadas: v.realizadas,
+        rate: v.agendadas > 0 ? (v.realizadas / v.agendadas) * 100 : 0,
+      }))
+      .sort((a, b) => b.rate - a.rate)
+    const totalAgendadas = rows.reduce((s, r) => s + r.agendadas, 0)
+    return { rows, totalAgendadas }
+  }, [appointments])
+
   const apptChartConfig = useMemo(
     () =>
       Object.fromEntries(
@@ -1364,6 +1386,82 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </BarChart>
               </ChartContainer>
               <ChartHint>Haz clic en un segmento para ver los contactos</ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
+      <DashboardCard>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
+            Visitas agendadas vs realizadas
+            <InfoTooltip content="Compara visitas agendadas (todas las citas, sin importar estatus) contra realizadas (estatus = 'showed'). La etiqueta muestra la tasa de cumplimiento del asesor." />
+          </CardTitle>
+          <TotalBadge value={visitFulfillmentData.totalAgendadas} />
+        </CardHeader>
+        <ChartCardContent>
+          {visitFulfillmentData.rows.length === 0 ? (
+            <ChartEmpty message="Sin visitas para mostrar" height={192} />
+          ) : (
+            <>
+              <ChartContainer
+                config={{
+                  agendadas: { label: "Agendadas", color: STRUCTURAL_NAVY },
+                  realizadas: { label: "Realizadas", color: BRAND_AMBER },
+                }}
+                style={{ height: Math.max(200, visitFulfillmentData.rows.length * 80) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={visitFulfillmentData.rows}
+                  layout="vertical"
+                  margin={{ left: 8, right: 56, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
+                  <Legend />
+                  <Bar
+                    dataKey="agendadas"
+                    fill={STRUCTURAL_NAVY}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const matched = appointments.filter((a) => a.assignedTo === data.member)
+                      setApptDrill({
+                        open: true,
+                        title: `${data.member} · Visitas agendadas`,
+                        appointments: matched,
+                      })
+                    }}
+                  />
+                  <Bar
+                    dataKey="realizadas"
+                    fill={BRAND_AMBER}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const matched = appointments.filter(
+                        (a) => a.assignedTo === data.member && a.status === "showed"
+                      )
+                      setApptDrill({
+                        open: true,
+                        title: `${data.member} · Visitas realizadas`,
+                        appointments: matched,
+                      })
+                    }}
+                  >
+                    <LabelList
+                      dataKey="rate"
+                      position="right"
+                      formatter={(v: unknown) =>
+                        typeof v === "number" ? `${v.toFixed(0)}%` : ""
+                      }
+                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+              <ChartHint>Haz clic en una barra para ver las citas</ChartHint>
             </>
           )}
         </ChartCardContent>
