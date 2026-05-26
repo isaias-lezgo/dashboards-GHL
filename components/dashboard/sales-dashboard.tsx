@@ -15,7 +15,6 @@ import { CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Call, Message, Task, Appointment } from "@/lib/types"
 import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
@@ -36,6 +35,7 @@ import {
   KpiCard,
   SectionHeader,
   TotalBadge,
+  NonZeroTooltipContent,
 } from "./dashboard-ui"
 import {
   AppointmentDrillDrawer,
@@ -522,6 +522,84 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     return { data, advisors, statuses, total }
   }, [appointments])
 
+  const emptyFieldsData = useMemo(() => {
+    const STANDARD_FIELDS = ["value", "source", "notes", "tags", "priority"] as const
+
+    function isStandardEmpty(opp: Opportunity, field: typeof STANDARD_FIELDS[number]): boolean {
+      switch (field) {
+        case "value":
+          return !opp.value || opp.value === 0
+        case "tags":
+          return !opp.tags || opp.tags.length === 0
+        case "source":
+        case "notes":
+        case "priority": {
+          const v = opp[field]
+          return v == null || (typeof v === "string" && v.trim() === "")
+        }
+      }
+    }
+
+    const universeCustomKeys = new Set<string>()
+    for (const opp of opportunities) {
+      if (opp.customFieldsResolved) {
+        for (const k of Object.keys(opp.customFieldsResolved)) {
+          universeCustomKeys.add(k)
+        }
+      }
+    }
+    const customKeys = [...universeCustomKeys]
+
+    function countEmpty(opp: Opportunity): { standard: number; custom: number; total: number } {
+      let standard = 0
+      for (const f of STANDARD_FIELDS) {
+        if (isStandardEmpty(opp, f)) standard++
+      }
+      let custom = 0
+      const cf = opp.customFieldsResolved ?? {}
+      for (const k of customKeys) {
+        const v = cf[k]
+        if (v == null || (typeof v === "string" && v.trim() === "")) custom++
+      }
+      return { standard, custom, total: standard + custom }
+    }
+
+    const byAdvisor = new Map<string, { opps: Opportunity[]; perOpp: Map<string, number>; totalStandard: number; totalCustom: number }>()
+    for (const opp of opportunities) {
+      if (!opp.assignedTo) continue
+      const counts = countEmpty(opp)
+      if (!byAdvisor.has(opp.assignedTo)) {
+        byAdvisor.set(opp.assignedTo, { opps: [], perOpp: new Map(), totalStandard: 0, totalCustom: 0 })
+      }
+      const entry = byAdvisor.get(opp.assignedTo)!
+      entry.opps.push(opp)
+      entry.perOpp.set(opp.id, counts.total)
+      entry.totalStandard += counts.standard
+      entry.totalCustom += counts.custom
+    }
+
+    const rows = [...byAdvisor.entries()].map(([member, entry]) => {
+      const n = entry.opps.length
+      const avgStandard = n > 0 ? entry.totalStandard / n : 0
+      const avgCustom = n > 0 ? entry.totalCustom / n : 0
+      return {
+        member,
+        avgStandard,
+        avgCustom,
+        avgTotal: avgStandard + avgCustom,
+        totalOpps: n,
+        totalStandard: entry.totalStandard,
+        totalCustom: entry.totalCustom,
+        opps: entry.opps,
+        perOpp: entry.perOpp,
+      }
+    })
+
+    rows.sort((a, b) => b.avgTotal - a.avgTotal)
+
+    return { rows, customKeysCount: customKeys.length, standardKeysCount: STANDARD_FIELDS.length }
+  }, [opportunities])
+
   const apptChartConfig = useMemo(
     () =>
       Object.fromEntries(
@@ -621,7 +699,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                   <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   {allStages.map((stage, i) => (
                     <Bar
@@ -676,7 +754,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     tick={{ fontSize: 12 }}
                   />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   <Bar dataKey="won" stackId="a" fill={WIN_LOSS_CONFIG.won.color} cursor="pointer"
                     onClick={(data: any) => openDrill(`${data.member} · Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
@@ -734,7 +812,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip
                     content={
-                      <ChartTooltipContent
+                      <NonZeroTooltipContent
                         formatter={(value) =>
                           typeof value === "number"
                             ? value.toLocaleString("es-MX", {
@@ -793,7 +871,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 />
                 <ChartTooltip
                   content={
-                    <ChartTooltipContent
+                    <NonZeroTooltipContent
                       formatter={(value) =>
                         typeof value === "number" ? formatMinutes(value) : String(value)
                       }
@@ -850,7 +928,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip
                     content={
-                      <ChartTooltipContent
+                      <NonZeroTooltipContent
                         formatter={(value) =>
                           typeof value === "number"
                             ? value.toLocaleString("es-MX", {
@@ -899,7 +977,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     interval={0}
                   />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Bar dataKey="count" fill={BRAND_AMBER} radius={[3, 3, 0, 0]} cursor="pointer"
                     onClick={(data: any) => openDrill(`Período: ${data.period}`, data.opps ?? [])}
                   />
@@ -944,7 +1022,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     interval={0}
                   />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Bar
                     dataKey="count"
                     fill={STRUCTURAL_NAVY}
@@ -992,7 +1070,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   {convByAdvisorMonthData.advisors.map((advisor, i) => (
                     <Bar
@@ -1046,7 +1124,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend
                     content={() => (
                       <div className="flex flex-wrap gap-3 justify-center pt-2">
@@ -1101,6 +1179,92 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         </ChartCardContent>
       </DashboardCard>
 
+      <SectionHeader title="Responsabilidad del Asesor" />
+
+      <DashboardCard>
+        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
+          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
+            Campos vacíos por asesor
+            <InfoTooltip content="Promedio de campos vacíos por oportunidad. Mide qué tan completamente cada asesor llena los datos de sus oportunidades. Considera campos estándar (valor, fuente, notas, tags, prioridad) y todos los custom fields presentes en el dataset." />
+          </CardTitle>
+          <TotalBadge value={emptyFieldsData.rows.reduce((s, r) => s + r.totalOpps, 0)} />
+        </CardHeader>
+        <ChartCardContent>
+          {emptyFieldsData.rows.length === 0 ? (
+            <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
+          ) : (
+            <>
+              <ChartContainer
+                config={{
+                  avgStandard: { label: "Estándar vacíos", color: STRUCTURAL_NAVY },
+                  avgCustom: { label: "Custom vacíos", color: BRAND_AMBER },
+                }}
+                style={{ height: Math.max(200, emptyFieldsData.rows.length * 64) }}
+                className="w-full"
+              >
+                <BarChart
+                  data={emptyFieldsData.rows}
+                  layout="vertical"
+                  margin={{ left: 8, right: 64, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <ChartTooltip
+                    content={
+                      <NonZeroTooltipContent
+                        formatter={(value) =>
+                          typeof value === "number" ? value.toFixed(1) : String(value)
+                        }
+                      />
+                    }
+                  />
+                  <Legend />
+                  <Bar
+                    dataKey="avgStandard"
+                    stackId="empty"
+                    fill={STRUCTURAL_NAVY}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const row = emptyFieldsData.rows.find((r) => r.member === data.member)
+                      if (!row) return
+                      const sorted = [...row.opps].sort(
+                        (a, b) => (row.perOpp.get(b.id) ?? 0) - (row.perOpp.get(a.id) ?? 0)
+                      )
+                      openDrill(`${row.member} · Oportunidades con campos vacíos`, sorted)
+                    }}
+                  />
+                  <Bar
+                    dataKey="avgCustom"
+                    stackId="empty"
+                    fill={BRAND_AMBER}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const row = emptyFieldsData.rows.find((r) => r.member === data.member)
+                      if (!row) return
+                      const sorted = [...row.opps].sort(
+                        (a, b) => (row.perOpp.get(b.id) ?? 0) - (row.perOpp.get(a.id) ?? 0)
+                      )
+                      openDrill(`${row.member} · Oportunidades con campos vacíos`, sorted)
+                    }}
+                  >
+                    <LabelList
+                      dataKey="avgTotal"
+                      position="right"
+                      formatter={(v: unknown) =>
+                        typeof v === "number" ? `${v.toFixed(1)} vacíos/opp` : ""
+                      }
+                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+              <ChartHint>Haz clic en una barra para ver las oportunidades</ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
       <SectionHeader title="Análisis de Pérdidas" />
       <DashboardCard>
         <ChartCardHeader
@@ -1130,7 +1294,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   tick={{ fontSize: 12 }}
                 />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
+                <ChartTooltip content={<NonZeroTooltipContent />} />
                 <Legend />
                 {lostReasonsData.reasons.map((reason, i) => (
                   <Bar
@@ -1169,6 +1333,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         calls={calls}
         allOpportunities={opportunities}
         appointments={appointments}
+        messages={messages}
         locationId={locationId}
       />
     </DashboardShell>
