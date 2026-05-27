@@ -146,6 +146,21 @@ function shortPautaName(full: string): string {
   return token ? `${shortHead} · ${token}` : shortHead
 }
 
+function normalizeUrl(raw: string): string {
+  try {
+    const u = new URL(raw)
+    return (u.hostname + u.pathname).replace(/\/$/, "").toLowerCase()
+  } catch {
+    return ""
+  }
+}
+
+function extractPautaUrl(nombrePauta: string): string {
+  const parts = nombrePauta.split(" - ").map((s) => s.trim()).filter(Boolean)
+  const url = parts[1] ?? ""
+  return normalizeUrl(url)
+}
+
 function sourceLabel(opp: Opportunity): string {
   const parts: string[] = []
   if (opp.adType) parts.push(opp.adType)
