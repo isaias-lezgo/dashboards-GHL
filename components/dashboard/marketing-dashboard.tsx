@@ -17,10 +17,9 @@ import {
 import {
   ChartContainer,
   ChartTooltip,
-  ChartTooltipContent,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -35,6 +34,7 @@ import {
   ChartEmpty,
   ChartHint,
   MarketingSummaryStrip,
+  NonZeroTooltipContent,
 } from "./dashboard-ui"
 
 interface MarketingDashboardProps {
@@ -98,6 +98,20 @@ const FUNNEL_COLORS = [
 const PAID_SOCIAL_SOURCES = ["meta", "facebook", "instagram", "tiktok", "fb", "snapchat", "pinterest"]
 const PAID_SOCIAL_MEDIUMS = ["paid_social", "paidsocial", "paid social", "cpc", "cpm", "paid_search", "paid_ads"]
 
+const PAID_SEARCH_SOURCES = ["google", "bing", "yahoo", "baidu", "duckduckgo"]
+const PAID_SEARCH_MEDIUMS = ["cpc", "ppc", "paid_search", "paidsearch", "google_ads", "sem"]
+
+function isPaidTraffic(opp: Opportunity): boolean {
+  const src = (opp.source ?? "").toLowerCase()
+  const med = (opp.adType ?? "").toLowerCase()
+  return (
+    PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) ||
+    PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m)) ||
+    PAID_SEARCH_SOURCES.some((s) => src.includes(s)) ||
+    PAID_SEARCH_MEDIUMS.some((m) => med.includes(m))
+  )
+}
+
 function isPaidSocial(opp: Opportunity): boolean {
   const src = (opp.source ?? "").toLowerCase()
   const med = (opp.adType ?? "").toLowerCase()
@@ -139,11 +153,6 @@ function sourceLabel(opp: Opportunity): string {
   return parts.length > 0 ? parts.join(" / ") : "Directo"
 }
 
-function NonZeroTooltipContent(props: any) {
-  const filtered = (props.payload ?? []).filter((p: any) => Number(p?.value) > 0)
-  if (!props.active || filtered.length === 0) return null
-  return <ChartTooltipContent {...props} payload={filtered} />
-}
 
 export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "" }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
@@ -463,6 +472,61 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     [opportunities],
   )
 
+  // Panel 2 — Leads by Ad ID
+  const leadsByAdId = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of opportunities) {
+      const key = o.adId || "Sin ID"
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([adId, count]) => ({ adId, count }))
+  }, [opportunities])
+
+  // Panel 3 — Leads by Landing URL
+  const leadsByUrl = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of opportunities) {
+      const key = o.attributionUrl || "Sin URL"
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([url, count]) => ({ url, count }))
+  }, [opportunities])
+
+  // Panel 4a — Paid traffic leads with at least one appointment
+  const paidTrafficWithAppt = useMemo(() => {
+    const apptContactIds = new Set(appointments.map((a) => a.contactId))
+    const counts = new Map<string, number>()
+    for (const o of opportunities) {
+      if (!isPaidTraffic(o)) continue
+      if (!apptContactIds.has(o.contactId)) continue
+      const key = o.source || "Desconocido"
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([source, count]) => ({ source, count }))
+  }, [opportunities, appointments])
+
+  // Panel 4b — Won deals from paid traffic, grouped by source
+  const wonPaidTraffic = useMemo(() => {
+    const counts = new Map<string, { count: number; value: number }>()
+    for (const o of opportunities) {
+      if (!isPaidTraffic(o) || o.status !== "won") continue
+      const key = o.source || "Desconocido"
+      const prev = counts.get(key) ?? { count: 0, value: 0 }
+      counts.set(key, { count: prev.count + 1, value: prev.value + o.value })
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([source, { count, value }]) => ({ source, count, value }))
+  }, [opportunities])
+
   return (
     <DashboardShell>
       <MarketingSummaryStrip
@@ -592,7 +656,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
                       <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <YAxis type="category" dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} width={150} />
-                      <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
+                      <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
                       <Bar
                         dataKey="count"
                         radius={[0, 6, 6, 0]}
@@ -791,7 +855,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       tickFormatter={(v: string) => v.length > 28 ? v.slice(0, 28) + "…" : v}
                     />
                     <YAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <ChartTooltip content={<ChartTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
+                    <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
                     <Bar
                       dataKey="count"
                       radius={[6, 6, 0, 0]}
@@ -887,6 +951,302 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
           )}
         </ChartCardContent>
       </DashboardCard>
+
+      {/* Panel 2 — Leads por ID de Anuncio / Panel 3 — Leads por URL de Aterrizaje */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DashboardCard>
+          <ChartCardHeader
+            title="Leads por ID de Anuncio (Top 15)"
+            total={leadsByAdId.reduce((s, e) => s + e.count, 0)}
+            icon={Tag}
+          />
+          <ChartCardContent>
+            {leadsByAdId.length === 0 ? (
+              <ChartEmpty message="Sin datos de ID de anuncio." height={220} />
+            ) : (
+              <>
+                <ChartContainer
+                  config={{ count: { label: "Leads", color: BRAND_AMBER } }}
+                  className="aspect-auto"
+                  style={{ height: Math.max(220, leadsByAdId.length * 44 + 20) }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={leadsByAdId}
+                      margin={{ top: 5, right: 30, left: 8, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="adId"
+                        tick={{ ...CHART_TICK }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={140}
+                        tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + "…" : v}
+                      />
+                      <ChartTooltip
+                        content={
+                          <NonZeroTooltipContent
+                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.adId ?? String(_)}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="count"
+                        radius={[0, 6, 6, 0]}
+                        name="Leads"
+                        maxBarSize={32}
+                        cursor="pointer"
+                        onClick={(data: any) =>
+                          openDrill(
+                            `Ad ID: ${data.adId}`,
+                            opportunities.filter((o) => (o.adId || "Sin ID") === data.adId)
+                          )
+                        }
+                      >
+                        {leadsByAdId.map((entry, i) => (
+                          <Cell key={entry.adId} fill={chartPaletteColor(i)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+                <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
+              </>
+            )}
+          </ChartCardContent>
+        </DashboardCard>
+
+        <DashboardCard>
+          <ChartCardHeader
+            title="Leads por URL de Aterrizaje (Top 15)"
+            total={leadsByUrl.reduce((s, e) => s + e.count, 0)}
+            icon={BarChart3}
+          />
+          <ChartCardContent>
+            {leadsByUrl.length === 0 ? (
+              <ChartEmpty message="Sin datos de URL de aterrizaje." height={220} />
+            ) : (
+              <>
+                <ChartContainer
+                  config={{ count: { label: "Leads", color: BRAND_AMBER } }}
+                  className="aspect-auto"
+                  style={{ height: Math.max(220, leadsByUrl.length * 44 + 20) }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={leadsByUrl}
+                      margin={{ top: 5, right: 30, left: 8, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="url"
+                        tick={{ ...CHART_TICK }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={160}
+                        tickFormatter={(v: string) => {
+                          try {
+                            const u = new URL(v)
+                            const slug = u.pathname.replace(/\/$/, "").split("/").pop() || u.hostname
+                            return slug.length > 22 ? slug.slice(0, 22) + "…" : slug
+                          } catch {
+                            return v.length > 22 ? v.slice(0, 22) + "…" : v
+                          }
+                        }}
+                      />
+                      <ChartTooltip
+                        content={
+                          <NonZeroTooltipContent
+                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.url ?? String(_)}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="count"
+                        radius={[0, 6, 6, 0]}
+                        name="Leads"
+                        maxBarSize={32}
+                        cursor="pointer"
+                        onClick={(data: any) =>
+                          openDrill(
+                            `URL: ${data.url}`,
+                            opportunities.filter((o) => (o.attributionUrl || "Sin URL") === data.url)
+                          )
+                        }
+                      >
+                        {leadsByUrl.map((entry, i) => (
+                          <Cell key={entry.url} fill={chartPaletteColor(i)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+                <ChartHint>Haz clic en una barra para ver los leads · URL completa en el tooltip</ChartHint>
+              </>
+            )}
+          </ChartCardContent>
+        </DashboardCard>
+      </div>
+
+      {/* Panel 4a — Tráfico Pagado con Cita / Panel 4b — Deals Ganados de Tráfico Pagado */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DashboardCard>
+          <ChartCardHeader
+            title="Leads de Tráfico Pagado con Cita"
+            total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
+            icon={Calendar}
+          />
+          <ChartCardContent>
+            {paidTrafficWithAppt.length === 0 ? (
+              <ChartEmpty message="Sin leads de tráfico pagado con cita." height={220} />
+            ) : (
+              <>
+                <ChartContainer
+                  config={{ count: { label: "Con cita", color: BRAND_AMBER } }}
+                  className="aspect-auto"
+                  style={{ height: Math.max(220, paidTrafficWithAppt.length * 44 + 20) }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={paidTrafficWithAppt}
+                      margin={{ top: 5, right: 30, left: 8, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="source"
+                        tick={{ ...CHART_TICK }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={130}
+                        tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 18) + "…" : v}
+                      />
+                      <ChartTooltip
+                        content={
+                          <NonZeroTooltipContent
+                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.source ?? String(_)}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="count"
+                        radius={[0, 6, 6, 0]}
+                        name="Con cita"
+                        maxBarSize={32}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const apptContactIds = new Set(appointments.map((a) => a.contactId))
+                          openDrill(
+                            `Tráfico pagado con cita: ${data.source}`,
+                            opportunities.filter(
+                              (o) =>
+                                isPaidTraffic(o) &&
+                                (o.source || "Desconocido") === data.source &&
+                                apptContactIds.has(o.contactId)
+                            )
+                          )
+                        }}
+                      >
+                        {paidTrafficWithAppt.map((entry, i) => (
+                          <Cell key={entry.source} fill={chartPaletteColor(i)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+                <ChartHint>Leads de paid social + paid search que tienen al menos una cita agendada</ChartHint>
+              </>
+            )}
+          </ChartCardContent>
+        </DashboardCard>
+
+        <DashboardCard>
+          <ChartCardHeader
+            title="Deals Ganados de Tráfico Pagado"
+            total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
+            icon={TrendingUp}
+          />
+          <ChartCardContent>
+            {wonPaidTraffic.length === 0 ? (
+              <ChartEmpty message="Sin deals ganados de tráfico pagado." height={220} />
+            ) : (
+              <>
+                <ChartContainer
+                  config={{ count: { label: "Ganados", color: BRAND_AMBER } }}
+                  className="aspect-auto"
+                  style={{ height: Math.max(220, wonPaidTraffic.length * 44 + 20) }}
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={wonPaidTraffic}
+                      margin={{ top: 5, right: 30, left: 8, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="source"
+                        tick={{ ...CHART_TICK }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={130}
+                        tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 18) + "…" : v}
+                      />
+                      <ChartTooltip
+                        content={
+                          <NonZeroTooltipContent
+                            labelFormatter={(_: unknown, p: any) => {
+                              const entry = p?.[0]?.payload
+                              if (!entry) return String(_)
+                              const val = entry.value as number
+                              return val > 0
+                                ? `${entry.source} · $${val.toLocaleString("es-MX")}`
+                                : entry.source
+                            }}
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="count"
+                        radius={[0, 6, 6, 0]}
+                        name="Ganados"
+                        maxBarSize={32}
+                        cursor="pointer"
+                        onClick={(data: any) =>
+                          openDrill(
+                            `Ganados de tráfico pagado: ${data.source}`,
+                            opportunities.filter(
+                              (o) =>
+                                isPaidTraffic(o) &&
+                                o.status === "won" &&
+                                (o.source || "Desconocido") === data.source
+                            )
+                          )
+                        }
+                      >
+                        {wonPaidTraffic.map((entry, i) => (
+                          <Cell key={entry.source} fill={chartPaletteColor(i)} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+                <ChartHint>Oportunidades ganadas (won) de paid social + paid search · tooltip muestra valor total</ChartHint>
+              </>
+            )}
+          </ChartCardContent>
+        </DashboardCard>
+      </div>
 
       <ChartDrillDrawer
         drill={drill}
