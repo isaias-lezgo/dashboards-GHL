@@ -492,6 +492,7 @@ export async function GET() {
                   endTime: ev.endTime,
                   status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
                   notes: ev.notes,
+                  location: ev.location,
                 });
               }
             }
