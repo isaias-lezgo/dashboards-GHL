@@ -1,33 +1,107 @@
+// Internal types — full GHL API shape + computed/resolved additions.
+// Fields marked "computed" are added by the dashboard API route (not from GHL directly).
+
 export interface Contact {
+  // Always present (normalized by transform)
   id: string
   name: string
   email: string
   phone: string
   tags: string[]
+  dateAdded: string
+  createdAt: string   // computed: alias for dateAdded
+
+  // GHL Contact fields
+  locationId?: string
+  firstName?: string
+  lastName?: string
+  emailLowerCase?: string
+  timezone?: string
+  companyName?: string
+  dnd?: boolean
+  dndSettings?: Record<string, unknown>
+  type?: string
+  address1?: string
+  city?: string
+  state?: string
+  country?: string
+  postalCode?: string
+  website?: string
+  dateOfBirth?: string
+  dateUpdated?: string
+  lastActivity?: string
+  customFields?: Array<{ id: string; value: string }>
+  customFieldsResolved?: Record<string, string>  // computed: id→name resolved custom fields
+  businessId?: string
+  visitorId?: string
+  keyword?: string
+  firstNameLowerCase?: string
+  fullNameLowerCase?: string
+  lastNameLowerCase?: string
+  attachments?: unknown[]
+  ssn?: string
+  assignedTo?: string   // GHL field; resolved to user name by transform
+  attributionSource?: { [key: string]: string | undefined }
+  lastAttributionSource?: { [key: string]: string | undefined }
+  attributions?: Array<{ [key: string]: unknown }>
+
+  // Computed attribution (derived from attributions array)
   source?: string
   campaign?: string
   adType?: string
-  assignedTo?: string
-  createdAt: string
+  adId?: string
+  attributionUrl?: string
 }
 
 export interface Opportunity {
+  // Always present
   id: string
   name: string
   pipelineId: string
-  pipelineName: string
-  stage: string
+  pipelineStageId: string
   status: "open" | "won" | "lost" | "abandoned"
-  lostReason?: string
-  value: number
   createdAt: string
-  updatedAt: string
-  contactId: string
+
+  // Computed/resolved (always set by transform)
+  contactId: string     // computed: from embedded contact.id or direct contactId
+  value: number         // computed: monetaryValue ?? 0
+  stage: string         // computed: resolved from pipelineStageId via pipeline lookup
+  pipelineName: string  // computed: resolved from pipelineId via pipeline lookup
+
+  // GHL Opportunity fields
+  locationId?: string
+  userId?: string
+  assignedTo?: string   // GHL field; resolved to user name by transform
+  statusId?: string
+  monetaryValue?: number
+  currency?: string
+  probability?: number
+  closedAt?: string
+  updatedAt?: string
   source?: string
+  campaignId?: string
+  funnelId?: string
+  workflowId?: string
+  tags?: string[]       // opportunity's own tags (not from contact)
+  priority?: string
+  notes?: string
+  archived?: boolean
+  origin?: string
+  lastActivity?: string
+  lostReasonId?: string
+  lostReason?: string   // computed: resolved from lostReasonId via custom values lookup
+  customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>
+  customFieldsResolved?: Record<string, string>  // computed: id→name resolved custom fields
+  attributions?: Array<{ [key: string]: unknown }>
+
+  // Embedded contact object from search endpoint
+  contact?: { id: string; name?: string; email?: string; phone?: string; tags?: string[] }
+
+  // Computed attribution (derived from attributions array)
   campaign?: string
   adType?: string
-  assignedTo?: string
-  tags?: string[]
+  adId?: string
+  attributionUrl?: string
 }
 
 export interface Call {
@@ -114,21 +188,6 @@ export interface Pipeline {
   stages: string[]
 }
 
-// Default values for mock data / fallbacks
-export const DEFAULT_LEAD_SOURCES = ["META", "GOOGLE", "MANUAL", "REFERRAL", "TIKTOK", "EMAIL"] as const
-export const DEFAULT_AD_TYPES = ["Form", "DM", "Manual"] as const
-export const DEFAULT_MESSAGE_SOURCES = ["sms", "email", "facebook", "instagram", "whatsapp", "google_chat"] as const
-export const DEFAULT_CAMPAIGNS = [
-  "Spring Launch 2026",
-  "Retargeting Q1",
-  "Brand Awareness",
-  "Product Demo Ads",
-  "Referral Program",
-] as const
-export const DEFAULT_PIPELINES = ["Sales Pipeline", "Enterprise Pipeline"] as const
-export const DEFAULT_MEMBERS = ["Rep A", "Rep B", "Rep C"] as const
-export const DEFAULT_TAGS = ["Hot Lead", "Warm Lead", "Cold Lead", "Enterprise", "Mid-Market", "SMB", "Decision Maker", "Referral"] as const
-export const DEFAULT_LOST_REASONS = ["Price too high", "Went with competitor", "No budget", "Unresponsive", "Bad timing"] as const
 
 export interface Pauta {
   id: string
