@@ -542,6 +542,68 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       .map(([source, { count, value }]) => ({ source, count, value }))
   }, [opportunities])
 
+  const { apptsByPautaRows, apptsByPautaKeys } = useMemo(() => {
+    if (appointments.length === 0 || pautas.length === 0) {
+      return { apptsByPautaRows: [], apptsByPautaKeys: [] }
+    }
+
+    const contactUrlMap = new Map<string, string>()
+    for (const c of contacts) {
+      if (c.attributionUrl) {
+        const norm = normalizeUrl(c.attributionUrl)
+        if (norm) contactUrlMap.set(c.id, norm)
+      }
+    }
+
+    const urlToPauta = new Map<string, string>()
+    for (const p of pautas) {
+      const norm = extractPautaUrl(p.nombrePauta)
+      if (norm && !urlToPauta.has(norm)) {
+        urlToPauta.set(norm, p.nombrePauta)
+      }
+    }
+
+    const counts = new Map<string, Map<string, number>>()
+    const pautaTotals = new Map<string, number>()
+
+    for (const appt of appointments) {
+      const normUrl = contactUrlMap.get(appt.contactId)
+      if (!normUrl) continue
+      const pautaName = urlToPauta.get(normUrl)
+      if (!pautaName) continue
+
+      const status = appt.status || "Sin estatus"
+      if (!counts.has(pautaName)) counts.set(pautaName, new Map())
+      const statusMap = counts.get(pautaName)!
+      statusMap.set(status, (statusMap.get(status) ?? 0) + 1)
+      pautaTotals.set(pautaName, (pautaTotals.get(pautaName) ?? 0) + 1)
+    }
+
+    const topPautas = Array.from(pautaTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([name]) => name)
+
+    const statusTotals = new Map<string, number>()
+    for (const [, statusMap] of counts) {
+      for (const [status, count] of statusMap) {
+        statusTotals.set(status, (statusTotals.get(status) ?? 0) + count)
+      }
+    }
+    const statusKeys = Array.from(statusTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => k)
+
+    const rows = topPautas.map((pautaName) => {
+      const row: Record<string, string | number> = { pauta: pautaName }
+      const statusMap = counts.get(pautaName)!
+      for (const k of statusKeys) row[k] = statusMap.get(k) ?? 0
+      return row
+    })
+
+    return { apptsByPautaRows: rows, apptsByPautaKeys: statusKeys }
+  }, [appointments, pautas, contacts])
+
   return (
     <DashboardShell>
       <MarketingSummaryStrip
