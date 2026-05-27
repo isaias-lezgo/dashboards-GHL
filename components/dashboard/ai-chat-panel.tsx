@@ -136,6 +136,59 @@ async function fetchContactMessages(input: Record<string, unknown>): Promise<unk
   };
 }
 
+async function fetchConversationThreads(input: Record<string, unknown>): Promise<unknown> {
+  const rawIds = Array.isArray(input.contactIds) ? (input.contactIds as string[]) : []
+  if (rawIds.length === 0) {
+    return { error: "contactIds is required and must be a non-empty array" }
+  }
+
+  const limit = typeof input.limit === "number"
+    ? Math.min(50, Math.max(1, Math.floor(input.limit)))
+    : 20
+  const messageLimit = typeof input.messageLimit === "number"
+    ? Math.max(1, Math.floor(input.messageLimit))
+    : 100
+  const contactIds = rawIds.slice(0, limit)
+
+  const params = new URLSearchParams({
+    contactIds: contactIds.join(","),
+    messageLimit: String(messageLimit),
+  })
+
+  const res = await fetch(`/api/conversations?${params}`, { method: "GET" })
+  if (!res.ok) {
+    return { error: `GHL fetch failed (HTTP ${res.status})` }
+  }
+
+  const data = (await res.json()) as {
+    threads: Array<{ contactId: string; messages: Array<Record<string, unknown>> }>
+  }
+
+  const threads = (data.threads ?? []).map((t) => {
+    const sorted = [...t.messages].sort(
+      (a, b) =>
+        new Date(String(b.createdAt ?? "")).getTime() -
+        new Date(String(a.createdAt ?? "")).getTime()
+    )
+    return {
+      contactId: t.contactId,
+      messageCount: t.messages.length,
+      messages: sorted.map((m) => ({
+        id: m.id,
+        direction: m.direction,
+        source: m.source,
+        content:
+          typeof m.content === "string" && m.content.length > 500
+            ? m.content.slice(0, 500) + "…"
+            : m.content,
+        createdAt: m.createdAt,
+      })),
+    }
+  })
+
+  return { returned: threads.length, threads }
+}
+
 export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatPanelProps) {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState("");
@@ -250,6 +303,8 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
                 let result: unknown;
                 if (tu.name === "get_contact_messages") {
                   result = await fetchContactMessages(tu.input);
+                } else if (tu.name === "search_conversations") {
+                  result = await fetchConversationThreads(tu.input);
                 } else if (tu.name === "export_csv") {
                   const exportResult = executeExportCsv(tu.input, dataset);
                   if (exportResult.rowCount > 0) triggerCsvDownload(exportResult);
