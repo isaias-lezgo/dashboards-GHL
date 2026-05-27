@@ -1325,6 +1325,109 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         </DashboardCard>
       </div>
 
+      <DashboardCard>
+        <ChartCardHeader
+          title="Citas por Pauta (atribución URL)"
+          total={apptsByPautaRows.reduce(
+            (s, r) => s + apptsByPautaKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
+            0,
+          )}
+          icon={Calendar}
+        />
+        <ChartCardContent>
+          {apptsByPautaKeys.length === 0 ? (
+            <ChartEmpty message="Sin citas atribuidas por URL." height={300} />
+          ) : (
+            <>
+              <ChartContainer
+                config={Object.fromEntries(
+                  apptsByPautaKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
+                )}
+                className="aspect-auto"
+                style={{ height: Math.max(300, apptsByPautaRows.length * 48 + 120) }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={apptsByPautaRows}
+                    margin={{ top: 5, right: 16, left: 8, bottom: 120 }}
+                    barCategoryGap="20%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                    <XAxis
+                      dataKey="pauta"
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-45}
+                      textAnchor="end"
+                      tickFormatter={(v: string) => shortPautaName(v)}
+                    />
+                    <YAxis
+                      tick={{ ...CHART_TICK }}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                    />
+                    <ChartTooltip
+                      content={
+                        <NonZeroTooltipContent
+                          labelFormatter={(_: unknown, p: any) => {
+                            const name = p?.[0]?.payload?.pauta ?? String(_)
+                            return shortPautaName(name)
+                          }}
+                        />
+                      }
+                    />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                    />
+                    {apptsByPautaKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                        radius={i === apptsByPautaKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const pautaName = data.pauta as string
+                          const normUrl = extractPautaUrl(pautaName)
+                          const matchedContactIds = new Set(
+                            contacts
+                              .filter((c) => c.attributionUrl && normalizeUrl(c.attributionUrl) === normUrl)
+                              .map((c) => c.id)
+                          )
+                          const matchedContactIdsForStatus = new Set(
+                            appointments
+                              .filter(
+                                (a) =>
+                                  matchedContactIds.has(a.contactId) &&
+                                  (a.status || "Sin estatus") === key,
+                              )
+                              .map((a) => a.contactId)
+                          )
+                          openDrill(
+                            `${shortPautaName(pautaName)} · ${key}`,
+                            opportunities.filter((o) => matchedContactIdsForStatus.has(o.contactId)),
+                            `${count} cita${count !== 1 ? "s" : ""} con estatus "${key}"`,
+                          )
+                        }}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <ChartHint>Apilado por estatus · atribución vía URL · haz clic para ver oportunidades</ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
       <ChartDrillDrawer
         drill={drill}
         onDrillChange={setDrill}
