@@ -6,6 +6,7 @@ import {
   getMessages,
   getUsers,
   getLostReasons,
+  getCustomFields,
   getCustomObjects,
   getAllCustomObjectRecords,
   getCalendarEvents,
@@ -36,6 +37,8 @@ type Attribution = {
   utmSessionSource?: string;
   adSource?: string;
   medium?: string;
+  utmAdId?: string;
+  url?: string;
   [key: string]: unknown;
 };
 
@@ -49,14 +52,32 @@ function buildCampaignLabel(content?: string, campaign?: string): string | undef
   return parts.length > 0 ? parts.join(" / ") : undefined;
 }
 
-// Transform GHL data to our internal types
-function transformContact(ghl: GHLContact): Contact {
+function resolveCustomFields(
+  fields: Array<{ id: string; value?: string; fieldValue?: string; fieldValueString?: string }> | undefined,
+  map: Map<string, string>
+): Record<string, string> {
+  if (!fields?.length || !map.size) return {};
+  const result: Record<string, string> = {};
+  for (const f of fields) {
+    const name = map.get(f.id);
+    // contacts use value; opportunities use fieldValue/fieldValueString
+    const value = f.fieldValue ?? f.fieldValueString ?? f.value;
+    if (name && value !== undefined && value !== null && String(value).trim() !== "") {
+      result[name] = String(value);
+    }
+  }
+  return result;
+}
+
+// Spread all GHL fields through; add computed fields on top.
+function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>): Contact {
+  const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
   return {
-    id: ghl.id,
+    ...ghl,
     name: ghl.name || `${ghl.firstName || ""} ${ghl.lastName || ""}`.trim() || "Unknown",
-    email: ghl.email || "",
-    phone: ghl.phone || "",
-    tags: ghl.tags || [],
+    email: ghl.email ?? "",
+    phone: ghl.phone ?? "",
+    tags: ghl.tags ?? [],
     createdAt: ghl.dateAdded,
     source: firstAttr(ghl.attributions)?.utmSource || firstAttr(ghl.attributions)?.adSource || ghl.source || "direct",
     campaign: buildCampaignLabel(
@@ -64,37 +85,38 @@ function transformContact(ghl: GHLContact): Contact {
       firstAttr(ghl.attributions)?.utmCampaign
     ),
     adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
-    assignedTo: ghl.assignedTo,
+    adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
+    attributionUrl: firstAttr(ghl.attributions)?.url || ghl.attributionSource?.url || undefined,
+    ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
 }
 
 function transformOpportunity(
   ghl: GHLOpportunity,
-  pipelines: Map<string, { name: string; stages: Map<string, string> }>
+  pipelines: Map<string, { name: string; stages: Map<string, string> }>,
+  customFieldMap: Map<string, string>
 ): Opportunity {
   const pipeline = pipelines.get(ghl.pipelineId);
   const stageName = pipeline?.stages.get(ghl.pipelineStageId) || "Unknown";
+  const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
 
   return {
-    id: ghl.id,
-    name: ghl.name,
-    value: ghl.monetaryValue || 0,
+    ...ghl,
+    contactId: ghl.contact?.id || ghl.contactId || "",
+    value: ghl.monetaryValue ?? 0,
     stage: stageName,
-    status: ghl.status,
-    pipelineId: ghl.pipelineId,
     pipelineName: pipeline?.name || "Unknown",
-    contactId: ghl.contact.id,
-    createdAt: ghl.createdAt,
-    updatedAt: ghl.updatedAt || ghl.createdAt,
+    tags: ghl.tags ?? ghl.contact?.tags ?? [],
     source: firstAttr(ghl.attributions)?.utmSource || firstAttr(ghl.attributions)?.adSource || ghl.source,
     campaign: buildCampaignLabel(
       firstAttr(ghl.attributions)?.utmContent,
       firstAttr(ghl.attributions)?.utmCampaign
     ),
     adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
+    adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
+    attributionUrl: firstAttr(ghl.attributions)?.url || undefined,
     lostReason: ghl.lostReasonId,
-    assignedTo: ghl.assignedTo,
-    tags: ghl.contact.tags || [],
+    ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
 }
 
@@ -165,12 +187,13 @@ export async function GET() {
       try {
         send({ type: "progress", message: "Iniciando sincronización…" });
 
-        // Fetch pipelines, users, lost reasons first (fast, no pagination)
-        const [pipelinesResult, usersResult, lostReasonsResult] =
+        // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
+        const [pipelinesResult, usersResult, lostReasonsResult, customFieldsResult] =
           await Promise.allSettled([
             getPipelines(),
             getUsers(),
             getLostReasons(),
+            getCustomFields(),
           ]);
 
         send({ type: "progress", message: "Cargando pipelines y configuración…" });
@@ -178,6 +201,13 @@ export async function GET() {
         const pipelinesRaw = pipelinesResult.status === "fulfilled" ? pipelinesResult.value : { pipelines: [] };
         const usersRaw = usersResult.status === "fulfilled" ? usersResult.value : { users: [] };
         const lostReasonsRaw = lostReasonsResult.status === "fulfilled" ? lostReasonsResult.value : { customValues: [] };
+        const customFieldsRaw = customFieldsResult.status === "fulfilled" ? customFieldsResult.value : { customFields: [] };
+
+        // Build custom field id→name lookup
+        const customFieldMap = new Map<string, string>();
+        for (const cf of customFieldsRaw.customFields) {
+          customFieldMap.set(cf.id, cf.name);
+        }
 
         // Build pipeline lookup map
         const pipelineMap = new Map<string, { name: string; stages: Map<string, string> }>();
@@ -237,7 +267,7 @@ export async function GET() {
 
         // Transform contacts
         const contacts: Contact[] = contactsRaw.map((c) => {
-          const contact = transformContact(c);
+          const contact = transformContact(c, customFieldMap);
           if (contact.assignedTo && userMap.has(contact.assignedTo)) {
             contact.assignedTo = userMap.get(contact.assignedTo);
           }
@@ -246,7 +276,7 @@ export async function GET() {
 
         // Transform opportunities
         const opportunities: Opportunity[] = opportunitiesRaw.map((o) => {
-          const opp = transformOpportunity(o, pipelineMap);
+          const opp = transformOpportunity(o, pipelineMap, customFieldMap);
           if (opp.assignedTo && userMap.has(opp.assignedTo)) {
             opp.assignedTo = userMap.get(opp.assignedTo);
           }
@@ -280,13 +310,16 @@ export async function GET() {
               embedded.email ||
               embedded.phone ||
               "Sin nombre",
-            email: embedded.email || "",
-            phone: embedded.phone || "",
-            tags: embedded.tags || [],
+            email: embedded.email ?? "",
+            phone: embedded.phone ?? "",
+            tags: embedded.tags ?? [],
+            dateAdded: raw.createdAt,
             createdAt: raw.createdAt,
             source: attr?.utmSource || attr?.adSource || raw.source || "direct",
             campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
             adType: attr?.utmMedium || attr?.utmSessionSource,
+            adId: attr?.utmAdId || undefined,
+            attributionUrl: attr?.url || undefined,
             assignedTo:
               raw.assignedTo && userMap.has(raw.assignedTo)
                 ? userMap.get(raw.assignedTo)
@@ -309,6 +342,8 @@ export async function GET() {
             if (!opp.campaign) opp.campaign = contact.campaign;
             if (!opp.adType) opp.adType = contact.adType;
             if (!opp.source) opp.source = contact.source;
+            if (!opp.adId) opp.adId = contact.adId;
+            if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
           }
           if (opp.lostReason && lostReasonMap.has(opp.lostReason)) {
             opp.lostReason = lostReasonMap.get(opp.lostReason);
@@ -345,12 +380,13 @@ export async function GET() {
           // Dedupe conversations across users (a conv reassigned mid-stream
           // could surface under multiple users) and remember which user we
           // queried for, so we can attribute messages even if conv.assignedTo
-          // is missing from the GHL payload.
+          // is missing from the GHL payload. Skip deleted conversations.
           const convQueue: Array<{ conv: GHLConversation; queriedUserId: string }> = [];
           const seenConvIds = new Set<string>();
           for (const { userId, conversations } of userConvResults) {
             for (const conv of conversations) {
               if (seenConvIds.has(conv.id)) continue;
+              if (conv.deleted) continue;
               seenConvIds.add(conv.id);
               convQueue.push({ conv, queriedUserId: userId });
             }
