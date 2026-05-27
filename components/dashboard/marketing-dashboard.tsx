@@ -1111,33 +1111,34 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                 <ChartContainer
                   config={{ count: { label: "Leads", color: BRAND_AMBER } }}
                   className="aspect-auto"
-                  style={{ height: Math.max(220, leadsByUrl.length * 44 + 20) }}
+                  style={{ height: 300 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
-                      layout="vertical"
                       data={leadsByUrl}
-                      margin={{ top: 5, right: 30, left: 8, bottom: 5 }}
+                      margin={{ top: 5, right: 8, left: 8, bottom: 80 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <YAxis
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis
                         type="category"
                         dataKey="url"
                         tick={{ ...CHART_TICK }}
                         tickLine={false}
                         axisLine={false}
-                        width={160}
+                        interval={0}
+                        angle={-40}
+                        textAnchor="end"
                         tickFormatter={(v: string) => {
                           try {
                             const u = new URL(v)
                             const slug = u.pathname.replace(/\/$/, "").split("/").pop() || u.hostname
-                            return slug.length > 22 ? slug.slice(0, 22) + "…" : slug
+                            return slug.length > 18 ? slug.slice(0, 18) + "…" : slug
                           } catch {
-                            return v.length > 22 ? v.slice(0, 22) + "…" : v
+                            return v.length > 18 ? v.slice(0, 18) + "…" : v
                           }
                         }}
                       />
+                      <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip
                         content={
                           <NonZeroTooltipContent
@@ -1147,9 +1148,9 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                       />
                       <Bar
                         dataKey="count"
-                        radius={[0, 6, 6, 0]}
+                        radius={[6, 6, 0, 0]}
                         name="Leads"
-                        maxBarSize={32}
+                        maxBarSize={48}
                         cursor="pointer"
                         onClick={(data: any) =>
                           openDrill(
