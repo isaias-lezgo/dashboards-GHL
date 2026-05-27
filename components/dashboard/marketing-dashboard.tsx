@@ -727,18 +727,18 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
               <ChartEmpty message="Sin datos de Pautas." height={220} />
             ) : (
               <>
-                <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: Math.max(220, pautasByTipo.length * 44 + 20) }}>
+                <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: 260 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart layout="vertical" data={pautasByTipo} margin={{ top: 5, right: 30, left: 8, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                      <XAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} width={150} />
+                    <BarChart data={pautasByTipo} margin={{ top: 5, right: 8, left: 8, bottom: 70 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                      <XAxis dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} interval={0} angle={-40} textAnchor="end" tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + "…" : v} />
+                      <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
                       <Bar
                         dataKey="count"
-                        radius={[0, 6, 6, 0]}
+                        radius={[6, 6, 0, 0]}
                         name="Pautas"
-                        maxBarSize={32}
+                        maxBarSize={48}
                         cursor="pointer"
                         onClick={(data: any) => openPautaDrill(
                           `Tipo: ${data.tipo}`,

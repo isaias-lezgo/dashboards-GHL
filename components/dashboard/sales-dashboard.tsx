@@ -752,11 +752,11 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
           ) : (
             <>
-              <ChartContainer config={chartConfig} style={{ height: Math.max(200, chartData.length * 64) }} className="w-full">
-                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+              <ChartContainer config={chartConfig} style={{ height: 280 }} className="w-full">
+                <BarChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 64 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis dataKey="member" type="category" tick={{ fontSize: 11 }} interval={0} angle={-40} textAnchor="end" />
+                  <YAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   {allStages.map((stage, i) => (
@@ -796,22 +796,23 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
               <>
               <ChartContainer
                 config={WIN_LOSS_CONFIG}
-                style={{ height: Math.max(200, winLossData.length * 64) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={winLossData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 8, top: 24, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
                     dataKey="member"
                     type="category"
-                    width={68}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
                   />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   <Bar dataKey="won" stackId="a" fill={WIN_LOSS_CONFIG.won.color} cursor="pointer"
@@ -828,7 +829,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   >
                     <LabelList
                       dataKey="winRate"
-                      position="right"
+                      position="top"
                       formatter={(v: unknown) =>
                         typeof v === "number" ? `${v.toFixed(1)}%` : ""
                       }
@@ -852,22 +853,23 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
               <>
               <ChartContainer
                 config={{ revenue: { label: "Ingreso Ganado", color: "#F59B1B" } }}
-                style={{ height: Math.max(200, revenueData.length * 64) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={revenueData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 8, top: 8, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
                     dataKey="member"
                     type="category"
-                    width={68}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
                   />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip
                     content={
                       <NonZeroTooltipContent
@@ -883,7 +885,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Bar dataKey="revenue" fill="#F59B1B" cursor="pointer"
+                  <Bar dataKey="revenue" fill="#F59B1B" radius={[4, 4, 0, 0]} cursor="pointer"
                     onClick={(data: any) => openDrill(`${data.member} · Ingreso Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
                   />
                 </BarChart>
@@ -907,22 +909,23 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           <ChartCardContent>
             <ChartContainer
               config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#F59B1B" } }}
-              style={{ height: Math.max(200, responseTimeData.length * 64) }}
+              style={{ height: 280 }}
               className="w-full"
             >
               <BarChart
                 data={responseTimeData}
-                layout="vertical"
-                margin={{ left: 8, right: 80, top: 8, bottom: 8 }}
+                margin={{ left: 8, right: 8, top: 24, bottom: 64 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                <YAxis
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                <XAxis
                   dataKey="member"
                   type="category"
-                  width={68}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11 }}
+                  interval={0}
+                  angle={-40}
+                  textAnchor="end"
                 />
-                <XAxis
+                <YAxis
                   type="number"
                   tick={{ fontSize: 11 }}
                   tickFormatter={(v) => `${Math.round(v as number)}m`}
@@ -936,13 +939,13 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     />
                   }
                 />
-                <Bar dataKey="avgMinutes" radius={[0, 3, 3, 0]}>
+                <Bar dataKey="avgMinutes" radius={[3, 3, 0, 0]}>
                   {responseTimeData.map((entry) => (
                     <Cell key={entry.member} fill={responseColor(entry.avgMinutes)} />
                   ))}
                   <LabelList
                     dataKey="avgMinutes"
-                    position="right"
+                    position="top"
                     formatter={(v: unknown) =>
                       typeof v === "number" ? formatMinutes(v) : ""
                     }
