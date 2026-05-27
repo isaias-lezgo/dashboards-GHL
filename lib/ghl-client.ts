@@ -114,17 +114,39 @@ export async function getTags(): Promise<GHLTagsResponse> {
 export interface GHLContact {
   id: string;
   locationId: string;
-  email?: string;
-  phone?: string;
+  name?: string;
   firstName?: string;
   lastName?: string;
-  name?: string;
-  dateAdded: string;
-  dateUpdated?: string;
-  tags?: string[];
+  email?: string;
+  emailLowerCase?: string;
+  phone?: string;
+  timezone?: string;
+  companyName?: string;
+  dnd?: boolean;
+  dndSettings?: Record<string, unknown>;
+  type?: string;
   source?: string;
   assignedTo?: string;
+  address1?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  website?: string;
+  tags?: string[];
+  dateOfBirth?: string;
+  dateAdded: string;
+  dateUpdated?: string;
+  lastActivity?: string;
   customFields?: Array<{ id: string; value: string }>;
+  businessId?: string;
+  visitorId?: string;
+  keyword?: string;
+  firstNameLowerCase?: string;
+  fullNameLowerCase?: string;
+  lastNameLowerCase?: string;
+  attachments?: unknown[];
+  ssn?: string;
   // List endpoint returns attributions array; single-contact endpoint returns attributionSource
   attributions?: Array<{
     isFirst?: boolean;
@@ -151,6 +173,9 @@ export interface GHLContact {
     source?: string;
     utmSource?: string;
     sessionSource?: string;
+    [key: string]: string | undefined;
+  };
+  lastAttributionSource?: {
     [key: string]: string | undefined;
   };
 }
@@ -190,12 +215,36 @@ export async function getContacts(params?: {
 
 export interface GHLOpportunity {
   id: string;
-  name: string;
-  monetaryValue?: number;
+  locationId?: string;
   pipelineId: string;
   pipelineStageId: string;
+  // contactId is present on the get-by-id endpoint; search endpoint embeds a contact object instead
+  contactId?: string;
+  userId?: string;
+  assignedTo?: string;
+  name: string;
   status: "open" | "won" | "lost" | "abandoned";
+  statusId?: string;
+  monetaryValue?: number;
+  currency?: string;
+  probability?: number;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+  lastStatusChangeAt?: string;
   source?: string;
+  campaignId?: string;
+  funnelId?: string;
+  workflowId?: string;
+  tags?: string[];
+  priority?: string;
+  notes?: string;
+  archived?: boolean;
+  origin?: string;
+  lastActivity?: string;
+  lostReasonId?: string;
+  customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>;
+  // Embedded contact object returned by the search endpoint
   contact: {
     id: string;
     name?: string;
@@ -203,12 +252,6 @@ export interface GHLOpportunity {
     phone?: string;
     tags?: string[];
   };
-  assignedTo?: string;
-  createdAt: string;
-  updatedAt?: string;
-  lastStatusChangeAt?: string;
-  lostReasonId?: string;
-  customFields?: Array<{ id: string; key?: string; value?: string; fieldValueString?: string; type?: string }>;
   attributions?: Array<{
     isFirst?: boolean;
     isLast?: boolean;
@@ -308,6 +351,9 @@ export interface GHLConversation {
   dateAdded: string;
   dateUpdated?: string;
   assignedTo?: string;
+  deleted?: boolean;
+  inbox?: boolean;
+  starred?: boolean;
 }
 
 export interface GHLConversationsResponse {
@@ -402,6 +448,7 @@ export interface GHLCalendarEvent {
   appointmentStatus?: string;
   assignedUserId?: string;
   notes?: string;
+  location?: string;
   dateAdded: string;
 }
 
@@ -471,6 +518,29 @@ export interface GHLCustomValue {
 
 export async function getLostReasons(): Promise<{ customValues: GHLCustomValue[] }> {
   return ghlFetch<{ customValues: GHLCustomValue[] }>("/locations/:locationId/customValues");
+}
+
+// ============ CUSTOM FIELD DEFINITIONS ============
+
+export interface GHLCustomField {
+  id: string;
+  name: string;
+  fieldKey?: string;
+  dataType?: string;
+  model?: string; // "contact" | "opportunity"
+  locationId?: string;
+  position?: number;
+  placeholder?: string;
+  required?: boolean;
+  options?: Array<{ id: string; value: string; label: string }>;
+}
+
+export interface GHLCustomFieldsResponse {
+  customFields: GHLCustomField[];
+}
+
+export async function getCustomFields(): Promise<GHLCustomFieldsResponse> {
+  return ghlFetch<GHLCustomFieldsResponse>("/locations/:locationId/customFields");
 }
 
 // ============ CUSTOM OBJECTS ============

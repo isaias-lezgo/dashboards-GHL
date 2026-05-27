@@ -135,6 +135,7 @@ export interface Appointment {
   endTime: string
   status: string
   notes?: string
+  location?: string
 }
 
 // Channels we can render with an icon/label in the thread.
