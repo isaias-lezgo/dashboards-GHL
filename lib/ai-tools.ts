@@ -266,6 +266,31 @@ export const TOOL_DEFINITIONS = [
       required: ["entity"],
     },
   },
+  {
+    name: "search_conversations",
+    description:
+      "Fetches full conversation message threads for a list of contacts from GoHighLevel. Always derive contactIds first using list_appointments, search_contacts, search_opportunities, or other tools — never ask the user for IDs. May take several seconds for large batches. Returns full message history per contact (newest first), content truncated to 500 chars. For a single contact's conversation, use get_contact_messages instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "List of contact IDs to fetch conversation threads for. Derive these from other tool calls such as list_appointments, search_contacts, or search_opportunities.",
+        },
+        limit: {
+          type: "number",
+          description: "Max number of contacts to process (default 20, max 50).",
+        },
+        messageLimit: {
+          type: "number",
+          description: "Max messages to return per thread (default 100).",
+        },
+      },
+      required: ["contactIds"],
+    },
+  },
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
