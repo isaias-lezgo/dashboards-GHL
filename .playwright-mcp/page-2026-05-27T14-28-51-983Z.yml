@@ -1,0 +1,773 @@
+- generic:
+  - generic:
+    - banner:
+      - generic:
+        - generic:
+          - generic:
+            - img
+          - generic:
+            - heading [level=1]: Lezgo Suite Analíticas
+            - paragraph: Marketing y Ventas
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - text: 2,941
+            - generic:
+              - img
+              - text: "308"
+            - generic:
+              - img
+              - text: "775"
+            - button:
+              - img
+              - text: Analizar con IA
+          - generic: Actualizado 11:38 p.m.
+          - button:
+            - img
+            - text: Actualizar
+          - button:
+            - img
+    - navigation:
+      - generic:
+        - button:
+          - img
+          - text: Marketing
+        - button:
+          - img
+          - text: Ventas
+        - button:
+          - img
+          - text: Conversaciones
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - paragraph: Oportunidades
+            - paragraph: "308"
+          - generic:
+            - paragraph: Pautas
+            - paragraph: "775"
+          - generic:
+            - paragraph: Oportunidades por pauta
+            - paragraph: "172"
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - generic: Oportunidades por fuente del CRM
+              - generic: "Total: 308"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                          - generic:
+                            - img
+                  - generic:
+                    - generic: "308"
+                    - generic: LEADS
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Paid Social
+                      - generic: 172 · 56%
+                  - generic:
+                    - generic:
+                      - generic: CRM UI
+                      - generic: 43 · 14%
+                  - generic:
+                    - generic:
+                      - generic: Social media
+                      - generic: 39 · 13%
+                  - generic:
+                    - generic:
+                      - generic: Otro
+                      - generic: 29 · 9%
+                  - generic:
+                    - generic:
+                      - generic: Direct traffic
+                      - generic: 22 · 7%
+                  - generic:
+                    - generic:
+                      - generic: Referral
+                      - generic: 2 · 1%
+                  - generic:
+                    - generic:
+                      - generic: Organic Search
+                      - generic: 1 · 0%
+              - paragraph: Haz clic en una fila para ver los leads
+          - generic:
+            - generic:
+              - img
+              - generic: Pautas por Tipo
+              - generic: "Total: 775"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: Mensaje WhatsApp
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "0"
+                            - generic:
+                              - generic: "200"
+                            - generic:
+                              - generic: "400"
+                            - generic:
+                              - generic: "600"
+                            - generic:
+                              - generic: "800"
+              - paragraph: Haz clic en una barra para ver las pautas
+        - generic:
+          - generic:
+            - img
+            - generic: Pautas creadas por Mes
+            - generic: "Total: 775"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: ene 26
+                          - generic:
+                            - generic: feb 26
+                          - generic:
+                            - generic: mar 26
+                          - generic:
+                            - generic: abr 26
+                          - generic:
+                            - generic: may 26
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "60"
+                          - generic:
+                            - generic: "120"
+                          - generic:
+                            - generic: "180"
+                          - generic:
+                            - generic: "240"
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - generic: Mensaje WhatsApp
+            - paragraph: Apilado por tipo · haz clic en un segmento para ver las pautas
+        - generic:
+          - generic:
+            - img
+            - generic: Oportunidades creadas por tiempo y fuente (últimos 30 días)
+            - generic: "Total: 38"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: 04-28
+                          - generic:
+                            - generic: 05-03
+                          - generic:
+                            - generic: 05-08
+                          - generic:
+                            - generic: 05-13
+                          - generic:
+                            - generic: 05-18
+                          - generic:
+                            - generic: 05-23
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "2"
+                          - generic:
+                            - generic: "4"
+                          - generic:
+                            - generic: "6"
+                          - generic:
+                            - generic: "8"
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - generic: Paid Social
+                        - listitem:
+                          - img
+                          - generic: Social media
+                        - listitem:
+                          - img
+                          - generic: CRM UI
+                        - listitem:
+                          - img
+                          - generic: Otro
+                        - listitem:
+                          - img
+                          - generic: Direct traffic
+            - paragraph: Apilado por fuente del CRM · eje X cada 5 días
+        - generic:
+          - generic:
+            - img
+            - generic: Pautas por Nombre (Top 30)
+            - generic: "Total: 775"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: CRM TODO-EN-UNO IMPULSADO CO…
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS RESUL…
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: EL CRM QUE ENTIENDE EL REAL …
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM QUE ENTIENDE EL REAL …
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN SOLO CR…
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS RESUL…
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN SOLO CR…
+                          - generic:
+                            - generic: CRM TODO-EN-UNO IMPULSADO CO…
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS RESUL…
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN SOLO CR…
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN SOLO CR…
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS RESUL…
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS EFICIEN…
+                          - generic:
+                            - generic: EL CRM PARA DESARROLLADORAS …
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM PARA DESARROLLADORAS …
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN SOLO CR…
+                          - generic:
+                            - generic: EL CRM QUE ENTIENDE EL REAL …
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM PARA DESARROLLADORAS …
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA REAL ST…
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS RESUL…
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "25"
+                          - generic:
+                            - generic: "50"
+                          - generic:
+                            - generic: "75"
+                          - generic:
+                            - generic: "100"
+            - paragraph: Haz clic en una barra para ver las pautas
+        - generic:
+          - generic:
+            - img
+            - generic: Pautas por Etapa del Pipeline
+            - generic: "Total: 118"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Primera Cita
+                          - generic:
+                            - generic: Proceso de Implementac…
+                          - generic:
+                            - generic: Cliente Activo
+                          - generic:
+                            - generic: Prospecto Perdido
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "20"
+                          - generic:
+                            - generic: "40"
+                          - generic:
+                            - generic: "60"
+                          - generic:
+                            - generic: "80"
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · DWWkbODDIC
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · DTvojMtDPw
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · 5BKbJyps4
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE IMPULSA TUS… · DTBTHbpDK5
+                        - listitem:
+                          - img
+                          - generic: CRM TODO-EN-UNO IMPULS… · DTvoi-7jLH
+                        - listitem:
+                          - img
+                          - generic: TODAS TUS APPS EN UN S… · DWWkbF_DCc
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE IMPULSA TUS… · 78c7vCmBD
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · DTBTGv6DDt
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE ENTIENDE EL… · 9A00L4zXS
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · DXXrg4zDHa
+                        - listitem:
+                          - img
+                          - generic: TODAS TUS APPS EN UN S… · 8hUST1iGz
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · 95sBzybAc
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE IMPULSA TUS… · DWWkcJdDH_
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE IMPULSA TUS… · 7hW4KGCnp
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · 50VTfPQpR
+                        - listitem:
+                          - img
+                          - generic: EL CRM QUE ENTIENDE EL… · DTLea8mDOA
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · kd8M5Ipfc
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · DXXrhH0DKv
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · 4bNho6085
+                        - listitem:
+                          - img
+                          - generic: TODAS TUS APPS EN UN S… · DTLebPFDLQ
+                        - listitem:
+                          - img
+                          - generic: TODAS TUS APPS EN UN S… · 95eMkpfir
+                        - listitem:
+                          - img
+                          - generic: EL CRM PARA DESARROLLA… · DYC_rn9DFF
+                        - listitem:
+                          - img
+                          - generic: EL CRM PARA DESARROLLA… · DYC5NCODOh
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · 470j5yLoZ
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · 5Yp1waRmJ
+                        - listitem:
+                          - img
+                          - generic: TU INMOBILIARIA, MÁS E… · 6uXdyAbBC
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · DTvoi7yDJG
+                        - listitem:
+                          - img
+                          - generic: EL CRM DISEÑADO PARA R… · 50VTfPQpR
+                        - listitem:
+                          - img
+                          - generic: "- https://fb.me/50VTfP…"
+                        - listitem:
+                          - img
+                          - generic: CRM TODO-EN-UNO IMPULS… · 6cKJw6w7L
+            - paragraph: Apilado por Pauta · top 30 pautas · haz clic en un segmento para ver las oportunidades
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - generic: Leads por ID de Anuncio (Top 15)
+              - generic: "Total: 300"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: Sin ID
+                            - generic:
+                              - generic: "120233804897980611"
+                            - generic:
+                              - generic: "120233804897960611"
+                            - generic:
+                              - generic: "120238306420290611"
+                            - generic:
+                              - generic: "120241019311880611"
+                            - generic:
+                              - generic: "120234160209220611"
+                            - generic:
+                              - generic: "120234160209210611"
+                            - generic:
+                              - generic: "120241019662550611"
+                            - generic:
+                              - generic: "120242565014710611"
+                            - generic:
+                              - generic: "120238306420250611"
+                            - generic:
+                              - generic: "120241019662560611"
+                            - generic:
+                              - generic: "120242565138510611"
+                            - generic:
+                              - generic: "120236640673860611"
+                            - generic:
+                              - generic: "120233696967270611"
+                            - generic:
+                              - generic: "120237263123010611"
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "0"
+                            - generic:
+                              - generic: "35"
+                            - generic:
+                              - generic: "70"
+                            - generic:
+                              - generic: "105"
+                            - generic:
+                              - generic: "140"
+              - paragraph: Haz clic en una barra para ver los leads
+          - generic:
+            - generic:
+              - img
+              - generic: Leads por URL de Aterrizaje (Top 15)
+              - generic: "Total: 234"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: Sin URL
+                            - generic:
+                              - generic: DWWkbODDICR
+                            - generic:
+                              - generic: bKk9Fkcbq
+                            - generic:
+                              - generic: DQMs811jAR2
+                            - generic:
+                              - generic: 5BKbJyps4
+                            - generic:
+                              - generic: DTvojMtDPwj
+                            - generic:
+                              - generic: 5q71fFsU9
+                            - generic:
+                              - generic: DTBTHbpDK51
+                            - generic:
+                              - generic: 78c7vCmBD
+                            - generic:
+                              - generic: DQenMWCjJPT
+                            - generic:
+                              - generic: 50VTfPQpR
+                            - generic:
+                              - generic: conocelezgosuite
+                            - generic:
+                              - generic: DWWkbF_DCcr
+                            - generic:
+                              - generic: AN1LKwpuOmHNHso08b…
+                            - generic:
+                              - generic: hvOe5NCP3
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "0"
+                            - generic:
+                              - generic: "30"
+                            - generic:
+                              - generic: "60"
+                            - generic:
+                              - generic: "90"
+                            - generic:
+                              - generic: "120"
+              - paragraph: Haz clic en una barra para ver los leads · URL completa en el tooltip
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - generic: Leads de Tráfico Pagado con Cita
+              - generic: "Total: 53"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: 1202410193118806…
+                            - generic:
+                              - generic: 1202410196625506…
+                            - generic:
+                              - generic: 1202425650147106…
+                            - generic:
+                              - generic: 1202410196625606…
+                            - generic:
+                              - generic: 1202425651385106…
+                            - generic:
+                              - generic: 1202383064202906…
+                            - generic:
+                              - generic: direct
+                            - generic:
+                              - generic: EL CRM DISEÑADO …
+                            - generic:
+                              - generic: WA Real Estate 1
+                            - generic:
+                              - generic: 1202435493163506…
+                            - generic:
+                              - generic: 1202435453692306…
+                            - generic:
+                              - generic: 1202410193118906…
+                            - generic:
+                              - generic: 1202338048979806…
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "0"
+                            - generic:
+                              - generic: "5"
+                            - generic:
+                              - generic: "10"
+                            - generic:
+                              - generic: "15"
+                            - generic:
+                              - generic: "20"
+              - paragraph: Leads de paid social + paid search que tienen al menos una cita agendada
+          - generic:
+            - generic:
+              - img
+              - generic: Deals Ganados de Tráfico Pagado
+              - generic: "Total: 12"
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - img:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: WA Real Estate 1
+                            - generic:
+                              - generic: WA Gral 3
+                            - generic:
+                              - generic: 1202410196625506…
+                            - generic:
+                              - generic: 1202425650147106…
+                            - generic:
+                              - generic: 1202410193118806…
+                            - generic:
+                              - generic: EL CRM DISEÑADO …
+                            - generic:
+                              - generic: 1202372631230106…
+                            - generic:
+                              - generic: WA Real Estate 3
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: "0"
+                            - generic:
+                              - generic: "1"
+                            - generic:
+                              - generic: "2"
+                            - generic:
+                              - generic: "3"
+                            - generic:
+                              - generic: "4"
+              - paragraph: Oportunidades ganadas (won) de paid social + paid search · tooltip muestra valor total
+        - generic:
+          - generic:
+            - img
+            - generic: Citas por Pauta (atribución URL)
+            - generic: "Total: 66"
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · DWWkbODDIC
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN S… · DWWkbF_DCc
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA R… · DQMs811jAR
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · 95sBzybAc
+                          - generic:
+                            - generic: TODAS TUS APPS EN UN S… · 8hUST1iGz
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · DTvojMtDPw
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS… · DWWkcJdDH_
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA R… · DXXrg4zDHa
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS… · 7hW4KGCnp
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · DXXrhH0DKv
+                          - generic:
+                            - generic: EL CRM PARA DESARROLLA… · DYC5NCODOh
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · 5BKbJyps4
+                          - generic:
+                            - generic: EL CRM QUE IMPULSA TUS… · DTBTHbpDK5
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · 4bNho6085
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA R… · 5Yp1waRmJ
+                          - generic:
+                            - generic: EL CRM PARA DESARROLLA… · DYC_rn9DFF
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA R… · kd8M5Ipfc
+                          - generic:
+                            - generic: TU INMOBILIARIA, MÁS E… · 470j5yLoZ
+                          - generic:
+                            - generic: CRM TODO-EN-UNO IMPULS… · DTvoi-7jLH
+                          - generic:
+                            - generic: EL CRM DISEÑADO PARA R… · 50VTfPQpR
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: "0"
+                          - generic:
+                            - generic: "5"
+                          - generic:
+                            - generic: "10"
+                          - generic:
+                            - generic: "15"
+                          - generic:
+                            - generic: "20"
+                    - generic:
+                      - list:
+                        - listitem:
+                          - img
+                          - generic: confirmed
+                        - listitem:
+                          - img
+                          - generic: noshow
+                        - listitem:
+                          - img
+                          - generic: cancelled
+            - paragraph: Apilado por estatus · atribución vía URL · haz clic para ver oportunidades
+  - button "Open Next.js Dev Tools" [ref=e191] [cursor=pointer]:
+    - img [ref=e192]
+  - alert
+  - generic: 1202372631230106…
+  - dialog "Analizar con IA" [active] [ref=e1368]:
+    - generic [ref=e1369]:
+      - heading "Analizar con IA" [level=2] [ref=e1370]:
+        - img [ref=e1371]
+        - text: Analizar con IA
+      - paragraph [ref=e1374]: Pregúntame cualquier cosa sobre tus contactos, oportunidades, pautas o citas.
+    - generic [ref=e1375]:
+      - paragraph [ref=e1397]: Muéstrame las conversaciones de los contactos con citas esta semana
+      - generic [ref=e1398]:
+        - paragraph [ref=e1401]: Voy a buscar las citas de esta semana primero, y luego traeré las conversaciones de esos contactos.
+        - generic [ref=e1403]:
+          - img [ref=e1404]
+          - generic [ref=e1406]: list_appointments
+      - generic [ref=e1407]:
+        - generic [ref=e1408]: ↳
+        - generic [ref=e1409]: 5 filas
+      - generic [ref=e1410]:
+        - img [ref=e1411]
+        - text: Continuando…
+    - generic [ref=e1384]:
+      - textbox "¿Cuántos leads de Meta sin cita esta semana?" [disabled] [ref=e1385]
+      - generic [ref=e1386]:
+        - generic [ref=e1387]: Sonnet 4.6 · 1 herramienta · ~$0.0271
+        - generic [ref=e1388]:
+          - button "Reiniciar" [disabled]:
+            - img
+            - text: Reiniciar
+          - button "Detener" [ref=e1413] [cursor=pointer]:
+            - img
+            - text: Detener
+          - button "Enviar" [disabled]:
+            - img
+    - button "Close" [ref=e1389] [cursor=pointer]:
+      - img [ref=e1390]
+      - generic [ref=e1393]: Close

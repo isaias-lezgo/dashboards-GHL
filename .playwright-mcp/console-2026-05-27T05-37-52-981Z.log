@@ -1,0 +1,232 @@
+[     199ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[     226ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   24484ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   24554ms] [LOG] [Fast Refresh] done in 150ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34839ms] [WARNING] The width(527) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34840ms] [WARNING] The width(527) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34851ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34851ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34864ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34864ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34928ms] [WARNING] The width(1103) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34929ms] [WARNING] The width(1103) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34959ms] [WARNING] The width(1103) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   34959ms] [WARNING] The width(1103) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35046ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35046ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35063ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35063ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35080ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35080ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35095ms] [WARNING] The width(527) and height(372) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35095ms] [WARNING] The width(527) and height(372) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35107ms] [WARNING] The width(1103) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35107ms] [WARNING] The width(1103) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35696ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35953ms] [WARNING] The width(527) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35960ms] [WARNING] The width(527) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35965ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35965ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35973ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   35973ms] [WARNING] The width(1103) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36015ms] [WARNING] The width(1103) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36015ms] [WARNING] The width(1103) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36024ms] [WARNING] The width(1103) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36025ms] [WARNING] The width(1103) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36051ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36051ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36056ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36056ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36061ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36061ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36066ms] [WARNING] The width(527) and height(372) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36066ms] [WARNING] The width(527) and height(372) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36073ms] [WARNING] The width(1103) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36073ms] [WARNING] The width(1103) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36110ms] [LOG] [Fast Refresh] done in 337ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36116ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36116ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36122ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   36123ms] [WARNING] The width(527) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   49477ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   49489ms] [LOG] [Fast Refresh] done in 119ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   67737ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[   67807ms] [LOG] [Fast Refresh] done in 157ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336609ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336614ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336631ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336631ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336641ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336641ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336691ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336691ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336713ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336713ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336799ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336800ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336814ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336814ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336826ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336826ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336836ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336836ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336847ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336847ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336989ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336990ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336990ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336990ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336990ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336991ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336992ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336992ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336992ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336992ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336997ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336997ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336998ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336999ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[ 7336999ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820096ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820097ms] [WARNING] The width(534) and height(260) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820105ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820105ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820112ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820112ms] [WARNING] The width(1118) and height(280) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820151ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820152ms] [WARNING] The width(1118) and height(380) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820171ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820171ms] [WARNING] The width(1118) and height(480) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820227ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820227ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820238ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820238ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820251ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820251ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820263ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820263ms] [WARNING] The width(534) and height(300) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820271ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31820271ms] [WARNING] The width(1118) and height(1080) are both fixed numbers,
+       maybe you don't need to use a ResponsiveContainer. @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31833356ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31833516ms] [LOG] [Fast Refresh] done in 239ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31847280ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31847309ms] [LOG] [Fast Refresh] done in 121ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31854634ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31854760ms] [LOG] [Fast Refresh] done in 228ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31857932ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31858163ms] [LOG] [Fast Refresh] done in 322ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31863302ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31863384ms] [LOG] [Fast Refresh] done in 183ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31882395ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31882561ms] [LOG] [Fast Refresh] done in 268ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31916012ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297
+[31916102ms] [LOG] [Fast Refresh] done in 191ms @ http://localhost:3000/_next/static/chunks/979b6_next_dist_2a67324b._.js:2297

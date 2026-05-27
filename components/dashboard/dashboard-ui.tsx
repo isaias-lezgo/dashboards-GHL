@@ -4,6 +4,14 @@ import type { ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartTooltipContent } from "@/components/ui/chart"
+
+/** Tooltip wrapper that hides zero-value series from chart tooltips. */
+export function NonZeroTooltipContent(props: any) {
+  const filtered = (props.payload ?? []).filter((p: any) => Number(p?.value) > 0)
+  if (!props.active || filtered.length === 0) return null
+  return <ChartTooltipContent {...props} payload={filtered} />
+}
 
 /** Amber Ledger tokens — see DESIGN.md */
 export const BRAND_AMBER = "#F59B1B"

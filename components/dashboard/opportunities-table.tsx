@@ -62,15 +62,15 @@ export function OpportunitiesTable({
   const [onlyOpenTasks, setOnlyOpenTasks] = useState(false)
   const [stageFilter, setStageFilter] = useState("all")
 
-  const stages = Array.from(new Set(opportunities.map((o) => o.stageName)))
+  const stages = Array.from(new Set(opportunities.map((o) => o.stage)))
 
   const contactMap = new Map(contacts.map((c) => [c.id, c]))
 
   const getTaskSummary = (oppId: string) => {
     const oppTasks = tasks.filter((t) => t.opportunityId === oppId)
-    const open = oppTasks.filter((t) => t.status === "open")
+    const open = oppTasks.filter((t) => t.status === "pending")
     const completed = oppTasks.filter((t) => t.status === "completed")
-    const nearest = open.sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0]
+    const nearest = open.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))[0]
     return { open: open.length, completed: completed.length, nearest }
   }
 
@@ -86,7 +86,7 @@ export function OpportunitiesTable({
 
   let filtered = opportunities
   if (stageFilter !== "all") {
-    filtered = filtered.filter((o) => o.stageName === stageFilter)
+    filtered = filtered.filter((o) => o.stage === stageFilter)
   }
   if (onlyOpenTasks) {
     filtered = filtered.filter((o) => {
@@ -154,7 +154,7 @@ export function OpportunitiesTable({
                   const taskSummary = getTaskSummary(opp.id)
                   const callActivity = getCallActivity(opp.contactId)
                   const today = new Date().toISOString().split("T")[0]
-                  const isOverdue = taskSummary.nearest && taskSummary.nearest.dueDate < today
+                  const isOverdue = taskSummary.nearest && (taskSummary.nearest.dueDate ?? "") < today
 
                   return (
                     <TableRow
@@ -165,7 +165,7 @@ export function OpportunitiesTable({
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium text-foreground">
-                            {opp.title}
+                            {opp.name}
                           </span>
                           <span className="text-[11px] text-muted-foreground">
                             {opp.pipelineName}
@@ -173,7 +173,7 @@ export function OpportunitiesTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-foreground">{opp.stageName}</span>
+                        <span className="text-xs text-foreground">{opp.stage}</span>
                       </TableCell>
                       <TableCell>
                         <Badge

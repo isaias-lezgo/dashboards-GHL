@@ -11,7 +11,8 @@ import {
   Legend,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
+import { NonZeroTooltipContent } from "./dashboard-ui"
 import { Button } from "@/components/ui/button"
 
 interface StageChartData {
@@ -85,7 +86,7 @@ export function OpportunitiesStageChart({ data }: OpportunitiesStageChartProps) 
               />
               <ChartTooltip
                 content={
-                  <ChartTooltipContent
+                  <NonZeroTooltipContent
                     formatter={(value, name) => {
                       const label = String(name).replace(/Value$/, "").replace(/([A-Z])/g, " $1").trim()
                       const formattedValue = metric === "value"

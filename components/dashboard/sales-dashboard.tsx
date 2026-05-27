@@ -971,22 +971,34 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
               <>
               <ChartContainer
                 config={{ value: { label: "Valor en Pipeline", color: STRUCTURAL_NAVY } }}
-                style={{ height: Math.max(200, pipelineValueData.length * 64) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={pipelineValueData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
                     dataKey="stage"
-                    type="category"
-                    width={90}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v}
                   />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(v: number) =>
+                      v >= 1_000_000
+                        ? `$${(v / 1_000_000).toFixed(1)}M`
+                        : v >= 1_000
+                        ? `$${(v / 1_000).toFixed(0)}k`
+                        : `$${v}`
+                    }
+                  />
                   <ChartTooltip
                     content={
                       <NonZeroTooltipContent
@@ -1002,7 +1014,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Bar dataKey="value" fill={STRUCTURAL_NAVY} cursor="pointer"
+                  <Bar dataKey="value" fill={STRUCTURAL_NAVY} radius={[4, 4, 0, 0]} cursor="pointer"
                     onClick={(data: any) => openDrill(`Pipeline: ${data.stage}`, opportunities.filter((o) => o.status === "open" && o.stage === data.stage))}
                   />
                 </BarChart>
@@ -1260,17 +1272,25 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   avgStandard: { label: "Estándar vacíos", color: STRUCTURAL_NAVY },
                   avgCustom: { label: "Custom vacíos", color: BRAND_AMBER },
                 }}
-                style={{ height: Math.max(200, emptyFieldsData.rows.length * 64) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={emptyFieldsData.rows}
-                  layout="vertical"
-                  margin={{ left: 8, right: 64, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
+                    dataKey="member"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} />
                   <ChartTooltip
                     content={
                       <NonZeroTooltipContent
@@ -1311,9 +1331,9 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   >
                     <LabelList
                       dataKey="avgTotal"
-                      position="right"
+                      position="top"
                       formatter={(v: unknown) =>
-                        typeof v === "number" ? `${v.toFixed(1)} vacíos/opp` : ""
+                        typeof v === "number" ? `${v.toFixed(1)}` : ""
                       }
                       style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                     />
@@ -1339,17 +1359,25 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   missed: { label: "Perdidas", color: "#ef4444" },
                   noAnswer: { label: "Sin respuesta", color: "#94a3b8" },
                 }}
-                style={{ height: Math.max(200, callsByAdvisorData.rows.length * 64) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={callsByAdvisorData.rows}
-                  layout="vertical"
-                  margin={{ left: 8, right: 48, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
+                    dataKey="member"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   <Bar
@@ -1381,7 +1409,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   >
                     <LabelList
                       dataKey="total"
-                      position="right"
+                      position="top"
                       formatter={(v: unknown) => (typeof v === "number" ? String(v) : "")}
                       style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                     />
@@ -1412,17 +1440,25 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   agendadas: { label: "Agendadas", color: STRUCTURAL_NAVY },
                   realizadas: { label: "Realizadas", color: BRAND_AMBER },
                 }}
-                style={{ height: Math.max(200, visitFulfillmentData.rows.length * 80) }}
+                style={{ height: 280 }}
                 className="w-full"
               >
                 <BarChart
                   data={visitFulfillmentData.rows}
-                  layout="vertical"
-                  margin={{ left: 8, right: 56, top: 8, bottom: 8 }}
+                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                  <YAxis dataKey="member" type="category" width={68} tick={{ fontSize: 12 }} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
+                    dataKey="member"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    angle={-40}
+                    textAnchor="end"
+                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend />
                   <Bar
@@ -1455,7 +1491,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   >
                     <LabelList
                       dataKey="rate"
-                      position="right"
+                      position="top"
                       formatter={(v: unknown) =>
                         typeof v === "number" ? `${v.toFixed(0)}%` : ""
                       }
@@ -1483,22 +1519,25 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             <>
             <ChartContainer
               config={lostReasonsConfig}
-              style={{ height: Math.max(200, lostReasonsData.data.length * 64) }}
+              style={{ height: 280 }}
               className="w-full"
             >
               <BarChart
                 data={lostReasonsData.data}
-                layout="vertical"
-                margin={{ left: 8, right: 24, top: 8, bottom: 8 }}
+                margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
               >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={CHART_GRID_STROKE} />
-                <YAxis
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                <XAxis
                   dataKey="member"
-                  type="category"
-                  width={68}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={0}
+                  angle={-40}
+                  textAnchor="end"
+                  tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
                 />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <ChartTooltip content={<NonZeroTooltipContent />} />
                 <Legend />
                 {lostReasonsData.reasons.map((reason, i) => (

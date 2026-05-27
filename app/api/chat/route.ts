@@ -1,0 +1,107 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { NextResponse } from "next/server";
+import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
+import { CHAT_SYSTEM_PROMPT } from "@/lib/ai-context";
+
+// Server-side, one Anthropic turn per request. The client runs the agent
+// loop: when we return tool_use blocks, the client executes them locally
+// against the dashboard data and POSTs back with tool_result blocks.
+
+interface ChatRequestBody {
+  // The dataset summary built on the client and pinned for caching. We accept
+  // it instead of regenerating server-side so the cache key stays stable
+  // across turns in a single session.
+  datasetSummary: string;
+  // Full conversation history including any tool_use / tool_result blocks.
+  messages: Anthropic.MessageParam[];
+  // Optional: cap output tokens.
+  maxTokens?: number;
+}
+
+export const runtime = "nodejs";
+
+export async function POST(req: Request) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { error: "ANTHROPIC_API_KEY no está configurada en el servidor" },
+      { status: 500 }
+    );
+  }
+
+  let body: ChatRequestBody;
+  try {
+    body = (await req.json()) as ChatRequestBody;
+  } catch {
+    return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
+  }
+
+  if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    return NextResponse.json({ error: "Faltan messages" }, { status: 400 });
+  }
+  if (typeof body.datasetSummary !== "string") {
+    return NextResponse.json({ error: "Falta datasetSummary" }, { status: 400 });
+  }
+
+  const client = new Anthropic();
+
+  try {
+    const today = new Date().toLocaleDateString("es-MX", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "America/Mexico_City",
+    });
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: body.maxTokens ?? 8192,
+      system: [
+        {
+          type: "text",
+          text: `Hoy es ${today}.\n\n${CHAT_SYSTEM_PROMPT}`,
+        },
+        {
+          type: "text",
+          text: body.datasetSummary,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
+      messages: body.messages,
+    });
+
+    return NextResponse.json({
+      stopReason: response.stop_reason,
+      content: response.content,
+      usage: {
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+        cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError) {
+      return NextResponse.json({ error: "API key de Anthropic inválida" }, { status: 500 });
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      return NextResponse.json(
+        { error: "Límite de tasa alcanzado, intenta de nuevo en un momento" },
+        { status: 429 }
+      );
+    }
+    if (error instanceof Anthropic.APIError) {
+      console.error("[/api/chat] Anthropic error:", error.status, error.message);
+      return NextResponse.json(
+        { error: `Error de Anthropic API: ${error.message}` },
+        { status: 502 }
+      );
+    }
+    console.error("[/api/chat] Unknown error:", error);
+    return NextResponse.json(
+      { error: "Error desconocido en el chat" },
+      { status: 500 }
+    );
+  }
+}

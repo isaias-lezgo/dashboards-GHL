@@ -9,7 +9,6 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,13 +18,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import type { Opportunity, Contact, Task, Call, Appointment } from "@/lib/types"
+import type { Opportunity, Contact, Task, Call, Appointment, Message } from "@/lib/types"
 import {
   Phone,
   Clock,
   Mail,
   MessageSquare,
-  MoreHorizontal,
   Calendar,
   DollarSign,
   User,
@@ -35,6 +33,12 @@ import {
   CalendarCheck,
   CalendarX,
   CalendarClock,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Smartphone,
+  Facebook,
+  Instagram,
+  Globe,
 } from "lucide-react"
 
 interface DetailDrawerProps {
@@ -46,6 +50,7 @@ interface DetailDrawerProps {
   tasks: Task[]
   calls: Call[]
   appointments?: Appointment[]
+  messages?: Message[]
   locationId?: string
 }
 
@@ -66,15 +71,54 @@ const STATUS_STYLES: Record<string, string> = {
   lost: "bg-red-100 text-red-700 border-red-200",
 }
 
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: "SMS",
+  email: "Email",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  google_chat: "Google Chat",
+  call: "Llamada",
+  webchat: "Web Chat",
+  live_chat: "Live Chat",
+  tiktok: "TikTok",
+  other: "Otro",
+}
+
+function ChannelIcon({ source }: { source: string }) {
+  const cls = "h-3 w-3"
+  if (source === "whatsapp" || source === "sms") return <Smartphone className={cls} />
+  if (source === "email") return <Mail className={cls} />
+  if (source === "facebook") return <Facebook className={cls} />
+  if (source === "instagram") return <Instagram className={cls} />
+  if (source === "call") return <Phone className={cls} />
+  return <Globe className={cls} />
+}
+
 function formatCurrency(value: number): string {
   return `$${value.toLocaleString()}`
 }
 
-const TASK_ICONS: Record<string, typeof Phone> = {
-  call: Phone,
-  email: Mail,
-  followup: MessageSquare,
-  other: MoreHorizontal,
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60_000)
+  if (diffMins < 1) return "ahora"
+  if (diffMins < 60) return `hace ${diffMins} min`
+  const diffHrs = Math.floor(diffMins / 60)
+  if (diffHrs < 24) return `hace ${diffHrs}h`
+  const diffDays = Math.floor(diffHrs / 24)
+  if (diffDays < 7) return `hace ${diffDays}d`
+  return date.toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+      {children}
+    </p>
+  )
 }
 
 export function DetailDrawer({
@@ -83,12 +127,12 @@ export function DetailDrawer({
   opportunityId,
   opportunities,
   contacts,
-  tasks,
-  calls,
+  tasks: _tasks,
+  calls: _calls,
   appointments = [],
+  messages = [],
   locationId = "",
 }: DetailDrawerProps) {
-  const [taskFilter, setTaskFilter] = useState<"all" | "open" | "completed">("all")
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<string | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
@@ -110,18 +154,20 @@ export function DetailDrawer({
   }
 
   const contact = contacts.find((c) => c.id === opportunity.contactId)
-  const oppTasks = tasks.filter((t) => t.opportunityId === opportunity.id)
-  const contactCalls = calls
-    .filter((c) => c.contactId === opportunity.contactId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  const contactAppointments = appointments.filter(
-    (a) => a.contactId === opportunity.contactId
-  )
+  const contactAppointments = appointments
+    .filter((a) => a.contactId === opportunity.contactId)
+    .slice()
+    .sort((a, b) => b.startTime.localeCompare(a.startTime))
 
-  const filteredTasks =
-    taskFilter === "all"
-      ? oppTasks
-      : oppTasks.filter((t) => t.status === taskFilter)
+  const contactMessages = messages
+    .filter((m) => m.contactId === opportunity.contactId && m.kind !== "activity")
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+  const lastInbound = contactMessages.find((m) => m.direction === "inbound")
+  const lastOutbound = contactMessages.find((m) => m.direction === "outbound")
+  const latestMessage = contactMessages[0]
+  const hasConversation = contactMessages.length > 0
 
   async function handleAnalyze() {
     if (!opportunity || !contact) return
@@ -133,39 +179,8 @@ export function DetailDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           opportunityId: opportunity.id,
-          contact: {
-            name: contact.name,
-            email: contact.email,
-            phone: contact.phone,
-            tags: contact.tags,
-            source: contact.source,
-            campaign: contact.campaign,
-            assignedTo: contact.assignedTo,
-          },
-          opportunity: {
-            id: opportunity.id,
-            name: opportunity.name,
-            pipelineName: opportunity.pipelineName,
-            stage: opportunity.stage,
-            status: opportunity.status,
-            value: opportunity.value,
-            lostReason: opportunity.lostReason,
-            createdAt: opportunity.createdAt,
-            updatedAt: opportunity.updatedAt,
-            assignedTo: opportunity.assignedTo,
-          },
-          tasks: oppTasks.map((t) => ({
-            title: t.title,
-            type: t.type,
-            status: t.status,
-            dueDate: t.dueDate,
-          })),
-          calls: contactCalls.map((c) => ({
-            direction: c.direction,
-            status: c.status,
-            durationSeconds: c.durationSeconds,
-            createdAt: c.createdAt,
-          })),
+          contact,
+          opportunity,
         }),
       })
       const data = await res.json()
@@ -217,12 +232,7 @@ export function DetailDrawer({
           </div>
           {locationId && (
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs gap-1.5"
-              >
+              <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
                 <a
                   href={`https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${opportunity.id}?tab=Opportunity+Details`}
                   target="_blank"
@@ -233,12 +243,7 @@ export function DetailDrawer({
                 </a>
               </Button>
               {contact && (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1.5"
-                >
+                <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
                   <a
                     href={`https://login.lezgosuite.com/v2/location/${locationId}/contacts/detail/${contact.id}`}
                     target="_blank"
@@ -256,136 +261,124 @@ export function DetailDrawer({
                 onClick={handleAnalyze}
                 disabled={isAnalyzing}
               >
-                {isAnalyzing ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3 w-3" />
-                )}
+                {isAnalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                 {isAnalyzing ? "Analizando…" : "Analizar con IA"}
               </Button>
             </div>
           )}
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="overview" className="px-6 pt-4">
-          <TabsList className="w-full">
-            <TabsTrigger value="overview" className="flex-1 text-xs">Resumen</TabsTrigger>
-            <TabsTrigger value="tasks" className="flex-1 text-xs">Tareas</TabsTrigger>
-            <TabsTrigger value="appointments" className="flex-1 text-xs">Citas</TabsTrigger>
-          </TabsList>
+        {/* Scrollable body */}
+        <div className="flex flex-col gap-5 px-6 py-5 pb-8">
 
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="mt-4">
-            <div className="flex flex-col gap-4">
-              <div className="rounded-lg border border-border p-4">
-                <h4 className="text-xs font-semibold text-muted-foreground mb-3">Detalles de la Oportunidad</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">Valor</p>
-                      <p className="text-sm font-semibold text-foreground">{opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">Fecha de cierre</p>
-                      <p className="text-sm font-semibold text-foreground">{(opportunity as any).closeDate ?? "No disponible"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">Etapa</p>
-                      <p className="text-sm font-semibold text-foreground">{opportunity.stage ?? "No disponible"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <div>
-                      <p className="text-[11px] text-muted-foreground">Pipeline</p>
-                      <p className="text-sm font-semibold text-foreground">{opportunity.pipelineName ?? "No disponible"}</p>
-                    </div>
-                  </div>
+          {/* Opportunity section */}
+          <div>
+            <SectionLabel>Oportunidad</SectionLabel>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <InfoCell icon={<DollarSign className="h-3.5 w-3.5" />} label="Valor">
+                {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
+              </InfoCell>
+              <InfoCell icon={<Calendar className="h-3.5 w-3.5" />} label="Cierre">
+                {(opportunity as any).closeDate ?? "No disponible"}
+              </InfoCell>
+              <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Etapa">
+                {opportunity.stage ?? "No disponible"}
+              </InfoCell>
+              <InfoCell icon={<Clock className="h-3.5 w-3.5" />} label="Pipeline">
+                {opportunity.pipelineName ?? "No disponible"}
+              </InfoCell>
+              {opportunity.assignedTo && (
+                <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Asignado a" className="col-span-2">
+                  {opportunity.assignedTo}
+                </InfoCell>
+              )}
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Contact section */}
+          <div>
+            <SectionLabel>Contacto</SectionLabel>
+            {!contact ? (
+              <p className="text-xs text-muted-foreground italic">Contacto no vinculado.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium text-foreground">{contact.name}</span>
                 </div>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Información de Contacto</h4>
-                {!contact ? (
-                  <p className="text-sm text-muted-foreground italic">Contacto no vinculado a esta oportunidad.</p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-sm font-medium text-foreground">{contact.name}</p>
-                    <p className="text-xs text-muted-foreground">{contact.email || "Sin correo electrónico"}</p>
-                    <p className="text-xs text-muted-foreground">{contact.phone || "Sin teléfono"}</p>
-                    {contact.assignedTo && <p className="text-xs text-muted-foreground">Asignado a: {contact.assignedTo}</p>}
+                {contact.email && (
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">{contact.email}</span>
+                  </div>
+                )}
+                {contact.phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">{contact.phone}</span>
+                  </div>
+                )}
+                {contact.assignedTo && (
+                  <div className="flex items-center gap-2">
+                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">Asignado a: {contact.assignedTo}</span>
                   </div>
                 )}
               </div>
-            </div>
-          </TabsContent>
-
-          {/* Tasks Tab */}
-          <TabsContent value="tasks" className="mt-4">
-            <div className="flex items-center gap-1 mb-3">
-              {([["all","Todas"],["open","Pendientes"],["completed","Completadas"]] as const).map(([f, label]) => (
-                <Button
-                  key={f}
-                  variant={taskFilter === f ? "default" : "outline"}
-                  size="sm"
-                  className="h-6 text-[11px]"
-                  onClick={() => setTaskFilter(f)}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-            {filteredTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Sin tareas registradas.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {filteredTasks.map((task) => {
-                  const Icon = TASK_ICONS[task.type] || MoreHorizontal
-                  return (
-                    <div
-                      key={task.id}
-                      className="flex items-start gap-3 rounded-lg border border-border p-3"
-                    >
-                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${task.status === "completed" ? "bg-emerald-100" : "bg-muted"}`}>
-                        <Icon className={`h-3.5 w-3.5 ${task.status === "completed" ? "text-emerald-600" : "text-muted-foreground"}`} />
-                      </div>
-                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                        <span className="text-sm font-medium text-foreground truncate">{task.title}</span>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span className="capitalize">{task.type}</span>
-                          <span>Due: {task.dueDate}</span>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] shrink-0 ${task.status === "completed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}
-                      >
-                        {task.status}
-                      </Badge>
-                    </div>
-                  )
-                })}
-              </div>
             )}
-          </TabsContent>
+          </div>
 
-          {/* Appointments Tab */}
-          <TabsContent value="appointments" className="mt-4 pb-6">
-            {contactAppointments.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Sin citas registradas.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {contactAppointments
-                  .slice()
-                  .sort((a, b) => b.startTime.localeCompare(a.startTime))
-                  .map((appt) => {
+          {/* Conversation section */}
+          {hasConversation && (
+            <>
+              <Divider />
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <SectionLabel>Conversación</SectionLabel>
+                  {latestMessage && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-2">
+                      <ChannelIcon source={latestMessage.source} />
+                      <span>{CHANNEL_LABELS[latestMessage.source] ?? latestMessage.source}</span>
+                      <span className="mx-0.5">·</span>
+                      <span>{formatRelativeTime(latestMessage.createdAt)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {lastInbound && (
+                    <MessageRow
+                      direction="inbound"
+                      content={lastInbound.content}
+                      time={lastInbound.createdAt}
+                      source={lastInbound.source}
+                    />
+                  )}
+                  {lastOutbound && (
+                    <MessageRow
+                      direction="outbound"
+                      content={lastOutbound.content}
+                      time={lastOutbound.createdAt}
+                      source={lastOutbound.source}
+                    />
+                  )}
+                  <p className="text-[10px] text-muted-foreground pt-0.5">
+                    {contactMessages.length} mensaje{contactMessages.length !== 1 ? "s" : ""} en total
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Appointments section */}
+          {contactAppointments.length > 0 && (
+            <>
+              <Divider />
+              <div>
+                <SectionLabel>Citas</SectionLabel>
+                <div className="flex flex-col gap-2">
+                  {contactAppointments.map((appt) => {
                     const status = (appt.status ?? "").toLowerCase()
                     const isConfirmed = ["confirmed", "showed"].includes(status)
                     const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
@@ -405,7 +398,7 @@ export function DetailDrawer({
                         key={appt.id}
                         type="button"
                         onClick={() => setSelectedAppointment(appt)}
-                        className="flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent/30 transition-colors"
+                        className="flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent/30 transition-colors w-full"
                       >
                         <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
                           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
@@ -422,19 +415,17 @@ export function DetailDrawer({
                             <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{appt.notes}</p>
                           )}
                         </div>
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] shrink-0 capitalize ${badgeClass}`}
-                        >
+                        <Badge variant="outline" className={`text-[10px] shrink-0 capitalize ${badgeClass}`}>
                           {appt.status || "pendiente"}
                         </Badge>
                       </button>
                     )
                   })}
+                </div>
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            </>
+          )}
+        </div>
 
         <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
           <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -463,6 +454,71 @@ export function DetailDrawer({
         />
       </SheetContent>
     </Sheet>
+  )
+}
+
+function Divider() {
+  return <div className="h-px bg-border" />
+}
+
+function InfoCell({
+  icon,
+  label,
+  children,
+  className = "",
+}: {
+  icon: React.ReactNode
+  label: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`flex items-start gap-2 ${className}`}>
+      <span className="mt-0.5 text-muted-foreground shrink-0">{icon}</span>
+      <div>
+        <p className="text-[10px] text-muted-foreground">{label}</p>
+        <p className="text-sm font-semibold text-foreground leading-snug">{children}</p>
+      </div>
+    </div>
+  )
+}
+
+function MessageRow({
+  direction,
+  content,
+  time,
+  source,
+}: {
+  direction: "inbound" | "outbound"
+  content?: string
+  time: string
+  source: string
+}) {
+  const isInbound = direction === "inbound"
+  return (
+    <div className="rounded-lg border border-border p-3 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          {isInbound ? (
+            <ArrowDownLeft className="h-3 w-3 text-blue-500" />
+          ) : (
+            <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+          )}
+          <span className={`text-[10px] font-semibold ${isInbound ? "text-blue-600" : "text-emerald-600"}`}>
+            {isInbound ? "Lead" : "Nosotros"}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <ChannelIcon source={source} />
+          <span>{formatRelativeTime(time)}</span>
+        </div>
+      </div>
+      {content ? (
+        <p className="text-xs text-foreground line-clamp-3 leading-relaxed">{content}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">Sin contenido</p>
+      )}
+    </div>
   )
 }
 
@@ -523,11 +579,11 @@ function AppointmentDetailDialog({
               <DialogTitle className="text-base leading-snug">
                 {appointment?.title ?? "Cita"}
               </DialogTitle>
-              <DialogDescription className="text-xs mt-1 capitalize">
+              <div className="text-xs mt-1 capitalize text-muted-foreground">
                 <Badge variant="outline" className={`text-[10px] capitalize ${badgeClass}`}>
                   {appointment?.status || "pendiente"}
                 </Badge>
-              </DialogDescription>
+              </div>
             </div>
           </div>
         </DialogHeader>

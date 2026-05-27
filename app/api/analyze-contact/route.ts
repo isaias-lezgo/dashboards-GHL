@@ -4,28 +4,21 @@ import { getOpportunityById } from "@/lib/ghl-client";
 
 // ─── Request types ────────────────────────────────────────────────────────────
 
-interface ContactPayload {
+// Accept the full GHL-shaped objects — no field is dropped client-side.
+type ContactPayload = Record<string, unknown> & {
   name: string;
   email?: string;
   phone?: string;
-  tags?: string[];
-  source?: string;
-  campaign?: string;
-  assignedTo?: string;
-}
+};
 
-interface OpportunityPayload {
+type OpportunityPayload = Record<string, unknown> & {
   id: string;
   name: string;
   pipelineName: string;
   stage: string;
   status: string;
   value: number;
-  lostReason?: string;
-  createdAt: string;
-  updatedAt: string;
-  assignedTo?: string;
-}
+};
 
 interface TaskPayload {
   title: string;
@@ -45,8 +38,8 @@ interface AnalyzeContactBody {
   opportunityId: string;
   contact: ContactPayload;
   opportunity: OpportunityPayload;
-  tasks: TaskPayload[];
-  calls: CallPayload[];
+  tasks?: TaskPayload[];
+  calls?: CallPayload[];
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -94,6 +87,11 @@ function formatDate(iso: string): string {
   }
 }
 
+function str(v: unknown): string | undefined {
+  if (v === null || v === undefined || v === "") return undefined;
+  return String(v);
+}
+
 function buildContext(
   body: AnalyzeContactBody,
   calendarEvents: Array<{
@@ -104,28 +102,62 @@ function buildContext(
     notes?: string;
   }>
 ): string {
-  const { contact, opportunity, tasks, calls } = body;
+  const { contact, opportunity, tasks = [], calls = [] } = body;
   const lines: string[] = [];
 
   lines.push("=== CONTACTO ===");
   lines.push(`Nombre: ${contact.name}`);
   if (contact.email) lines.push(`Email: ${contact.email}`);
   if (contact.phone) lines.push(`Teléfono: ${contact.phone}`);
-  if (contact.tags?.length) lines.push(`Tags: ${contact.tags.join(", ")}`);
-  if (contact.source) lines.push(`Fuente: ${contact.source}`);
-  if (contact.campaign) lines.push(`Campaña: ${contact.campaign}`);
-  if (contact.assignedTo) lines.push(`Asignado a: ${contact.assignedTo}`);
+  if (str(contact.companyName)) lines.push(`Empresa: ${contact.companyName}`);
+  const location = [contact.city, contact.state, contact.country].filter(Boolean).join(", ");
+  if (location) lines.push(`Ubicación: ${location}`);
+  if (contact.timezone) lines.push(`Zona horaria: ${contact.timezone}`);
+  if (contact.website) lines.push(`Sitio web: ${contact.website}`);
+  if (contact.dateOfBirth) lines.push(`Fecha de nacimiento: ${formatDate(String(contact.dateOfBirth))}`);
+  const tags = Array.isArray(contact.tags) ? contact.tags : [];
+  if (tags.length) lines.push(`Tags: ${tags.join(", ")}`);
+  if (str(contact.source)) lines.push(`Fuente: ${contact.source}`);
+  if (str(contact.campaign)) lines.push(`Campaña: ${contact.campaign}`);
+  if (str(contact.adType)) lines.push(`Tipo de anuncio: ${contact.adType}`);
+  if (str(contact.assignedTo)) lines.push(`Asignado a: ${contact.assignedTo}`);
+  if (str(contact.lastActivity)) lines.push(`Última actividad: ${formatDate(String(contact.lastActivity))}`);
+  if (contact.dnd) lines.push(`DND: sí`);
+  if (str(contact.dateAdded)) lines.push(`Creado: ${formatDate(String(contact.dateAdded))}`);
+  const contactCustomFields = contact.customFieldsResolved as Record<string, string> | undefined;
+  if (contactCustomFields && Object.keys(contactCustomFields).length > 0) {
+    lines.push("Campos personalizados:");
+    for (const [name, value] of Object.entries(contactCustomFields)) {
+      lines.push(`  ${name}: ${value}`);
+    }
+  }
 
   lines.push("\n=== OPORTUNIDAD ===");
   lines.push(`Nombre: ${opportunity.name}`);
   lines.push(`Pipeline: ${opportunity.pipelineName}`);
   lines.push(`Etapa: ${opportunity.stage}`);
   lines.push(`Estado: ${opportunity.status}`);
-  lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}`);
-  if (opportunity.lostReason) lines.push(`Razón de pérdida: ${opportunity.lostReason}`);
-  if (opportunity.assignedTo) lines.push(`Asignado a: ${opportunity.assignedTo}`);
-  lines.push(`Creada: ${formatDate(opportunity.createdAt)}`);
-  lines.push(`Última actualización: ${formatDate(opportunity.updatedAt)}`);
+  lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}${opportunity.currency ? ` ${opportunity.currency}` : ""}`);
+  if (opportunity.probability !== undefined && opportunity.probability !== null) {
+    lines.push(`Probabilidad: ${opportunity.probability}%`);
+  }
+  if (str(opportunity.priority)) lines.push(`Prioridad: ${opportunity.priority}`);
+  if (str(opportunity.lostReason)) lines.push(`Razón de pérdida: ${opportunity.lostReason}`);
+  if (str(opportunity.assignedTo)) lines.push(`Asignado a: ${opportunity.assignedTo}`);
+  if (str(opportunity.notes)) lines.push(`Notas: ${opportunity.notes}`);
+  if (str(opportunity.origin)) lines.push(`Origen: ${opportunity.origin}`);
+  if (opportunity.archived) lines.push(`Archivada: sí`);
+  lines.push(`Creada: ${formatDate(String(opportunity.createdAt))}`);
+  if (str(opportunity.updatedAt)) lines.push(`Última actualización: ${formatDate(String(opportunity.updatedAt))}`);
+  if (str(opportunity.closedAt)) lines.push(`Fecha de cierre: ${formatDate(String(opportunity.closedAt))}`);
+  if (str(opportunity.lastActivity)) lines.push(`Última actividad: ${formatDate(String(opportunity.lastActivity))}`);
+  const oppCustomFields = opportunity.customFieldsResolved as Record<string, string> | undefined;
+  if (oppCustomFields && Object.keys(oppCustomFields).length > 0) {
+    lines.push("Campos personalizados:");
+    for (const [name, value] of Object.entries(oppCustomFields)) {
+      lines.push(`  ${name}: ${value}`);
+    }
+  }
 
   if (calendarEvents.length > 0) {
     lines.push("\n=== CITAS ===");
@@ -186,7 +218,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Cuerpo de petición inválido" }, { status: 400 });
   }
 
-  if (!body.opportunityId || !body.contact?.name || !body.opportunity?.id) {
+  if (!body.opportunityId || !body.contact?.name || !body.opportunity?.id || !body.opportunity?.pipelineName) {
     return NextResponse.json(
       { error: "Faltan campos requeridos: opportunityId, contact.name, opportunity.id" },
       { status: 400 }

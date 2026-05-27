@@ -7,6 +7,7 @@ import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsDashboard } from "@/components/dashboard/conversations-dashboard"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
+import { AIChatPanel } from "@/components/dashboard/ai-chat-panel"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import {
   TrendingUp,
@@ -20,6 +21,7 @@ import {
   Users,
   Target,
   ClipboardList,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -31,6 +33,7 @@ export default function DashboardPage() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
+  const [aiChatOpen, setAiChatOpen] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -104,6 +107,16 @@ export default function DashboardPage() {
                     </TooltipTrigger>
                     <TooltipContent side="bottom">Pautas cargadas</TooltipContent>
                   </Tooltip>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setAiChatOpen(true)}
+                    className="h-7 gap-1.5 rounded-md bg-gradient-to-r from-violet-500 to-fuchsia-500 px-2.5 text-[11px] font-medium text-white shadow-sm transition-all hover:from-violet-400 hover:to-fuchsia-400 hover:shadow-md"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Analizar con IA
+                  </Button>
                 </div>
               </TooltipProvider>
             )}
@@ -210,6 +223,23 @@ export default function DashboardPage() {
           />
         )}
       </div>
+
+      {data && (
+        <AIChatPanel
+          open={aiChatOpen}
+          onOpenChange={setAiChatOpen}
+          dataset={{
+            contacts,
+            opportunities,
+            pautas: data.pautas ?? [],
+            appointments,
+            messages,
+            tasks: data.tasks ?? [],
+            calls,
+          }}
+          locationId={data.locationId}
+        />
+      )}
     </div>
     </>
   )
