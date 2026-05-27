@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Send, Sparkles, RefreshCcw, Wrench, AlertCircle } from "lucide-react";
+import { Loader2, Send, Sparkles, RefreshCcw, Wrench, AlertCircle, Square } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -147,6 +147,7 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const stopRef = useRef(false);
 
   // Rebuild summary whenever the dataset changes — cheap, ~few KB of text.
   const datasetSummary = useMemo(
@@ -175,14 +176,20 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
     setTotalTools(0);
   }, []);
 
+  const stop = useCallback(() => {
+    stopRef.current = true;
+  }, []);
+
   const runAgentLoop = useCallback(
     async (initialMessages: UIMessage[]) => {
+      stopRef.current = false;
       setBusy(true);
       setError(null);
       let convo = [...initialMessages];
 
       try {
         for (let turn = 0; turn < MAX_TURNS; turn++) {
+          if (stopRef.current) break;
           setStatus(turn === 0 ? "Pensando…" : "Continuando…");
 
           const apiMessages: ApiMessage[] = convo.map((m) => ({
@@ -419,6 +426,19 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
                 <RefreshCcw className="h-3 w-3" />
                 Reiniciar
               </Button>
+              {busy && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={stop}
+                  className="h-6 gap-1 px-2.5 text-[10px]"
+                  aria-label="Detener"
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  Detener
+                </Button>
+              )}
               <Button
                 type="button"
                 size="sm"
