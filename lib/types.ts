@@ -89,7 +89,7 @@ export interface Opportunity {
   origin?: string
   lastActivity?: string
   lostReasonId?: string
-  lostReason?: string   // computed: resolved from lostReasonId via custom values lookup
+  lostReason?: string   // computed: from the "Motivo de Perdido" opportunity custom field (lostReasonId is always null in this location)
   customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>
   customFieldsResolved?: Record<string, string>  // computed: id→name resolved custom fields
   attributions?: Array<{ [key: string]: unknown }>

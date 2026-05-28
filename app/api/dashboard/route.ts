@@ -5,7 +5,6 @@ import {
   getConversations,
   getMessages,
   getUsers,
-  getLostReasons,
   getCustomFields,
   getCustomObjects,
   getAllCustomObjectRecords,
@@ -74,7 +73,12 @@ function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>):
   const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
   return {
     ...ghl,
-    name: ghl.name || `${ghl.firstName || ""} ${ghl.lastName || ""}`.trim() || "Unknown",
+    name:
+      ghl.name?.trim() ||
+      `${ghl.firstNameRaw ?? ""} ${ghl.lastNameRaw ?? ""}`.trim() ||
+      ghl.contactName?.trim() ||
+      `${ghl.firstName ?? ""} ${ghl.lastName ?? ""}`.trim() ||
+      "Unknown",
     email: ghl.email ?? "",
     phone: ghl.phone ?? "",
     tags: ghl.tags ?? [],
@@ -115,7 +119,10 @@ function transformOpportunity(
     adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
     adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
     attributionUrl: firstAttr(ghl.attributions)?.url || undefined,
-    lostReason: ghl.lostReasonId,
+    lostReason:
+      ghl.status === "lost"
+        ? customFieldsResolved["Motivo de Perdido"] || undefined
+        : undefined,
     ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
 }
@@ -188,11 +195,10 @@ export async function GET() {
         send({ type: "progress", message: "Iniciando sincronización…" });
 
         // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
-        const [pipelinesResult, usersResult, lostReasonsResult, customFieldsResult] =
+        const [pipelinesResult, usersResult, customFieldsResult] =
           await Promise.allSettled([
             getPipelines(),
             getUsers(),
-            getLostReasons(),
             getCustomFields(),
           ]);
 
@@ -200,7 +206,6 @@ export async function GET() {
 
         const pipelinesRaw = pipelinesResult.status === "fulfilled" ? pipelinesResult.value : { pipelines: [] };
         const usersRaw = usersResult.status === "fulfilled" ? usersResult.value : { users: [] };
-        const lostReasonsRaw = lostReasonsResult.status === "fulfilled" ? lostReasonsResult.value : { customValues: [] };
         const customFieldsRaw = customFieldsResult.status === "fulfilled" ? customFieldsResult.value : { customFields: [] };
 
         // Build custom field id→name lookup
@@ -233,12 +238,6 @@ export async function GET() {
           const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
           userMap.set(u.id, name);
           members.push(name);
-        }
-
-        // Build lost reason map
-        const lostReasonMap = new Map<string, string>();
-        for (const cv of lostReasonsRaw.customValues) {
-          lostReasonMap.set(cv.id, cv.name);
         }
 
         // Fetch contacts with progress
@@ -344,9 +343,6 @@ export async function GET() {
             if (!opp.source) opp.source = contact.source;
             if (!opp.adId) opp.adId = contact.adId;
             if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
-          }
-          if (opp.lostReason && lostReasonMap.has(opp.lostReason)) {
-            opp.lostReason = lostReasonMap.get(opp.lostReason);
           }
         }
 
@@ -492,7 +488,7 @@ export async function GET() {
                   endTime: ev.endTime,
                   status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
                   notes: ev.notes,
-                  location: ev.location,
+                  location: ev.address ?? ev.location,
                 });
               }
             }

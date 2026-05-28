@@ -115,8 +115,11 @@ export interface GHLContact {
   id: string;
   locationId: string;
   name?: string;
+  contactName?: string;
   firstName?: string;
   lastName?: string;
+  firstNameRaw?: string;
+  lastNameRaw?: string;
   email?: string;
   emailLowerCase?: string;
   phone?: string;
@@ -213,6 +216,22 @@ export async function getContacts(params?: {
 
 // ============ OPPORTUNITIES ============
 
+// Calendar entries embedded by /opportunities/search when getCalendarEvents=true.
+// Note GHL's misspellings: the array key is `calenders` and the status field is
+// `appoinmentStatus`.
+export interface GHLOpportunityCalendarEntry {
+  id: string;
+  contactId?: string;
+  calendarId?: string;
+  assignedUserId?: string;
+  startTime: string;
+  endTime: string;
+  status?: string;
+  appoinmentStatus?: string;
+  title?: string;
+  notes?: string;
+}
+
 export interface GHLOpportunity {
   id: string;
   locationId?: string;
@@ -244,6 +263,8 @@ export interface GHLOpportunity {
   lastActivity?: string;
   lostReasonId?: string;
   customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>;
+  // Present only when fetched via /opportunities/search with getCalendarEvents=true
+  calenders?: GHLOpportunityCalendarEntry[];
   // Embedded contact object returned by the search endpoint
   contact: {
     id: string;
@@ -280,16 +301,29 @@ export interface GHLOpportunityDetail extends GHLOpportunity {
   calendarEvents: GHLCalendarEvent[];
 }
 
-export interface GHLOpportunityDetailResponse {
-  opportunity: GHLOpportunityDetail;
-}
-
 export async function getOpportunityById(id: string): Promise<GHLOpportunityDetail> {
-  const resp = await ghlFetch<GHLOpportunityDetailResponse>(
-    `/opportunities/${id}`,
-    { noQueryLocationId: true }
-  );
-  return resp.opportunity;
+  // GET /opportunities/{id} does NOT return calendar events. The search endpoint
+  // with getCalendarEvents=true does — under the misspelled key `calenders`.
+  const resp = await ghlFetch<GHLOpportunitiesResponse>("/opportunities/search", {
+    useSnakeCaseLocationId: true,
+    params: { id, getCalendarEvents: true, limit: 1 },
+  });
+  const opp = resp.opportunities[0];
+  if (!opp) throw new Error(`Opportunity ${id} not found`);
+  const calendarEvents: GHLCalendarEvent[] = (opp.calenders ?? []).map((c) => ({
+    id: c.id,
+    calendarId: c.calendarId ?? "",
+    contactId: c.contactId ?? "",
+    status: c.status ?? "",
+    startTime: c.startTime,
+    endTime: c.endTime,
+    appointmentStatus: c.appoinmentStatus ?? c.status,
+    assignedUserId: c.assignedUserId,
+    title: c.title,
+    notes: c.notes,
+    dateAdded: c.startTime,
+  }));
+  return { ...opp, calendarEvents };
 }
 
 export async function getOpportunities(params?: {
@@ -448,6 +482,7 @@ export interface GHLCalendarEvent {
   appointmentStatus?: string;
   assignedUserId?: string;
   notes?: string;
+  address?: string;
   location?: string;
   dateAdded: string;
 }
@@ -508,18 +543,6 @@ export async function getContactTasks(contactId: string): Promise<GHLTasksRespon
   return ghlFetch<GHLTasksResponse>(`/contacts/${contactId}/tasks`);
 }
 
-// ============ CUSTOM VALUES / LOST REASONS ============
-
-export interface GHLCustomValue {
-  id: string;
-  name: string;
-  fieldKey: string;
-}
-
-export async function getLostReasons(): Promise<{ customValues: GHLCustomValue[] }> {
-  return ghlFetch<{ customValues: GHLCustomValue[] }>("/locations/:locationId/customValues");
-}
-
 // ============ CUSTOM FIELD DEFINITIONS ============
 
 export interface GHLCustomField {
@@ -540,7 +563,12 @@ export interface GHLCustomFieldsResponse {
 }
 
 export async function getCustomFields(): Promise<GHLCustomFieldsResponse> {
-  return ghlFetch<GHLCustomFieldsResponse>("/locations/:locationId/customFields");
+  // Without ?model=all the endpoint returns ONLY contact custom fields, so
+  // opportunity fields (e.g. "Motivo de Perdido") never make it into the
+  // id→name map and stay unresolved.
+  return ghlFetch<GHLCustomFieldsResponse>("/locations/:locationId/customFields", {
+    params: { model: "all" },
+  });
 }
 
 // ============ CUSTOM OBJECTS ============
