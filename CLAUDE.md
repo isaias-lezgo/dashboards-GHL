@@ -76,6 +76,22 @@ components/dashboard/{marketing,sales}-dashboard.tsx
 - **Conversation `type`** is numeric in some endpoints: `1=Phone`, `2=Email`, `3=FB Messenger`, `4=Review`, `5=Group SMS`.
 - **Required scopes**: `contacts.readonly/write`, `opportunities.readonly/write`, `conversations.readonly/write`.
 
+## GHL MCP Server
+
+An HTTP MCP server (`ghl-mcp`, configured in `.mcp.json`) connects directly to GoHighLevel's hosted MCP endpoint (`https://services.leadconnectorhq.com/mcp/`). It authenticates with the same `GHL_API_TOKEN` and `GHL_LOCATION_ID` env vars used by `lib/ghl-client.ts`.
+
+- **Purpose**: lets Claude Code query/mutate live GHL data directly during development (inspecting real contacts, opportunities, pipelines, custom fields, conversations) without writing throwaway scripts. It is **not** part of the app's runtime data flow — the app always goes through `app/api/dashboard/route.ts` → `lib/ghl-client.ts`. Never wire MCP calls into application code.
+- **Use it to**: verify real data shapes, discover pipeline/custom-field IDs, confirm API behavior, and validate transforms against production data before coding them in `route.ts`.
+- **Tools** (prefixed `mcp__ghl-mcp__`), grouped:
+  - `contacts_*` — get-contact, get-contacts, create/update/upsert-contact, add-tags, remove-tags, get-all-tasks
+  - `opportunities_*` — get-opportunity, search-opportunity, get-pipelines, update-opportunity
+  - `conversations_*` — search-conversation, get-messages, send-a-new-message
+  - `locations_*` — get-location, get-custom-fields
+  - `calendars_*` — get-calendar-events, get-appointment-notes
+  - `payments_*` — list-transactions, get-order-by-id
+  - `blogs_*`, `emails_*`, `social-media-posting_*` — content/marketing operations
+- **Caution**: write tools (create/update/upsert/send/post) mutate live production data. Default to read-only tools; only use write tools when explicitly asked.
+
 ### UI components
 
 - `components/ui/` — shadcn/ui components (generated, do not hand-edit)

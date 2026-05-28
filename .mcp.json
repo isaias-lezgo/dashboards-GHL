@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ghl-mcp": {
+      "type": "http",
+      "url": "https://services.leadconnectorhq.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GHL_API_TOKEN}",
+        "locationId": "${GHL_LOCATION_ID}"
+      }
+    }
+  }
+}
