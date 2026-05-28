@@ -34,17 +34,37 @@ interface CallPayload {
   createdAt: string;
 }
 
+interface AppointmentPayload {
+  title?: string;
+  startTime: string;
+  endTime?: string;
+  status?: string;
+  notes?: string;
+}
+
+interface MessagePayload {
+  direction: "inbound" | "outbound";
+  source?: string;
+  content?: string;
+  createdAt: string;
+}
+
 interface AnalyzeContactBody {
   opportunityId: string;
   contact: ContactPayload;
   opportunity: OpportunityPayload;
   tasks?: TaskPayload[];
   calls?: CallPayload[];
+  // Provided by the client from already-loaded dashboard data. When present,
+  // appointments are used as-is and the server skips the live GHL fetch.
+  appointments?: AppointmentPayload[];
+  // Recent conversation, chronological (oldest→newest).
+  messages?: MessagePayload[];
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Eres un analista de ventas experto en CRM y GoHighLevel. Recibirás el perfil completo de un contacto/lead: información personal, oportunidad de venta, tareas, llamadas y citas. Genera un reporte conciso, accionable y en español.
+const SYSTEM_PROMPT = `Eres un analista de ventas experto en CRM y GoHighLevel. Recibirás el perfil completo de un contacto/lead: información personal, oportunidad de venta, tareas, llamadas, citas y los mensajes recientes de la conversación. Genera un reporte conciso, accionable y en español.
 
 Tu reporte debe seguir EXACTAMENTE este formato Markdown:
 
@@ -52,7 +72,7 @@ Tu reporte debe seguir EXACTAMENTE este formato Markdown:
 Una o dos oraciones: quién es, de dónde vino (fuente/campaña), en qué etapa del pipeline está y quién lo atiende.
 
 ## Calidad del lead
-Clasifica como **🔥 Hot**, **☀️ Warm**, o **❄️ Cold** y justifica en una oración. Considera: valor de la oportunidad, etapa del pipeline, fuente, tags, urgencia aparente.
+Clasifica como **🔥 Hot**, **☀️ Warm**, o **❄️ Cold** y justifica en una oración. Considera: valor de la oportunidad, etapa del pipeline, fuente, tags, urgencia aparente y el tono/intención en la conversación reciente.
 
 ## Estado de la oportunidad
 Pipeline, etapa actual, valor monetario, estado (open/won/lost/abandoned). Si está perdida, menciona la razón. Si está ganada, felicita brevemente.
@@ -63,13 +83,16 @@ Solo incluye esta sección si hay citas. Lista cada cita con: fecha, estado y no
 ## Tareas pendientes
 Solo incluye esta sección si hay tareas con status "pending". Lista título, tipo y fecha de vencimiento. Si no hay tareas pendientes, omite esta sección completamente.
 
+## Conversación reciente
+Solo incluye esta sección si hay mensajes. En 1-2 oraciones: qué pidió el lead, qué respondió el asesor y si quedó algo pendiente o sin responder. Si no hay mensajes, omite esta sección completamente.
+
 ## Próximos pasos sugeridos
 1. Acción concreta #1 — qué hacer, cuándo, cómo
 2. Acción concreta #2
 3. Acción concreta #3
 
 ## Señales de alerta
-Solo incluye esta sección si detectas: oportunidad estancada sin actividad reciente, lead caliente sin citas agendadas, tareas vencidas, oportunidad de alto valor sin seguimiento. Si todo está en orden, omite esta sección completamente.
+Solo incluye esta sección si detectas: oportunidad estancada sin actividad reciente, lead caliente sin citas agendadas, tareas vencidas, oportunidad de alto valor sin seguimiento, o el último mensaje es del lead y sigue sin respuesta (ghosting del asesor). Si todo está en orden, omite esta sección completamente.
 
 Reglas:
 - Sé directo y conciso. Nada de relleno corporativo.
@@ -198,6 +221,24 @@ function buildContext(
     lines.push("\n=== LLAMADAS ===\n(Sin llamadas registradas)");
   }
 
+  const messages = body.messages ?? [];
+  if (messages.length > 0) {
+    lines.push("\n=== CONVERSACIÓN RECIENTE (más antiguo → más reciente) ===");
+    for (const m of messages) {
+      const when = (() => {
+        try {
+          return new Date(m.createdAt).toLocaleString("es-MX");
+        } catch {
+          return m.createdAt;
+        }
+      })();
+      const speaker = m.direction === "inbound" ? contact.name : "Asesor";
+      const src = m.source ? ` (${m.source})` : "";
+      const content = (m.content ?? "").length > 500 ? `${(m.content ?? "").slice(0, 500)}…` : m.content ?? "";
+      lines.push(`[${when}]${src} ${speaker}: ${content}`);
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -225,7 +266,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // Fetch calendar events — failures are non-fatal; analysis continues without citas
+  // Prefer the appointments the client already loaded; only fall back to a
+  // live GHL fetch when the client sent none (avoids a redundant round-trip).
   let calendarEvents: Array<{
     title?: string;
     startTime: string;
@@ -233,11 +275,21 @@ export async function POST(req: Request) {
     appointmentStatus?: string;
     notes?: string;
   }> = [];
-  try {
-    const oppDetail = await getOpportunityById(body.opportunityId);
-    calendarEvents = oppDetail.calendarEvents ?? [];
-  } catch (err) {
-    console.warn("[analyze-contact] Could not fetch opportunity detail for calendar events:", err);
+  if (Array.isArray(body.appointments) && body.appointments.length > 0) {
+    calendarEvents = body.appointments.map((a) => ({
+      title: a.title,
+      startTime: a.startTime,
+      endTime: a.endTime ?? a.startTime,
+      appointmentStatus: a.status,
+      notes: a.notes,
+    }));
+  } else {
+    try {
+      const oppDetail = await getOpportunityById(body.opportunityId);
+      calendarEvents = oppDetail.calendarEvents ?? [];
+    } catch (err) {
+      console.warn("[analyze-contact] Could not fetch opportunity detail for calendar events:", err);
+    }
   }
 
   const contextText = buildContext(body, calendarEvents);

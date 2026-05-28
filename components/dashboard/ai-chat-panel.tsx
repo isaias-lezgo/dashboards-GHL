@@ -111,7 +111,8 @@ async function fetchContactMessages(input: Record<string, unknown>): Promise<unk
     threads: Array<{ contactId: string; messages: Array<Record<string, unknown>> }>;
   };
   const thread = data.threads?.find((t) => t.contactId === contactId);
-  const msgs = thread?.messages ?? [];
+  // Drop system/activity events — they aren't part of the real conversation.
+  const msgs = (thread?.messages ?? []).filter((m) => m.kind !== "activity");
   // /api/conversations returns oldest→newest; flip to newest→oldest then cap.
   const sorted = [...msgs].sort(
     (a, b) =>
@@ -165,14 +166,16 @@ async function fetchConversationThreads(input: Record<string, unknown>): Promise
   }
 
   const threads = (data.threads ?? []).map((t) => {
-    const sorted = [...t.messages].sort(
+    // Drop system/activity events — keep only real advisor↔lead messages.
+    const chat = t.messages.filter((m) => m.kind !== "activity")
+    const sorted = [...chat].sort(
       (a, b) =>
         new Date(String(b.createdAt ?? "")).getTime() -
         new Date(String(a.createdAt ?? "")).getTime()
     )
     return {
       contactId: t.contactId,
-      messageCount: t.messages.length,
+      messageCount: chat.length,
       messages: sorted.map((m) => ({
         id: m.id,
         direction: m.direction,
@@ -285,7 +288,16 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
           );
 
           if (toolUses.length === 0) {
-            // Assistant produced a plain-text answer — we're done.
+            // No tool calls. If the output-token cap truncated the answer,
+            // nudge the model to finish it; otherwise it's a complete reply.
+            if (data.stopReason === "max_tokens") {
+              convo = [
+                ...convo,
+                { role: "user", blocks: [{ type: "text", text: "Continúa." }] },
+              ];
+              setMessages(convo);
+              continue;
+            }
             break;
           }
 
@@ -341,24 +353,11 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
           ];
           setMessages(convo);
 
-          if (data.stopReason === "end_turn") {
-            break;
-          }
-
-          // When the model hit the output token cap mid-thought, inject a
-          // continuation prompt so the agent loop keeps going automatically.
-          if (data.stopReason === "max_tokens") {
-            convo = [
-              ...convo,
-              { role: "user", blocks: [{ type: "text", text: "Continúa." }] },
-            ];
-            setMessages(convo);
-            continue;
-          }
-
-          if (data.stopReason !== "tool_use") {
-            break;
-          }
+          // Tool results are now in hand; loop so the model can respond to
+          // them. Supplying tool_results already drives continuation (even
+          // when the turn was cut off by max_tokens), so we don't inject a
+          // separate user turn — that would put two user messages back-to-back.
+          // The MAX_TURNS cap bounds the loop.
         }
 
         // If the loop ended but the last assistant turn had no text (only

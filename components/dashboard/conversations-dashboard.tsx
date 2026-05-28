@@ -496,12 +496,16 @@ export function ConversationsDashboard({
   }
 
   function serializeMessages(messages: Message[]) {
-    return messages.map((m) => ({
-      direction: m.direction,
-      source: CHANNEL_LABEL[m.source] ?? m.source,
-      content: m.content,
-      createdAt: m.createdAt,
-    }))
+    // Drop system/activity events ("Oportunidad actualizada", etc.) — they are
+    // not part of the advisor↔lead dialogue and skew the AI analysis.
+    return messages
+      .filter((m) => m.kind !== "activity")
+      .map((m) => ({
+        direction: m.direction,
+        source: CHANNEL_LABEL[m.source] ?? m.source,
+        content: m.content,
+        createdAt: m.createdAt,
+      }))
   }
 
   async function runAnalysis(payload: object) {
@@ -555,7 +559,7 @@ export function ConversationsDashboard({
   async function handleAnalyzeAll() {
     const conversations = visibleContacts
       .map((contact) => {
-        const messages = threadMap[contact.id] ?? []
+        const messages = serializeMessages(threadMap[contact.id] ?? [])
         if (messages.length === 0) return null
         return {
           contact: {
@@ -564,7 +568,7 @@ export function ConversationsDashboard({
             phone: contact.phone,
             tags: contact.tags,
           },
-          messages: serializeMessages(messages),
+          messages,
         }
       })
       .filter(Boolean)
@@ -718,12 +722,23 @@ export function ConversationsDashboard({
 
   const hasMore = loadedCount < filteredContactIds.length
 
+  // Count only threads that have at least one real (non-activity) message —
+  // a thread with only system events has nothing to analyze.
   const conversationsWithMessages = useMemo(
     () =>
-      visibleContacts.filter((c) => (threadMap[c.id]?.length ?? 0) > 0).length,
+      visibleContacts.filter((c) =>
+        (threadMap[c.id] ?? []).some((m) => m.kind !== "activity")
+      ).length,
     [visibleContacts, threadMap]
   )
   const batchAnalyzeCount = Math.min(conversationsWithMessages, MAX_BATCH_ANALYSIS)
+
+  const selectedChatMessageCount = useMemo(
+    () =>
+      (threadMap[selectedContactId] ?? []).filter((m) => m.kind !== "activity")
+        .length,
+    [threadMap, selectedContactId]
+  )
 
   const postLoadFilterCount =
     (selectedChannels.length > 0 ? 1 : 0) +
@@ -997,12 +1012,12 @@ export function ConversationsDashboard({
             disabled={
               !selectedContactId ||
               analysisLoading ||
-              (threadMap[selectedContactId]?.length ?? 0) === 0
+              selectedChatMessageCount === 0
             }
             title={
               !selectedContactId
                 ? "Selecciona un contacto"
-                : (threadMap[selectedContactId]?.length ?? 0) === 0
+                : selectedChatMessageCount === 0
                   ? "El contacto seleccionado no tiene mensajes"
                   : "Analizar la conversación seleccionada con Claude Sonnet"
             }

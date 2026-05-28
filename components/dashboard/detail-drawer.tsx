@@ -174,6 +174,25 @@ export function DetailDrawer({
     setIsAnalyzing(true)
     setAnalysisError(null)
     try {
+      // Reuse the data already loaded in the drawer instead of forcing the
+      // server to re-fetch: appointments (contact-scoped) and the recent
+      // conversation (chronological, capped) enrich the analysis.
+      const appointmentsPayload = contactAppointments.map((a) => ({
+        title: a.title,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        status: a.status,
+        notes: a.notes,
+      }))
+      const messagesPayload = contactMessages
+        .slice(0, 30)
+        .reverse()
+        .map((m) => ({
+          direction: m.direction,
+          source: m.source,
+          content: m.content,
+          createdAt: m.createdAt,
+        }))
       const res = await fetch("/api/analyze-contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -181,6 +200,8 @@ export function DetailDrawer({
           opportunityId: opportunity.id,
           contact,
           opportunity,
+          appointments: appointmentsPayload,
+          messages: messagesPayload,
         }),
       })
       const data = await res.json()
@@ -279,7 +300,13 @@ export function DetailDrawer({
                 {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
               </InfoCell>
               <InfoCell icon={<Calendar className="h-3.5 w-3.5" />} label="Cierre">
-                {(opportunity as any).closeDate ?? "No disponible"}
+                {opportunity.closedAt
+                  ? new Date(opportunity.closedAt).toLocaleDateString("es-MX", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : "No disponible"}
               </InfoCell>
               <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Etapa">
                 {opportunity.stage ?? "No disponible"}
