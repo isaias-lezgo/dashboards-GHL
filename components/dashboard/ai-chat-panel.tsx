@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Loader2, Send, Sparkles, RefreshCcw, Wrench, AlertCircle, Square } from "lucide-react";
+import {
+  Loader2,
+  Send,
+  Sparkles,
+  RefreshCcw,
+  Wrench,
+  AlertCircle,
+  Square,
+  ArrowUpRight,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -14,400 +23,97 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { executeTool, executeExportCsv, type ChatDataset, type ExportCsvResult } from "@/lib/ai-tools";
+import type { ChatDataset } from "@/lib/ai-tools";
 import { buildDatasetSummary } from "@/lib/ai-context";
-
-function triggerCsvDownload({ csvContent, filename }: ExportCsvResult): void {
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+import {
+  useAgentLoop,
+  type UIMessage,
+  type TextBlock,
+  type ToolUseBlock,
+  type ToolResultBlock,
+} from "@/hooks/use-agent-loop";
 
 interface AIChatPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dataset: ChatDataset;
   locationId?: string;
+  initialMessage?: string;
 }
 
-// Minimal subset of Anthropic content-block shapes we deal with on the client.
-interface TextBlock {
-  type: "text";
-  text: string;
-}
-interface ToolUseBlock {
-  type: "tool_use";
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-interface ToolResultBlock {
-  type: "tool_result";
-  tool_use_id: string;
-  content: string;
-  is_error?: boolean;
-}
-type AnyBlock = TextBlock | ToolUseBlock | ToolResultBlock;
-
-interface ApiMessage {
-  role: "user" | "assistant";
-  content: AnyBlock[];
-}
-
-interface UIMessage {
-  role: "user" | "assistant";
-  blocks: AnyBlock[];
-}
-
-interface TurnUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-}
-
-// Sonnet 4.6 pricing per million tokens (USD)
-const PRICING = {
-  input: 3,
-  output: 15,
-  cacheRead: 0.3,
-  cacheWrite: 3.75,
-};
-
-function estimateCost(u: TurnUsage): number {
-  return (
-    (u.inputTokens * PRICING.input +
-      u.outputTokens * PRICING.output +
-      u.cacheReadTokens * PRICING.cacheRead +
-      u.cacheCreationTokens * PRICING.cacheWrite) /
-    1_000_000
-  );
-}
-
-const MAX_TURNS = 15; // agent-loop safety net
-
-// Server-side tool: fetches live conversation messages for one contact from
-// GHL, bypassing the dashboard's recent-sample. Returns a shape compatible with
-// what the AI expects (rows + count).
-async function fetchContactMessages(input: Record<string, unknown>): Promise<unknown> {
-  const contactId = typeof input.contactId === "string" ? input.contactId : "";
-  if (!contactId) return { error: "Missing contactId" };
-  const limit = typeof input.limit === "number" ? Math.min(100, Math.max(1, Math.floor(input.limit))) : 50;
-
-  const res = await fetch(
-    `/api/conversations?contactIds=${encodeURIComponent(contactId)}`,
-    { method: "GET" }
-  );
-  if (!res.ok) {
-    return { error: `GHL fetch failed (HTTP ${res.status})` };
-  }
-  const data = (await res.json()) as {
-    threads: Array<{ contactId: string; messages: Array<Record<string, unknown>> }>;
-  };
-  const thread = data.threads?.find((t) => t.contactId === contactId);
-  // Drop system/activity events — they aren't part of the real conversation.
-  const msgs = (thread?.messages ?? []).filter((m) => m.kind !== "activity");
-  // /api/conversations returns oldest→newest; flip to newest→oldest then cap.
-  const sorted = [...msgs].sort(
-    (a, b) =>
-      new Date(String(b.createdAt ?? "")).getTime() -
-      new Date(String(a.createdAt ?? "")).getTime()
-  );
-  const capped = sorted.slice(0, limit);
-  return {
-    contactId,
-    returned: capped.length,
-    totalAvailable: msgs.length,
-    rows: capped.map((m) => ({
-      id: m.id,
-      direction: m.direction,
-      source: m.source,
-      content:
-        typeof m.content === "string" && m.content.length > 500
-          ? m.content.slice(0, 500) + "…"
-          : m.content,
-      createdAt: m.createdAt,
-    })),
-  };
-}
-
-async function fetchConversationThreads(input: Record<string, unknown>): Promise<unknown> {
-  const rawIds = Array.isArray(input.contactIds) ? (input.contactIds as string[]) : []
-  if (rawIds.length === 0) {
-    return { error: "contactIds is required and must be a non-empty array" }
-  }
-
-  const limit = typeof input.limit === "number"
-    ? Math.min(50, Math.max(1, Math.floor(input.limit)))
-    : 20
-  const messageLimit = typeof input.messageLimit === "number"
-    ? Math.max(1, Math.floor(input.messageLimit))
-    : 100
-  const contactIds = rawIds.slice(0, limit)
-
-  const params = new URLSearchParams({
-    contactIds: contactIds.join(","),
-    messageLimit: String(messageLimit),
-  })
-
-  const res = await fetch(`/api/conversations?${params}`, { method: "GET" })
-  if (!res.ok) {
-    return { error: `GHL fetch failed (HTTP ${res.status})` }
-  }
-
-  const data = (await res.json()) as {
-    threads: Array<{ contactId: string; messages: Array<Record<string, unknown>> }>
-  }
-
-  const threads = (data.threads ?? []).map((t) => {
-    // Drop system/activity events — keep only real advisor↔lead messages.
-    const chat = t.messages.filter((m) => m.kind !== "activity")
-    const sorted = [...chat].sort(
-      (a, b) =>
-        new Date(String(b.createdAt ?? "")).getTime() -
-        new Date(String(a.createdAt ?? "")).getTime()
-    )
-    return {
-      contactId: t.contactId,
-      messageCount: chat.length,
-      messages: sorted.map((m) => ({
-        id: m.id,
-        direction: m.direction,
-        source: m.source,
-        content:
-          typeof m.content === "string" && m.content.length > 500
-            ? m.content.slice(0, 500) + "…"
-            : m.content,
-        createdAt: m.createdAt,
-      })),
-    }
-  })
-
-  return { returned: threads.length, threads }
-}
-
-export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatPanelProps) {
-  const [messages, setMessages] = useState<UIMessage[]>([]);
+export function AIChatPanel({
+  open,
+  onOpenChange,
+  dataset,
+  locationId,
+  initialMessage,
+}: AIChatPanelProps) {
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [totalCost, setTotalCost] = useState(0);
-  const [totalTools, setTotalTools] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const stopRef = useRef(false);
+  const processedInitialMessageRef = useRef<string | null>(null);
 
-  // Rebuild summary whenever the dataset changes — cheap, ~few KB of text.
   const datasetSummary = useMemo(
     () => buildDatasetSummary(dataset, locationId),
     [dataset, locationId]
   );
 
+  const {
+    messages,
+    busy,
+    status,
+    error,
+    totalCost,
+    totalTools,
+    send,
+    stop,
+    reset,
+    runWithMessages,
+  } = useAgentLoop({ datasetSummary, dataset });
+
   useEffect(() => {
-    if (open) {
-      // Focus input after open animation
-      const t = setTimeout(() => inputRef.current?.focus(), 250);
-      return () => clearTimeout(t);
+    if (!open) {
+      processedInitialMessageRef.current = null;
+      return;
     }
+    const t = setTimeout(() => inputRef.current?.focus(), 250);
+    return () => clearTimeout(t);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !initialMessage) return;
+    if (processedInitialMessageRef.current === initialMessage) return;
+    processedInitialMessageRef.current = initialMessage;
+    reset();
+    const userMsg: UIMessage = {
+      role: "user",
+      blocks: [{ type: "text", text: initialMessage }],
+    };
+    void runWithMessages([userMsg]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialMessage]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, status]);
 
-  const reset = useCallback(() => {
-    setMessages([]);
-    setError(null);
-    setStatus(null);
-    setTotalCost(0);
-    setTotalTools(0);
-  }, []);
-
-  const stop = useCallback(() => {
-    stopRef.current = true;
-  }, []);
-
-  const runAgentLoop = useCallback(
-    async (initialMessages: UIMessage[]) => {
-      stopRef.current = false;
-      setBusy(true);
-      setError(null);
-      let convo = [...initialMessages];
-
-      try {
-        for (let turn = 0; turn < MAX_TURNS; turn++) {
-          if (stopRef.current) break;
-          setStatus(turn === 0 ? "Pensando…" : "Continuando…");
-
-          const apiMessages: ApiMessage[] = convo.map((m) => ({
-            role: m.role,
-            content: m.blocks,
-          }));
-
-          const res = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              datasetSummary,
-              messages: apiMessages,
-            }),
-          });
-
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || `HTTP ${res.status}`);
-          }
-
-          const data = (await res.json()) as {
-            stopReason: string;
-            content: AnyBlock[];
-            usage: TurnUsage;
-          };
-
-          setTotalCost((c) => c + estimateCost(data.usage));
-
-          const assistantBlocks = data.content;
-          const assistantMsg: UIMessage = {
-            role: "assistant",
-            blocks: assistantBlocks,
-          };
-          convo = [...convo, assistantMsg];
-          setMessages(convo);
-
-          const toolUses = assistantBlocks.filter(
-            (b): b is ToolUseBlock => b.type === "tool_use"
-          );
-
-          if (toolUses.length === 0) {
-            // No tool calls. If the output-token cap truncated the answer,
-            // nudge the model to finish it; otherwise it's a complete reply.
-            if (data.stopReason === "max_tokens") {
-              convo = [
-                ...convo,
-                { role: "user", blocks: [{ type: "text", text: "Continúa." }] },
-              ];
-              setMessages(convo);
-              continue;
-            }
-            break;
-          }
-
-          // Execute every tool_use locally and bundle the results into a
-          // single user message (Anthropic requires this shape).
-          setStatus(
-            toolUses.length === 1
-              ? `Ejecutando ${toolUses[0].name}…`
-              : `Ejecutando ${toolUses.length} herramientas…`
-          );
-
-          const toolResults: ToolResultBlock[] = await Promise.all(
-            toolUses.map(async (tu): Promise<ToolResultBlock> => {
-              try {
-                let result: unknown;
-                if (tu.name === "get_contact_messages") {
-                  result = await fetchContactMessages(tu.input);
-                } else if (tu.name === "search_conversations") {
-                  result = await fetchConversationThreads(tu.input);
-                } else if (tu.name === "export_csv") {
-                  const exportResult = executeExportCsv(tu.input, dataset);
-                  if (exportResult.rowCount > 0) triggerCsvDownload(exportResult);
-                  result = {
-                    success: exportResult.rowCount > 0,
-                    filename: exportResult.filename,
-                    rowCount: exportResult.rowCount,
-                  };
-                } else {
-                  result = executeTool(tu.name, tu.input, dataset);
-                }
-                return {
-                  type: "tool_result",
-                  tool_use_id: tu.id,
-                  content: JSON.stringify(result),
-                };
-              } catch (err) {
-                return {
-                  type: "tool_result",
-                  tool_use_id: tu.id,
-                  content: JSON.stringify({
-                    error: err instanceof Error ? err.message : String(err),
-                  }),
-                  is_error: true,
-                };
-              }
-            })
-          );
-          setTotalTools((n) => n + toolUses.length);
-
-          convo = [
-            ...convo,
-            { role: "user", blocks: toolResults },
-          ];
-          setMessages(convo);
-
-          // Tool results are now in hand; loop so the model can respond to
-          // them. Supplying tool_results already drives continuation (even
-          // when the turn was cut off by max_tokens), so we don't inject a
-          // separate user turn — that would put two user messages back-to-back.
-          // The MAX_TURNS cap bounds the loop.
-        }
-
-        // If the loop ended but the last assistant turn had no text (only
-        // tool calls), the AI never produced a visible answer. Show a notice.
-        const lastAssistant = [...convo].reverse().find((m) => m.role === "assistant");
-        const hasText = lastAssistant?.blocks.some((b) => b.type === "text" && (b as TextBlock).text.trim());
-        if (!hasText) {
-          const notice: UIMessage = {
-            role: "assistant",
-            blocks: [
-              {
-                type: "text",
-                text: "⚠️ El agente alcanzó el límite de turnos sin producir una respuesta completa. Intenta hacer una pregunta más específica o dividir la tarea en pasos más pequeños.",
-              },
-            ],
-          };
-          setMessages([...convo, notice]);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Error desconocido");
-      } finally {
-        setBusy(false);
-        setStatus(null);
-      }
-    },
-    [datasetSummary, dataset]
-  );
-
-  const send = useCallback(() => {
+  const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text || busy) return;
-
-    const userMsg: UIMessage = {
-      role: "user",
-      blocks: [{ type: "text", text }],
-    };
-    const next = [...messages, userMsg];
-    setMessages(next);
     setInput("");
-    void runAgentLoop(next);
-  }, [input, busy, messages, runAgentLoop]);
+    send(text);
+  }, [input, busy, send]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        send();
+        handleSend();
       }
     },
-    [send]
+    [handleSend]
   );
 
   return (
@@ -416,13 +122,19 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
         side="right"
         className="flex w-full flex-col p-0 sm:max-w-md md:max-w-lg lg:max-w-xl focus:outline-none"
       >
+        <div className="h-px w-full shrink-0 bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+
         <SheetHeader className="border-b border-border px-5 py-4">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Analizar con IA
-          </SheetTitle>
-          <SheetDescription className="text-xs">
-            Pregúntame cualquier cosa sobre tus contactos, oportunidades, pautas o citas.
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <SheetTitle className="text-base font-semibold">
+              Analizar con IA
+            </SheetTitle>
+          </div>
+          <SheetDescription className="mt-0.5 text-xs text-muted-foreground/80">
+            Pregúntame sobre contactos, oportunidades, pautas o citas.
           </SheetDescription>
         </SheetHeader>
 
@@ -433,27 +145,32 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
           {messages.length === 0 && !busy && (
             <EmptyState onSuggest={(s) => setInput(s)} />
           )}
-
           {messages.map((m, i) => (
             <MessageBubble key={i} message={m} />
           ))}
-
           {busy && status && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <div className="flex items-center gap-2.5 py-1 text-xs text-muted-foreground">
+              <span className="flex gap-0.5">
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-primary/60"
+                    style={{ animationDelay: `${i * 0.15}s` }}
+                  />
+                ))}
+              </span>
               {status}
             </div>
           )}
-
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>{error}</span>
+              <span className="leading-relaxed">{error}</span>
             </div>
           )}
         </div>
 
-        <div className="border-t border-border px-5 py-3">
+        <div className="border-t border-border px-5 py-3.5">
           <Textarea
             ref={inputRef}
             value={input}
@@ -461,12 +178,14 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
             onKeyDown={onKeyDown}
             placeholder="¿Cuántos leads de Meta sin cita esta semana?"
             rows={2}
-            className="min-h-[44px] w-full resize-none text-sm"
+            className="min-h-[52px] w-full resize-none text-sm"
             disabled={busy}
           />
-          <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-            <span>
-              Sonnet 4.6 · {totalTools} {totalTools === 1 ? "herramienta" : "herramientas"} · ~${totalCost.toFixed(4)}
+          <div className="mt-2.5 flex items-center justify-between">
+            <span className="tabular-nums text-[10px] text-muted-foreground/60">
+              Sonnet 4.6 · {totalTools}{" "}
+              {totalTools === 1 ? "herramienta" : "herramientas"} · ~$
+              {totalCost.toFixed(4)}
             </span>
             <div className="flex items-center gap-1.5">
               <Button
@@ -475,7 +194,7 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
                 size="sm"
                 onClick={reset}
                 disabled={busy || messages.length === 0}
-                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground"
+                className="h-7 gap-1.5 px-2.5 text-[10px] text-muted-foreground hover:text-foreground"
               >
                 <RefreshCcw className="h-3 w-3" />
                 Reiniciar
@@ -486,8 +205,7 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
                   variant="outline"
                   size="sm"
                   onClick={stop}
-                  className="h-6 gap-1 px-2.5 text-[10px]"
-                  aria-label="Detener"
+                  className="h-7 gap-1.5 px-3 text-[10px]"
                 >
                   <Square className="h-3 w-3 fill-current" />
                   Detener
@@ -496,12 +214,15 @@ export function AIChatPanel({ open, onOpenChange, dataset, locationId }: AIChatP
               <Button
                 type="button"
                 size="sm"
-                onClick={send}
+                onClick={handleSend}
                 disabled={busy || !input.trim()}
-                className="h-6 gap-1 px-2.5 text-[10px]"
-                aria-label="Enviar"
+                className="h-7 gap-1.5 px-3 text-[10px]"
               >
-                {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                {busy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Send className="h-3 w-3" />
+                )}
                 {!busy && "Enviar"}
               </Button>
             </div>
@@ -522,52 +243,66 @@ function EmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
     "Top 5 asesores por valor de oportunidades cerradas.",
   ];
   return (
-    <div className="space-y-3 py-2">
-      <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        Las preguntas se responden contra los datos ya cargados en el panel.
-        Para conteos exactos uso aritmética determinista, no estimaciones.
+    <div className="flex flex-col gap-5 py-1">
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+          Sugerencias
+        </p>
+        <div className="flex flex-col gap-1.5">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onSuggest(s)}
+              className="group flex items-start gap-2.5 rounded-lg border border-border/40 bg-muted/15 px-3.5 py-2.5 text-left text-sm text-foreground/70 transition-all duration-150 hover:border-primary/40 hover:bg-muted/30 hover:text-foreground"
+            >
+              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/40 transition-colors duration-150 group-hover:text-primary/80" />
+              <span className="leading-snug">{s}</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <p className="text-xs font-medium text-muted-foreground">Sugerencias:</p>
-      <div className="flex flex-col gap-1.5">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onSuggest(s)}
-            className="rounded-md border border-border/60 bg-background px-3 py-2 text-left text-xs text-foreground transition-colors hover:border-primary/40 hover:bg-muted/50"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground/40">
+        Respuestas basadas en los datos cargados en el panel. Conteos exactos,
+        no estimaciones.
+      </p>
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
-  const textBlocks = message.blocks.filter((b): b is TextBlock => b.type === "text");
-  const toolUseBlocks = message.blocks.filter((b): b is ToolUseBlock => b.type === "tool_use");
+export function MessageBubble({ message }: { message: UIMessage }) {
+  const textBlocks = message.blocks.filter(
+    (b): b is TextBlock => b.type === "text"
+  );
+  const toolUseBlocks = message.blocks.filter(
+    (b): b is ToolUseBlock => b.type === "tool_use"
+  );
   const toolResultBlocks = message.blocks.filter(
     (b): b is ToolResultBlock => b.type === "tool_result"
   );
 
-  // A pure tool_result message (from the agent loop) — render single summary chip.
-  if (message.role === "user" && toolResultBlocks.length > 0 && textBlocks.length === 0) {
+  if (
+    message.role === "user" &&
+    toolResultBlocks.length > 0 &&
+    textBlocks.length === 0
+  ) {
     return <ToolResultsSummary blocks={toolResultBlocks} />;
   }
 
   const isUser = message.role === "user";
 
   return (
-    <div className={cn("flex flex-col gap-2", isUser ? "items-end" : "items-start")}>
+    <div
+      className={cn("flex flex-col gap-2", isUser ? "items-end" : "items-start")}
+    >
       {textBlocks.map((b, i) => (
         <div
           key={`t-${i}`}
           className={cn(
-            "max-w-[92%] rounded-2xl px-3.5 py-2.5 text-sm",
+            "max-w-[92%] rounded-2xl px-4 py-3 text-sm",
             isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted/60 text-foreground"
+              ? "bg-primary/90 text-primary-foreground"
+              : "bg-muted/40 text-foreground ring-1 ring-inset ring-border/25"
           )}
         >
           {isUser ? (
@@ -589,7 +324,9 @@ function MessageBubble({ message }: { message: UIMessage }) {
           )}
         </div>
       ))}
-      {toolUseBlocks.length > 0 && <GroupedToolUseChips blocks={toolUseBlocks} />}
+      {toolUseBlocks.length > 0 && (
+        <GroupedToolUseChips blocks={toolUseBlocks} />
+      )}
     </div>
   );
 }
@@ -643,12 +380,14 @@ function ToolResultsSummary({ blocks }: { blocks: ToolResultBlock[] }) {
   );
 }
 
-
 function previewResult(content: string): string {
   try {
     const parsed = JSON.parse(content);
     if (parsed?.error) return `error: ${String(parsed.error).slice(0, 80)}`;
-    if (typeof parsed?.filename === "string" && typeof parsed?.rowCount === "number") {
+    if (
+      typeof parsed?.filename === "string" &&
+      typeof parsed?.rowCount === "number"
+    ) {
       return parsed.success
         ? `${parsed.rowCount} filas → ${parsed.filename}`
         : `sin filas — nada exportado`;
