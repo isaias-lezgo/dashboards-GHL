@@ -746,7 +746,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   }, [opportunities, appointments, apptGroupBy, apptTopN])
 
   // Panel 4b — Won deals from paid traffic, grouped by URL or Ad ID
-  const wonPaidTraffic = useMemo(() => {
+  const { wonPaidTraffic, wonKeyCount } = useMemo(() => {
     const counts = new Map<string, { count: number; value: number }>()
     for (const o of opportunities) {
       if (!isPaidTraffic(o) || o.status !== "won") continue
@@ -755,15 +755,19 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       const prev = counts.get(rawKey) ?? { count: 0, value: 0 }
       counts.set(rawKey, { count: prev.count + 1, value: prev.value + o.value })
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(([rawKey, { count, value }]) => ({
+    const allEntries = Array.from(counts.entries()).sort((a, b) => b[1].count - a[1].count)
+    const wonKeyCount = allEntries.length
+    const sliced = wonTopN >= wonKeyCount ? allEntries : allEntries.slice(0, Math.round(wonTopN))
+    return {
+      wonPaidTraffic: sliced.map(([rawKey, { count, value }]) => ({
         rawKey,
         label: wonGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
         count,
         value,
-      }))
-  }, [opportunities, wonGroupBy])
+      })),
+      wonKeyCount,
+    }
+  }, [opportunities, wonGroupBy, wonTopN])
 
   const { apptsByPautaRows, apptsByPautaKeys } = useMemo(() => {
     if (appointments.length === 0 || pautas.length === 0) {
@@ -1467,7 +1471,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             title="Oportunidades ganadas por pauta"
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
             icon={TrendingUp}
-            actions={<GroupByToggle value={wonGroupBy} onChange={setWonGroupBy} />}
+            actions={
+              <div className="flex items-center gap-2">
+                <TopNSlider value={wonTopN} max={wonKeyCount} onChange={setWonTopN} />
+                <GroupByToggle value={wonGroupBy} onChange={setWonGroupBy} />
+              </div>
+            }
           />
           <ChartCardContent>
             {wonPaidTraffic.length === 0 ? (
