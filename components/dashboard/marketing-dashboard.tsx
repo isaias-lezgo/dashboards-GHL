@@ -276,6 +276,26 @@ function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: 
   )
 }
 
+function TopNSlider({ value, max, onChange }: { value: number; max: number; onChange: (n: number) => void }) {
+  const effectiveValue = Math.min(value, max)
+  const isAll = effectiveValue >= max
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <span className="text-[10px] font-medium text-muted-foreground tabular-nums w-12 text-right shrink-0">
+        {isAll ? "Todo" : `Top ${effectiveValue}`}
+      </span>
+      <input
+        type="range"
+        min={1}
+        max={max || 1}
+        value={effectiveValue}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-1 w-20 cursor-pointer accent-primary"
+      />
+    </div>
+  )
+}
+
 export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", onAnalyzeWithAI }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
@@ -283,6 +303,10 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
   const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
   const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("url")
+  const [stageTopN, setStageTopN] = useState(30)
+  const [lostTopN, setLostTopN] = useState(30)
+  const [apptTopN, setApptTopN] = useState(Infinity)
+  const [wonTopN, setWonTopN] = useState(Infinity)
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
