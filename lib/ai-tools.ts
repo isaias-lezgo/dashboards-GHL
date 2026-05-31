@@ -494,17 +494,29 @@ function compactOpp(o: Opportunity) {
   };
 }
 
-function compactPauta(p: Pauta) {
+function oppRollup(
+  contactId: string | undefined,
+  index: ChatIndex
+): { oppCount: number; oppValueSum: number } {
+  if (!contactId) return { oppCount: 0, oppValueSum: 0 };
+  const opps = index.oppsByContact.get(contactId) ?? [];
+  let sum = 0;
+  for (const o of opps) sum += typeof o.value === "number" ? o.value : 0;
+  return { oppCount: opps.length, oppValueSum: sum };
+}
+
+function compactPauta(p: Pauta, index: ChatIndex) {
   return {
     id: p.id,
     tipo: p.tipo,
     nombre: p.nombrePauta,
     contactId: p.contactId,
     createdAt: p.createdAt,
+    ...oppRollup(p.contactId, index),
   };
 }
 
-function compactAppt(a: Appointment) {
+function compactAppt(a: Appointment, index: ChatIndex) {
   return {
     id: a.id,
     contactId: a.contactId,
@@ -513,6 +525,7 @@ function compactAppt(a: Appointment) {
     startTime: a.startTime,
     status: a.status,
     location: a.location,
+    ...oppRollup(a.contactId, index),
   };
 }
 
@@ -542,17 +555,17 @@ export function executeTool(
     case "get_contact":
       return getContact(input, data);
     case "get_contact_related":
-      return getContactRelated(input, data);
+      return getContactRelated(input, data, getChatIndex(data));
     case "search_opportunities":
       return searchOpportunities(input, data);
     case "get_opportunity":
       return getOpportunity(input, data);
     case "search_pautas":
-      return searchPautas(input, data);
+      return searchPautas(input, data, getChatIndex(data));
     case "get_pauta":
       return getPauta(input, data);
     case "list_appointments":
-      return listAppointments(input, data);
+      return listAppointments(input, data, getChatIndex(data));
     case "aggregate":
       return aggregate(input, data);
     case "relate":
@@ -879,7 +892,7 @@ function getContact(input: ToolInput, data: ChatDataset) {
 
 // ─── get_contact_related ──────────────────────────────────────────────────────
 
-function getContactRelated(input: ToolInput, data: ChatDataset) {
+function getContactRelated(input: ToolInput, data: ChatDataset, index: ChatIndex) {
   const id = String(input.id ?? "");
   const c = data.contacts.find((x) => x.id === id);
   if (!c) return { error: `Contact not found: ${id}` };
@@ -899,12 +912,12 @@ function getContactRelated(input: ToolInput, data: ChatDataset) {
   if (kinds.includes("pautas")) {
     result.pautas = data.pautas
       .filter((p) => p.contactId === id)
-      .map(compactPauta);
+      .map((p) => compactPauta(p, index));
   }
   if (kinds.includes("appointments")) {
     result.appointments = data.appointments
       .filter((a) => a.contactId === id)
-      .map(compactAppt);
+      .map((a) => compactAppt(a, index));
   }
   if (kinds.includes("messages")) {
     const msgs = data.messages
@@ -983,7 +996,7 @@ function getOpportunity(input: ToolInput, data: ChatDataset) {
 
 // ─── pautas ───────────────────────────────────────────────────────────────────
 
-function searchPautas(input: ToolInput, data: ChatDataset) {
+function searchPautas(input: ToolInput, data: ChatDataset, index: ChatIndex) {
   const q = lc(input.query);
   const tipo = typeof input.tipo === "string" ? input.tipo : undefined;
   const contactId = typeof input.contactId === "string" ? input.contactId : undefined;
@@ -1001,7 +1014,7 @@ function searchPautas(input: ToolInput, data: ChatDataset) {
     if (out.length >= limit) break;
   }
   return {
-    rows: out.map(compactPauta),
+    rows: out.map((p) => compactPauta(p, index)),
     returned: out.length,
     truncated: out.length >= limit,
   };
@@ -1015,7 +1028,7 @@ function getPauta(input: ToolInput, data: ChatDataset) {
 
 // ─── appointments ─────────────────────────────────────────────────────────────
 
-function listAppointments(input: ToolInput, data: ChatDataset) {
+function listAppointments(input: ToolInput, data: ChatDataset, index: ChatIndex) {
   const status = typeof input.status === "string" ? input.status : undefined;
   const assignedTo = typeof input.assignedTo === "string" ? input.assignedTo : undefined;
   const contactId = typeof input.contactId === "string" ? input.contactId : undefined;
@@ -1037,7 +1050,7 @@ function listAppointments(input: ToolInput, data: ChatDataset) {
     if (out.length >= limit) break;
   }
   return {
-    rows: out.map(compactAppt),
+    rows: out.map((a) => compactAppt(a, index)),
     returned: out.length,
     truncated: out.length >= limit,
   };
