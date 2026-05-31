@@ -18,8 +18,8 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, Facebook, Instagram, Copy, Check } from "lucide-react"
+import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -49,6 +49,7 @@ interface MarketingDashboardProps {
   opportunities: Opportunity[]
   contacts: Contact[]
   pautas: Pauta[]
+  pipelines?: Pipeline[]
   tasks?: Task[]
   calls?: Call[]
   appointments?: Appointment[]
@@ -94,6 +95,26 @@ const AD_TYPE_COLORS: Record<string, string> = {
   Form: BRAND_AMBER,
   DM: "#335577",
   Manual: "#10b981",
+}
+
+const REINGRESO_LABELS = [
+  "Primer ingreso",
+  "Segundo reingreso",
+  "Tercer reingreso",
+  "4to reingreso",
+  "5to+ reingreso",
+]
+
+const REINGRESO_COLORS: Record<string, string> = {
+  "Primer ingreso":    "#3b82f6",
+  "Segundo reingreso": "#f59e0b",
+  "Tercer reingreso":  "#10b981",
+  "4to reingreso":     "#8b5cf6",
+  "5to+ reingreso":    "#ef4444",
+}
+
+function reingresoLabel(zeroBasedIndex: number): string {
+  return REINGRESO_LABELS[Math.min(zeroBasedIndex, REINGRESO_LABELS.length - 1)]
 }
 
 function adTypeColor(adType: string, index: number): string {
@@ -255,12 +276,13 @@ function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: 
   )
 }
 
-export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "", onAnalyzeWithAI }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", onAnalyzeWithAI }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
   const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
   const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
+  const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("url")
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
@@ -272,18 +294,20 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     setDrill({ open: true, title, opportunities: opps })
   }, [opportunities])
 
-  // Derive ordered stage list from data
+  // Derive ordered stage list using GHL pipeline order; fall back to alphabetical for unlisted stages
   const stageOrder = useMemo(() => {
-    const preferred = [
-      "Primera Cita", "Segunda Cita", "Envío de propuesta", "Envío de liga de pago",
-      "Proceso de Implementación", "Cliente Activo", "Servicio Terminado", "Prospecto Perdido",
-      "Discovery", "Proposal", "Negotiation", "Closed Won", "Closed Lost",
-    ]
     const actual = new Set(opportunities.map((o) => o.stage))
-    const ordered = preferred.filter((s) => actual.has(s))
+    const ordered: string[] = []
+    // Walk pipelines in their GHL-defined stage order
+    for (const p of pipelines) {
+      for (const s of p.stages) {
+        if (actual.has(s) && !ordered.includes(s)) ordered.push(s)
+      }
+    }
+    // Append any stages present in data but not covered by pipeline definitions
     for (const s of actual) if (!ordered.includes(s)) ordered.push(s)
     return ordered
-  }, [opportunities])
+  }, [opportunities, pipelines])
 
   // 1. Leads por Campaña
   const leadsByCampaign = useMemo(() => {
@@ -456,6 +480,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     for (const stage of stageOrder) perStage.set(stage, new Map())
 
     for (const opp of opportunities) {
+      if (opp.status === "lost") continue
       const rawKey = stageGroupBy === "url" ? opp.attributionUrl : opp.adId
       if (!rawKey) continue
       const stageMap = perStage.get(opp.stage)
@@ -493,28 +518,91 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     0
   )
 
-  // Pautas grouped by calendar month (YYYY-MM), stacked by tipo.
+  const { lostByReasonRows, lostByReasonKeys } = useMemo(() => {
+    const totals = new Map<string, number>()
+    const perReason = new Map<string, Map<string, number>>()
+
+    for (const opp of opportunities) {
+      if (opp.status !== "lost") continue
+      const rawKey = lostGroupBy === "url" ? opp.attributionUrl : opp.adId
+      if (!rawKey) continue
+      const reason = opp.lostReason || "Sin razón"
+      if (!perReason.has(reason)) perReason.set(reason, new Map())
+      const reasonMap = perReason.get(reason)!
+      reasonMap.set(rawKey, (reasonMap.get(rawKey) ?? 0) + 1)
+      totals.set(rawKey, (totals.get(rawKey) ?? 0) + 1)
+    }
+
+    const keys = Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([k]) => k)
+
+    const reasons = Array.from(perReason.keys()).sort()
+
+    const rows = reasons
+      .map((reason) => {
+        const row: Record<string, string | number> = { reason }
+        const reasonMap = perReason.get(reason)!
+        for (const k of keys) row[k] = reasonMap.get(k) ?? 0
+        return row
+      })
+      .filter((row) => keys.some((k) => (row[k] as number) > 0))
+
+    return { lostByReasonRows: rows, lostByReasonKeys: keys }
+  }, [opportunities, lostGroupBy])
+
+  const lostByReasonConfig = Object.fromEntries(
+    lostByReasonKeys.map((k, i) => [
+      k,
+      { label: lostGroupBy === "url" ? paidTrafficUrlLabel(k) : k, color: CHART_PALETTE[i % CHART_PALETTE.length] },
+    ])
+  )
+
+  const lostByReasonTotal = lostByReasonRows.reduce(
+    (s, r) => s + lostByReasonKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
+    0
+  )
+
+  // Map pauta.id → reingresoLabel by sorting each contact's pautas chronologically.
+  const pautaReingresoMap = useMemo(() => {
+    const byContact = new Map<string, Pauta[]>()
+    for (const p of pautas) {
+      if (!p.contactId) continue
+      const arr = byContact.get(p.contactId) ?? []
+      arr.push(p)
+      byContact.set(p.contactId, arr)
+    }
+    const result = new Map<string, string>()
+    for (const arr of byContact.values()) {
+      arr.sort((a, b) => toUTCDateStr(a.createdAt).localeCompare(toUTCDateStr(b.createdAt)))
+      arr.forEach((p, i) => result.set(p.id, reingresoLabel(i)))
+    }
+    return result
+  }, [pautas])
+
+  // Pautas grouped by calendar month (YYYY-MM), stacked by reingreso number.
   const { pautasByMonthRows, pautasByMonthKeys } = useMemo(() => {
     if (pautas.length === 0) return { pautasByMonthRows: [], pautasByMonthKeys: [] }
 
     const byMonth = new Map<string, Map<string, number>>()
-    const tipoTotals = new Map<string, number>()
+    const reingresoTotals = new Map<string, number>()
 
     for (const p of pautas) {
+      if (!p.contactId) continue
       const dateStr = toUTCDateStr(p.createdAt)
       if (!dateStr) continue
-      const monthKey = dateStr.slice(0, 7) // "YYYY-MM"
-      const tipo = p.tipo || "Sin tipo"
+      const monthKey = dateStr.slice(0, 7)
+      const reingreso = pautaReingresoMap.get(p.id) ?? "Primer ingreso"
 
       if (!byMonth.has(monthKey)) byMonth.set(monthKey, new Map())
-      const tipoMap = byMonth.get(monthKey)!
-      tipoMap.set(tipo, (tipoMap.get(tipo) ?? 0) + 1)
-      tipoTotals.set(tipo, (tipoTotals.get(tipo) ?? 0) + 1)
+      const m = byMonth.get(monthKey)!
+      m.set(reingreso, (m.get(reingreso) ?? 0) + 1)
+      reingresoTotals.set(reingreso, (reingresoTotals.get(reingreso) ?? 0) + 1)
     }
 
-    const keys = Array.from(tipoTotals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([k]) => k)
+    // Keep keys in canonical REINGRESO_LABELS order (only those with data)
+    const keys = REINGRESO_LABELS.filter((k) => reingresoTotals.has(k))
 
     const sortedMonths = Array.from(byMonth.keys()).sort()
 
@@ -522,13 +610,13 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       const label = new Date(monthKey + "-15T12:00:00Z")
         .toLocaleDateString("es-MX", { month: "short", year: "2-digit" })
       const row: Record<string, string | number> = { monthKey, monthLabel: label }
-      const tipoMap = byMonth.get(monthKey)!
-      for (const k of keys) row[k] = tipoMap.get(k) ?? 0
+      const m = byMonth.get(monthKey)!
+      for (const k of keys) row[k] = m.get(k) ?? 0
       return row
     })
 
     return { pautasByMonthRows: rows, pautasByMonthKeys: keys }
-  }, [pautas])
+  }, [pautas, pautaReingresoMap])
 
   // Last 30 days from today, grouped by adType (fuente del CRM).
   const { oppsByDayRows, oppsByDayKeys } = useMemo(() => {
@@ -865,7 +953,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       </div>
 
       <DashboardCard>
-        <ChartCardHeader title="Pautas creadas por Mes" total={pautas.length} icon={Calendar} />
+        <ChartCardHeader title="Pautas creadas por mes y reingresos" total={pautas.length} icon={Calendar} />
         <ChartCardContent>
           {pautasByMonthKeys.length === 0 ? (
             <ChartEmpty message="Sin datos de Pautas." height={280} />
@@ -873,7 +961,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
             <>
               <ChartContainer
                 config={Object.fromEntries(
-                  pautasByMonthKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
+                  pautasByMonthKeys.map((k) => [k, { label: k, color: REINGRESO_COLORS[k] ?? BRAND_AMBER }])
                 )}
                 className="aspect-auto"
                 style={{ height: 280 }}
@@ -910,7 +998,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                        fill={REINGRESO_COLORS[key] ?? BRAND_AMBER}
                         radius={i === pautasByMonthKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={40}
                         cursor="pointer"
@@ -919,19 +1007,22 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                           if (!count) return
                           const monthKey = data.monthKey as string
                           const monthLabel = data.monthLabel as string
-                          const items = pautas.filter(
+                          const matchedPautas = pautas.filter(
                             (p) =>
+                              p.contactId &&
                               toUTCDateStr(p.createdAt).slice(0, 7) === monthKey &&
-                              (p.tipo || "Sin tipo") === key
+                              pautaReingresoMap.get(p.id) === key
                           )
-                          openPautaDrill(`${key} · ${monthLabel}`, items)
+                          const contactIds = new Set(matchedPautas.map((p) => p.contactId))
+                          const contactItems = contacts.filter((c) => contactIds.has(c.id))
+                          setDrill({ open: true, title: `${key} · ${monthLabel}`, opportunities: [], contactItems })
                         }}
                       />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
-              <ChartHint>Apilado por tipo · haz clic en un segmento para ver las pautas</ChartHint>
+              <ChartHint>Apilado por número de reingreso del contacto · haz clic en un segmento para ver las pautas</ChartHint>
             </>
           )}
         </ChartCardContent>
@@ -939,132 +1030,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
 
       <DashboardCard>
         <ChartCardHeader
-          title="Oportunidades creadas por tiempo y fuente (últimos 30 días)"
-          total={oppsByDayRows.reduce(
-            (s, r) => s + oppsByDayKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
-            0,
-          )}
-          icon={BarChart3}
-        />
-        <ChartCardContent>
-          {oppsByDayKeys.length === 0 ? (
-            <ChartEmpty message="Sin datos en los últimos 30 días." height={260} />
-          ) : (
-            <>
-              <ChartContainer
-                config={Object.fromEntries(
-                  oppsByDayKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
-                )}
-                className="aspect-auto"
-                style={{ height: 280 }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={oppsByDayRows} margin={{ top: 5, right: 16, left: 8, bottom: 5 }} barCategoryGap="20%">
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                    <XAxis
-                      dataKey="day"
-                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
-                      tickLine={false}
-                      axisLine={false}
-                      interval={4}
-                    />
-                    <YAxis
-                      tick={{ ...CHART_TICK }}
-                      tickLine={false}
-                      axisLine={false}
-                      allowDecimals={false}
-                    />
-                    <ChartTooltip content={<NonZeroTooltipContent />} />
-                    <Legend
-                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
-                    />
-                    {oppsByDayKeys.map((key, i) => (
-                      <Bar
-                        key={key}
-                        dataKey={key}
-                        stackId="a"
-                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                        radius={i === oppsByDayKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                        maxBarSize={40}
-                        cursor="pointer"
-                        onClick={(data: any) => {
-                          const count = data[key] as number
-                          if (!count) return
-                          const isoDate = data.isoDay as string
-                          const items = opportunities.filter(
-                            (o) =>
-                              toUTCDateStr(o.createdAt as string | number | null | undefined) === isoDate &&
-                              (o.adType || "Otro") === key
-                          )
-                          openDrill(
-                            `${key} · ${data.day}`,
-                            items,
-                            `${items.length} oportunidad${items.length !== 1 ? "es" : ""} el ${isoDate}`
-                          )
-                        }}
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-              <ChartHint>Apilado por fuente del CRM · eje X cada 5 días</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-      <DashboardCard>
-        <ChartCardHeader title="Pautas por Nombre (Top 30)" total={pautas.length} icon={FileText} />
-        <ChartCardContent>
-          {pautasByNombre.length === 0 ? (
-            <ChartEmpty message="Sin datos de Pautas." height={380} />
-          ) : (
-            <>
-              <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: 380 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={pautasByNombre} margin={{ top: 5, right: 16, left: 8, bottom: 120 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                    <XAxis
-                      dataKey="nombre"
-                      type="category"
-                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
-                      tickLine={false}
-                      axisLine={false}
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      tickFormatter={(v: string) => v.length > 28 ? v.slice(0, 28) + "…" : v}
-                    />
-                    <YAxis type="number" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.nombre ?? String(_)} />} />
-                    <Bar
-                      dataKey="count"
-                      radius={[6, 6, 0, 0]}
-                      name="Pautas"
-                      maxBarSize={32}
-                      cursor="pointer"
-                      onClick={(data: any) => openPautaDrill(
-                        `Pauta: ${data.nombre}`,
-                        pautas.filter((p) => p.nombrePauta === data.nombre)
-                      )}
-                    >
-                      {pautasByNombre.map((entry, i) => (
-                        <Cell key={entry.nombre} fill={chartPaletteColor(i)} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver las pautas</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-      <DashboardCard>
-        <ChartCardHeader
-          title="Oportunidades por Etapa del Pipeline"
+          title="Oportunidades por Etapa del Pipeline (Sin oportunidades perdidas)"
           total={pautaByStageTotal}
           icon={Layers}
           actions={<GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />}
@@ -1076,7 +1042,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
             <>
               <ChartContainer config={pautaByStageConfig} className="aspect-auto" style={{ height: 480 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={pautaByStageRows} margin={{ top: 5, right: 16, left: 8, bottom: 140 }} barCategoryGap="20%">
+                  <BarChart data={pautaByStageRows} margin={{ top: 5, right: 16, left: 8, bottom: 16 }} barCategoryGap="20%">
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="stage"
@@ -1091,7 +1057,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                     <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                     <ChartTooltip content={<NonZeroTooltipContent />} />
                     <Legend
-                      wrapperStyle={{ fontSize: 10, paddingTop: 8, lineHeight: "16px" }}
+                      wrapperStyle={{ fontSize: 10, paddingTop: 48, lineHeight: "36px" }}
                       iconSize={8}
                       formatter={(value: string) => (
                         <span
@@ -1304,7 +1270,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DashboardCard>
           <ChartCardHeader
-            title="Leads de Tráfico Pagado con Cita"
+            title="Citas por pauta"
             total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
             icon={Calendar}
             actions={<GroupByToggle value={apptGroupBy} onChange={setApptGroupBy} />}
@@ -1377,7 +1343,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
 
         <DashboardCard>
           <ChartCardHeader
-            title="Deals Ganados de Tráfico Pagado"
+            title="Oportunidades ganadas por pauta"
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
             icon={TrendingUp}
             actions={<GroupByToggle value={wonGroupBy} onChange={setWonGroupBy} />}
@@ -1455,108 +1421,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         </DashboardCard>
       </div>
 
-      <DashboardCard>
-        <ChartCardHeader
-          title="Citas por Pauta (atribución URL)"
-          total={apptsByPautaRows.reduce(
-            (s, r) => s + apptsByPautaKeys.reduce((a, k) => a + ((r[k] as number) || 0), 0),
-            0,
-          )}
-          icon={Calendar}
-        />
-        <ChartCardContent>
-          {apptsByPautaKeys.length === 0 ? (
-            <ChartEmpty message="Sin citas atribuidas por URL." height={300} />
-          ) : (
-            <>
-              <ChartContainer
-                config={Object.fromEntries(
-                  apptsByPautaKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
-                )}
-                className="aspect-auto"
-                style={{ height: 300 }}
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={apptsByPautaRows}
-                    margin={{ top: 5, right: 16, left: 8, bottom: 120 }}
-                    barCategoryGap="20%"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                    <XAxis
-                      dataKey="pauta"
-                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
-                      tickLine={false}
-                      axisLine={false}
-                      interval={0}
-                      angle={-45}
-                      textAnchor="end"
-                      tickFormatter={(v: string) => shortPautaName(v)}
-                    />
-                    <YAxis
-                      tick={{ ...CHART_TICK }}
-                      tickLine={false}
-                      axisLine={false}
-                      allowDecimals={false}
-                    />
-                    <ChartTooltip
-                      content={
-                        <NonZeroTooltipContent
-                          labelFormatter={(_: unknown, p: any) => {
-                            const name = p?.[0]?.payload?.pauta ?? String(_)
-                            return shortPautaName(name)
-                          }}
-                        />
-                      }
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
-                    />
-                    {apptsByPautaKeys.map((key, i) => (
-                      <Bar
-                        key={key}
-                        dataKey={key}
-                        stackId="a"
-                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                        radius={i === apptsByPautaKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                        maxBarSize={40}
-                        cursor="pointer"
-                        onClick={(data: any) => {
-                          const count = data[key] as number
-                          if (!count) return
-                          const pautaName = data.pauta as string
-                          const normUrl = extractPautaUrl(pautaName)
-                          const matchedContactIds = new Set(
-                            contacts
-                              .filter((c) => c.attributionUrl && normalizeUrl(c.attributionUrl) === normUrl)
-                              .map((c) => c.id)
-                          )
-                          const matchedContactIdsForStatus = new Set(
-                            appointments
-                              .filter(
-                                (a) =>
-                                  matchedContactIds.has(a.contactId) &&
-                                  (a.status || "Sin estatus") === key,
-                              )
-                              .map((a) => a.contactId)
-                          )
-                          openDrill(
-                            `${shortPautaName(pautaName)} · ${key}`,
-                            opportunities.filter((o) => matchedContactIdsForStatus.has(o.contactId)),
-                            `${count} cita${count !== 1 ? "s" : ""} con estatus "${key}"`,
-                          )
-                        }}
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-              <ChartHint>Apilado por estatus · atribución vía URL · haz clic para ver oportunidades</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
+
 
       <ChartDrillDrawer
         drill={drill}
