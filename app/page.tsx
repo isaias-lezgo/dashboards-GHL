@@ -5,7 +5,7 @@ import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
-import { ConversationsDashboard } from "@/components/dashboard/conversations-dashboard"
+import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
 import { AIChatPanel } from "@/components/dashboard/ai-chat-panel"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
@@ -34,6 +34,12 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
   const [aiChatOpen, setAiChatOpen] = useState(false)
+  const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>(undefined)
+
+  function handleAnalyzeWithAI(initialMessage: string) {
+    setAiInitialMessage(initialMessage)
+    setAiChatOpen(true)
+  }
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -201,6 +207,7 @@ export default function DashboardPage() {
             calls={calls}
             appointments={appointments}
             locationId={data?.locationId ?? ""}
+            onAnalyzeWithAI={handleAnalyzeWithAI}
           />
         ) : activeTab === "sales" ? (
           <SalesDashboard
@@ -210,16 +217,23 @@ export default function DashboardPage() {
             messages={messages}
             appointments={appointments}
             tasks={data?.tasks ?? []}
+            pautas={data?.pautas ?? []}
             members={availableMembers}
             locationId={data?.locationId ?? ""}
+            onAnalyzeWithAI={handleAnalyzeWithAI}
           />
         ) : (
-          <ConversationsDashboard
-            contacts={contacts}
-            opportunities={opportunities}
-            pipelines={data?.pipelines ?? []}
-            members={availableMembers}
-            availableTags={availableTags}
+          <ConversationsChat
+            dataset={{
+              contacts,
+              opportunities,
+              pautas: data?.pautas ?? [],
+              appointments,
+              messages,
+              tasks: data?.tasks ?? [],
+              calls,
+            }}
+            locationId={data?.locationId}
           />
         )}
       </div>
@@ -227,7 +241,10 @@ export default function DashboardPage() {
       {data && (
         <AIChatPanel
           open={aiChatOpen}
-          onOpenChange={setAiChatOpen}
+          onOpenChange={(o) => {
+            setAiChatOpen(o)
+            if (!o) setAiInitialMessage(undefined)
+          }}
           dataset={{
             contacts,
             opportunities,
@@ -238,6 +255,7 @@ export default function DashboardPage() {
             calls,
           }}
           locationId={data.locationId}
+          initialMessage={aiInitialMessage}
         />
       )}
     </div>
