@@ -6,9 +6,11 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartTooltipContent } from "@/components/ui/chart"
 
-/** Tooltip wrapper that hides zero-value series from chart tooltips. */
+/** Tooltip wrapper that hides zero-value series and sorts by value descending. */
 export function NonZeroTooltipContent(props: any) {
-  const filtered = (props.payload ?? []).filter((p: any) => Number(p?.value) > 0)
+  const filtered = (props.payload ?? [])
+    .filter((p: any) => Number(p?.value) > 0)
+    .sort((a: any, b: any) => Number(b.value) - Number(a.value))
   if (!props.active || filtered.length === 0) return null
   return <ChartTooltipContent {...props} payload={filtered} />
 }
@@ -43,9 +45,9 @@ export function chartPaletteColor(index: number): string {
   return CHART_PALETTE[index % CHART_PALETTE.length]
 }
 
-export function TotalBadge({ value }: { value: number | string }) {
+export function TotalBadge({ value, className }: { value: number | string; className?: string }) {
   return (
-    <span className="ml-auto inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium tabular-nums tracking-wide text-muted-foreground">
+    <span className={cn("ml-auto inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium tabular-nums tracking-wide text-muted-foreground", className)}>
       Total: {typeof value === "number" ? value.toLocaleString("es-MX") : value}
     </span>
   )
@@ -85,16 +87,21 @@ export function ChartCardHeader({
   title,
   total,
   icon: Icon,
+  actions,
 }: {
   title: string
   total?: number | string
   icon?: LucideIcon
+  actions?: ReactNode
 }) {
   return (
     <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
       {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
       <CardTitle className="text-sm font-semibold leading-snug tracking-tight">{title}</CardTitle>
-      {total !== undefined && <TotalBadge value={total} />}
+      <div className="ml-auto flex items-center gap-2">
+        {actions}
+        {total !== undefined && <TotalBadge value={total} className="ml-0" />}
+      </div>
     </CardHeader>
   )
 }

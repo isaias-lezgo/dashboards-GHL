@@ -19,7 +19,7 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, Facebook, Instagram } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, Facebook, Instagram, Copy, Check } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -53,6 +53,7 @@ interface MarketingDashboardProps {
   calls?: Call[]
   appointments?: Appointment[]
   locationId?: string
+  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
 // Normalize any createdAt format → "YYYY-MM-DD" (UTC). Handles ISO strings,
@@ -184,6 +185,20 @@ function shortUrlLabel(raw: string): string {
   }
 }
 
+function paidTrafficUrlLabel(url: string): string {
+  const platform = urlPlatform(url)
+  const prefix = platform === "facebook" ? "FB - " : platform === "instagram" ? "IG - " : ""
+  try {
+    const u = new URL(url)
+    const slug = u.pathname.replace(/\/$/, "").split("/").filter(Boolean).pop() || u.hostname
+    const truncated = slug.length > 22 ? slug.slice(0, 22) + "…" : slug
+    return prefix + truncated
+  } catch {
+    const truncated = url.length > 22 ? url.slice(0, 22) + "…" : url
+    return prefix + truncated
+  }
+}
+
 function extractPautaUrl(nombrePauta: string): string {
   const parts = nombrePauta.split(" - ").map((s) => s.trim()).filter(Boolean)
   const url = parts[1] ?? ""
@@ -198,17 +213,64 @@ function sourceLabel(opp: Opportunity): string {
 }
 
 
-export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "" }: MarketingDashboardProps) {
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className="ml-1.5 inline-flex shrink-0 items-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+      onClick={(e) => {
+        e.stopPropagation()
+        navigator.clipboard.writeText(value)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title={`Copiar: ${value}`}
+    >
+      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+    </button>
+  )
+}
+
+type PaidGroupBy = "url" | "id"
+
+function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: PaidGroupBy) => void }) {
+  return (
+    <div className="flex items-center overflow-hidden rounded border border-border/50 text-[10px] font-medium">
+      {(["url", "id"] as PaidGroupBy[]).map((opt, i) => (
+        <button
+          key={opt}
+          onClick={(e) => { e.stopPropagation(); onChange(opt) }}
+          className={[
+            "px-2 py-0.5 transition-colors uppercase tracking-wide",
+            i > 0 ? "border-l border-border/50" : "",
+            value === opt
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
+          ].join(" ")}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function MarketingDashboard({ opportunities, contacts, pautas, tasks = [], calls = [], appointments = [], locationId = "", onAnalyzeWithAI }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
+  const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
+  const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
+  const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
   }, [])
 
   const openPautaDrill = useCallback((title: string, pautaItems: Pauta[]) => {
-    setDrill({ open: true, title, opportunities: [], pautas: pautaItems })
-  }, [])
+    const contactIds = new Set(pautaItems.map(p => p.contactId).filter((id): id is string => Boolean(id)))
+    const opps = opportunities.filter(o => contactIds.has(o.contactId))
+    setDrill({ open: true, title, opportunities: opps })
+  }, [opportunities])
 
   // Derive ordered stage list from data
   const stageOrder = useMemo(() => {
@@ -387,23 +449,19 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     return m
   }, [pautas])
 
-  // Pauta × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = pauta name).
-  // A contact may have multiple pautas — an opportunity is counted once per linked pauta,
-  // so stacked totals can exceed opp count when contacts have multiple pautas attached.
+  // Attribution (URL or Ad ID) × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = attribution key).
   const { pautaByStageRows, pautaByStageKeys } = useMemo(() => {
     const totals = new Map<string, number>()
     const perStage = new Map<string, Map<string, number>>()
     for (const stage of stageOrder) perStage.set(stage, new Map())
 
     for (const opp of opportunities) {
-      const byName = contactToPautas.get(opp.contactId)
-      if (!byName) continue
+      const rawKey = stageGroupBy === "url" ? opp.attributionUrl : opp.adId
+      if (!rawKey) continue
       const stageMap = perStage.get(opp.stage)
       if (!stageMap) continue
-      for (const name of byName.keys()) {
-        stageMap.set(name, (stageMap.get(name) ?? 0) + 1)
-        totals.set(name, (totals.get(name) ?? 0) + 1)
-      }
+      stageMap.set(rawKey, (stageMap.get(rawKey) ?? 0) + 1)
+      totals.set(rawKey, (totals.get(rawKey) ?? 0) + 1)
     }
 
     const keys = Array.from(totals.entries())
@@ -421,10 +479,13 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       .filter((row) => keys.some((k) => (row[k] as number) > 0))
 
     return { pautaByStageRows: rows, pautaByStageKeys: keys }
-  }, [opportunities, contactToPautas, stageOrder])
+  }, [opportunities, stageOrder, stageGroupBy])
 
   const pautaByStageConfig = Object.fromEntries(
-    pautaByStageKeys.map((k, i) => [k, { label: shortPautaName(k), color: CHART_PALETTE[i % CHART_PALETTE.length] }])
+    pautaByStageKeys.map((k, i) => [
+      k,
+      { label: stageGroupBy === "url" ? paidTrafficUrlLabel(k) : k, color: CHART_PALETTE[i % CHART_PALETTE.length] },
+    ])
   )
 
   const pautaByStageTotal = pautaByStageRows.reduce(
@@ -520,8 +581,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
   const leadsByAdId = useMemo(() => {
     const counts = new Map<string, number>()
     for (const o of opportunities) {
-      const key = o.adId || "Sin ID"
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      if (!o.adId) continue
+      counts.set(o.adId, (counts.get(o.adId) ?? 0) + 1)
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
@@ -553,27 +614,38 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     for (const o of opportunities) {
       if (!isPaidTraffic(o)) continue
       if (!apptContactIds.has(o.contactId)) continue
-      const key = o.source || "Desconocido"
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      const rawKey = apptGroupBy === "url" ? o.attributionUrl : o.adId
+      if (!rawKey) continue
+      counts.set(rawKey, (counts.get(rawKey) ?? 0) + 1)
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(([source, count]) => ({ source, count }))
-  }, [opportunities, appointments])
+      .map(([rawKey, count]) => ({
+        rawKey,
+        label: apptGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
+        count,
+      }))
+  }, [opportunities, appointments, apptGroupBy])
 
-  // Panel 4b — Won deals from paid traffic, grouped by source
+  // Panel 4b — Won deals from paid traffic, grouped by URL or Ad ID
   const wonPaidTraffic = useMemo(() => {
     const counts = new Map<string, { count: number; value: number }>()
     for (const o of opportunities) {
       if (!isPaidTraffic(o) || o.status !== "won") continue
-      const key = o.source || "Desconocido"
-      const prev = counts.get(key) ?? { count: 0, value: 0 }
-      counts.set(key, { count: prev.count + 1, value: prev.value + o.value })
+      const rawKey = wonGroupBy === "url" ? o.attributionUrl : o.adId
+      if (!rawKey) continue
+      const prev = counts.get(rawKey) ?? { count: 0, value: 0 }
+      counts.set(rawKey, { count: prev.count + 1, value: prev.value + o.value })
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1].count - a[1].count)
-      .map(([source, { count, value }]) => ({ source, count, value }))
-  }, [opportunities])
+      .map(([rawKey, { count, value }]) => ({
+        rawKey,
+        label: wonGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
+        count,
+        value,
+      }))
+  }, [opportunities, wonGroupBy])
 
   const { apptsByPautaRows, apptsByPautaKeys } = useMemo(() => {
     if (appointments.length === 0 || pautas.length === 0) {
@@ -991,10 +1063,15 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
       </DashboardCard>
 
       <DashboardCard>
-        <ChartCardHeader title="Pautas por Etapa del Pipeline" total={pautaByStageTotal} icon={Layers} />
+        <ChartCardHeader
+          title="Oportunidades por Etapa del Pipeline"
+          total={pautaByStageTotal}
+          icon={Layers}
+          actions={<GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />}
+        />
         <ChartCardContent>
           {pautaByStageKeys.length === 0 ? (
-            <ChartEmpty message="Sin oportunidades vinculadas a pautas." height={300} />
+            <ChartEmpty message="Sin oportunidades con datos de atribución." height={300} />
           ) : (
             <>
               <ChartContainer config={pautaByStageConfig} className="aspect-auto" style={{ height: 480 }}>
@@ -1021,7 +1098,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                           style={{ color: "#374151", marginRight: 4 }}
                           title={value}
                         >
-                          {shortPautaName(value)}
+                          {stageGroupBy === "url" ? paidTrafficUrlLabel(value) : value.slice(0, 20)}
                         </span>
                       )}
                     />
@@ -1040,11 +1117,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                           const stage = data.stage as string
                           const items = opportunities.filter((o) => {
                             if (o.stage !== stage) return false
-                            const byName = contactToPautas.get(o.contactId)
-                            return byName?.has(key) ?? false
+                            const rawKey = stageGroupBy === "url" ? o.attributionUrl : o.adId
+                            return rawKey === key
                           })
+                          const label = stageGroupBy === "url" ? paidTrafficUrlLabel(key) : key
                           openDrill(
-                            `${key} · ${stage}`,
+                            `${label} · ${stage}`,
                             items,
                             `${items.length} oportunidad${items.length !== 1 ? "es" : ""} en ${stage}`
                           )
@@ -1055,7 +1133,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                Apilado por Pauta · top 30 pautas · haz clic en un segmento para ver las oportunidades
+                {`Apilado por ${stageGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · top 30 · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}
@@ -1091,11 +1169,16 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                           onClick={() =>
                             openDrill(
                               `Ad ID: ${entry.adId}`,
-                              opportunities.filter((o) => (o.adId || "Sin ID") === entry.adId)
+                              opportunities.filter((o) => o.adId === entry.adId)
                             )
                           }
                         >
-                          <TableCell className="font-mono text-xs text-foreground">{entry.adId}</TableCell>
+                          <TableCell className="font-mono text-xs text-foreground">
+                            <span className="inline-flex items-center gap-0">
+                              {entry.adId}
+                              <CopyButton value={entry.adId} />
+                            </span>
+                          </TableCell>
                           <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
                             {entry.count}
                           </TableCell>
@@ -1162,7 +1245,10 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                                     )
                                   }
                                 >
-                                  {shortUrlLabel(fb.url)}
+                                  <span className="inline-flex items-center gap-0">
+                                    {shortUrlLabel(fb.url)}
+                                    <CopyButton value={fb.url} />
+                                  </span>
                                 </TableCell>
                                 <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
                                   {fb.count}
@@ -1186,7 +1272,10 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                                     )
                                   }
                                 >
-                                  {shortUrlLabel(ig.url)}
+                                  <span className="inline-flex items-center gap-0">
+                                    {shortUrlLabel(ig.url)}
+                                    <CopyButton value={ig.url} />
+                                  </span>
                                 </TableCell>
                                 <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
                                   {ig.count}
@@ -1218,6 +1307,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
             title="Leads de Tráfico Pagado con Cita"
             total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
             icon={Calendar}
+            actions={<GroupByToggle value={apptGroupBy} onChange={setApptGroupBy} />}
           />
           <ChartCardContent>
             {paidTrafficWithAppt.length === 0 ? (
@@ -1232,24 +1322,23 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={paidTrafficWithAppt}
-                      margin={{ top: 16, right: 16, left: 8, bottom: 64 }}
+                      margin={{ top: 16, right: 16, left: 8, bottom: 80 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                       <XAxis
-                        dataKey="source"
+                        dataKey="label"
                         tick={{ ...CHART_TICK }}
                         tickLine={false}
                         axisLine={false}
                         interval={0}
                         angle={-40}
                         textAnchor="end"
-                        tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v}
                       />
                       <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip
                         content={
                           <NonZeroTooltipContent
-                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.source ?? String(_)}
+                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.rawKey ?? String(_)}
                           />
                         }
                       />
@@ -1260,20 +1349,21 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         maxBarSize={48}
                         cursor="pointer"
                         onClick={(data: any) => {
+                          const rawKey = data.rawKey as string
                           const apptContactIds = new Set(appointments.map((a) => a.contactId))
                           openDrill(
-                            `Tráfico pagado con cita: ${data.source}`,
-                            opportunities.filter(
-                              (o) =>
-                                isPaidTraffic(o) &&
-                                (o.source || "Desconocido") === data.source &&
-                                apptContactIds.has(o.contactId)
-                            )
+                            `Tráfico pagado con cita: ${data.label}`,
+                            opportunities.filter((o) => {
+                              if (!isPaidTraffic(o) || !apptContactIds.has(o.contactId)) return false
+                              return apptGroupBy === "url"
+                                ? o.attributionUrl === rawKey
+                                : o.adId === rawKey
+                            })
                           )
                         }}
                       >
                         {paidTrafficWithAppt.map((entry, i) => (
-                          <Cell key={entry.source} fill={chartPaletteColor(i)} />
+                          <Cell key={entry.rawKey} fill={chartPaletteColor(i)} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -1290,6 +1380,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
             title="Deals Ganados de Tráfico Pagado"
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
             icon={TrendingUp}
+            actions={<GroupByToggle value={wonGroupBy} onChange={setWonGroupBy} />}
           />
           <ChartCardContent>
             {wonPaidTraffic.length === 0 ? (
@@ -1304,18 +1395,17 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={wonPaidTraffic}
-                      margin={{ top: 16, right: 16, left: 8, bottom: 64 }}
+                      margin={{ top: 16, right: 16, left: 8, bottom: 80 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                       <XAxis
-                        dataKey="source"
+                        dataKey="label"
                         tick={{ ...CHART_TICK }}
                         tickLine={false}
                         axisLine={false}
                         interval={0}
                         angle={-40}
                         textAnchor="end"
-                        tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v}
                       />
                       <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip
@@ -1326,8 +1416,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                               if (!entry) return String(_)
                               const val = entry.value as number
                               return val > 0
-                                ? `${entry.source} · $${val.toLocaleString("es-MX")}`
-                                : entry.source
+                                ? `${entry.rawKey} · $${val.toLocaleString("es-MX")}`
+                                : entry.rawKey
                             }}
                           />
                         }
@@ -1338,20 +1428,21 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                         name="Ganados"
                         maxBarSize={48}
                         cursor="pointer"
-                        onClick={(data: any) =>
+                        onClick={(data: any) => {
+                          const rawKey = data.rawKey as string
                           openDrill(
-                            `Ganados de tráfico pagado: ${data.source}`,
-                            opportunities.filter(
-                              (o) =>
-                                isPaidTraffic(o) &&
-                                o.status === "won" &&
-                                (o.source || "Desconocido") === data.source
-                            )
+                            `Ganados de tráfico pagado: ${data.label}`,
+                            opportunities.filter((o) => {
+                              if (!isPaidTraffic(o) || o.status !== "won") return false
+                              return wonGroupBy === "url"
+                                ? o.attributionUrl === rawKey
+                                : o.adId === rawKey
+                            })
                           )
-                        }
+                        }}
                       >
                         {wonPaidTraffic.map((entry, i) => (
-                          <Cell key={entry.source} fill={chartPaletteColor(i)} />
+                          <Cell key={entry.rawKey} fill={chartPaletteColor(i)} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -1383,7 +1474,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
                   apptsByPautaKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
                 )}
                 className="aspect-auto"
-                style={{ height: Math.max(300, apptsByPautaRows.length * 48 + 120) }}
+                style={{ height: 300 }}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -1474,8 +1565,10 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        allPautas={pautas}
         appointments={appointments}
         locationId={locationId}
+        onAnalyzeWithAI={onAnalyzeWithAI}
       />
     </DashboardShell>
   )

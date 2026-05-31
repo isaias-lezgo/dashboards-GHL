@@ -1,0 +1,90 @@
+<h2>¿Cómo debe verse la nueva pestaña de Conversaciones?</h2>
+<p class="subtitle">El tab "Conversaciones" se convierte en un chat con IA que puede buscar contactos, conversaciones, oportunidades, citas y más.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Chat de pantalla completa</h3>
+      <p>El tab completo es el chat. La IA tiene acceso a todo — busca contactos, lee conversaciones, revisa oportunidades. El usuario solo escribe.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Conversaciones</div>
+        <div class="mockup-body" style="display:flex;flex-direction:column;gap:8px;padding:12px;background:#0f172a;border-radius:6px;min-height:180px">
+          <div style="background:#1e293b;border-radius:8px;padding:10px;font-size:11px;color:#94a3b8;max-width:75%">¿Qué contactos de Meta no han respondido en más de 24h?</div>
+          <div style="background:#7c3aed;border-radius:8px;padding:10px;font-size:11px;color:#fff;max-width:80%;align-self:flex-end">Encontré 12 contactos con el último mensaje de entrada hace más de 24h: <strong>María García</strong> (2d), <strong>Luis Torres</strong> (31h)...</div>
+          <div style="background:#1e293b;border-radius:8px;padding:10px;font-size:11px;color:#94a3b8;max-width:75%">Dame el historial de María García</div>
+          <div style="background:#334155;border-radius:6px;padding:8px;font-size:10px;color:#64748b;margin-top:4px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span style="background:#7c3aed;border-radius:4px;padding:2px 6px;font-size:9px;color:#fff">🔍 Buscando...</span>
+            </div>
+            <div style="color:#94a3b8">📬 3 conversaciones · 📋 2 oportunidades · 📅 1 cita confirmada · ✅ 2 tareas pendientes</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>Experiencia fluida sin distracciones</li><li>La IA puede combinar cualquier dato</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Ya no hay vista de mensajes en panel</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Chat + panel de contexto lateral</h3>
+      <p>Chat a la derecha, panel izquierdo donde la IA muestra el contacto/conversación activo conforme responde.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Conversaciones</div>
+        <div class="mockup-body" style="display:flex;gap:8px;padding:8px;background:#0f172a;border-radius:6px;min-height:180px">
+          <div style="width:38%;background:#1e293b;border-radius:6px;padding:8px;font-size:10px;color:#94a3b8">
+            <div style="font-size:9px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.1em">Contexto activo</div>
+            <div style="background:#0f172a;border-radius:4px;padding:6px;margin-bottom:4px">
+              <div style="color:#e2e8f0;font-weight:600;font-size:11px">María García</div>
+              <div style="color:#64748b;font-size:9px">📱 SMS · hace 2d sin responder</div>
+            </div>
+            <div style="background:#0f172a;border-radius:4px;padding:6px;margin-bottom:4px;font-size:9px">
+              <div style="color:#7c3aed">Oportunidad: Cierre Pendiente</div>
+              <div style="color:#64748b">Pipeline Meta · $45,000</div>
+            </div>
+            <div style="background:#0f172a;border-radius:4px;padding:6px;font-size:9px;color:#f59e0b">
+              ⚠ 2 tareas vencidas
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <div style="background:#1e293b;border-radius:6px;padding:8px;font-size:10px;color:#94a3b8">María García, ¿qué se dijo?</div>
+            <div style="background:#7c3aed;border-radius:6px;padding:8px;font-size:10px;color:#fff;align-self:flex-end">Última convo: ella preguntó por precios, aún sin respuesta. Tiene cita el viernes.</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>La IA muestra el contexto en tiempo real</li><li>Fácil de ver datos del contacto</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Más complejo de implementar</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Sub-tabs: Chat IA + Vista clásica</h3>
+      <p>Dentro del tab Conversaciones hay dos sub-tabs: el chat IA nuevo y el visor clásico de filtros/mensajes que ya existe.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Conversaciones</div>
+        <div class="mockup-body" style="padding:8px;background:#0f172a;border-radius:6px;min-height:180px">
+          <div style="display:flex;gap:0;border-bottom:1px solid #334155;margin-bottom:10px">
+            <div style="padding:6px 14px;font-size:10px;color:#e2e8f0;border-bottom:2px solid #7c3aed">💬 Chat IA</div>
+            <div style="padding:6px 14px;font-size:10px;color:#64748b">📂 Explorar</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="background:#1e293b;border-radius:6px;padding:8px;font-size:10px;color:#94a3b8;max-width:70%">¿Cuántos leads de Facebook sin cita esta semana?</div>
+            <div style="background:#7c3aed;border-radius:6px;padding:8px;font-size:10px;color:#fff;max-width:75%;align-self:flex-end">8 leads de Facebook sin cita en los últimos 7 días.</div>
+          </div>
+        </div>
+      </div>
+      <div class="pros-cons" style="margin-top:8px">
+        <div class="pros"><h4>Pros</h4><ul><li>No se pierde la vista clásica</li><li>Fácil de implementar</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Menos enfocado</li><li>El chat ya existe en el header global</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

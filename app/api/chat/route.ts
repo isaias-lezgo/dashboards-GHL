@@ -20,6 +20,24 @@ interface ChatRequestBody {
 
 export const runtime = "nodejs";
 
+function translateAnthropicError(error: Anthropic.APIError): string {
+  // The SDK parses the JSON body into error.error; fall back to error.message.
+  const body = error.error as { error?: { type?: string; message?: string } } | null | undefined;
+  const inner = body?.error?.message ?? error.message;
+
+  if (/credit balance/i.test(inner))
+    return "Saldo de crédito insuficiente. Recarga tu cuenta en console.anthropic.com para continuar.";
+  if (/overloaded/i.test(inner))
+    return "El servicio de IA está sobrecargado. Espera un momento e intenta de nuevo.";
+  if (/invalid api key/i.test(inner))
+    return "API key de Anthropic inválida. Revisa la configuración del servidor.";
+  if (/context length|too many tokens|too large/i.test(inner))
+    return "La conversación es demasiado larga. Reinicia el chat para continuar.";
+  if (/not found/i.test(inner) && error.status === 404)
+    return "Modelo o recurso no encontrado. Revisa la configuración.";
+  return `Error del servicio de IA (código ${error.status}). Intenta de nuevo.`;
+}
+
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -94,7 +112,7 @@ export async function POST(req: Request) {
     if (error instanceof Anthropic.APIError) {
       console.error("[/api/chat] Anthropic error:", error.status, error.message);
       return NextResponse.json(
-        { error: `Error de Anthropic API: ${error.message}` },
+        { error: translateAnthropicError(error) },
         { status: 502 }
       );
     }

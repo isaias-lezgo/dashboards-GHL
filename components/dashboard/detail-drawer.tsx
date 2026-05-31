@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import ReactMarkdown from "react-markdown"
 import {
   Sheet,
   SheetContent,
@@ -16,9 +15,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog"
-import type { Opportunity, Contact, Task, Call, Appointment, Message } from "@/lib/types"
+import type { Opportunity, Contact, Task, Call, Appointment, Message, Pauta } from "@/lib/types"
 import {
   Phone,
   Clock,
@@ -29,7 +27,6 @@ import {
   User,
   ExternalLink,
   Sparkles,
-  Loader2,
   CalendarCheck,
   CalendarX,
   CalendarClock,
@@ -39,6 +36,13 @@ import {
   Facebook,
   Instagram,
   Globe,
+  FileText,
+  Tag,
+  MapPin,
+  Video,
+  GitBranch,
+  Megaphone,
+  UserPlus,
 } from "lucide-react"
 
 interface DetailDrawerProps {
@@ -51,24 +55,48 @@ interface DetailDrawerProps {
   calls: Call[]
   appointments?: Appointment[]
   messages?: Message[]
+  pautas?: Pauta[]
   locationId?: string
+  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
-const TAG_COLORS: Record<string, string> = {
-  "Hot Lead": "bg-red-100 text-red-700 border-red-200",
-  "Warm Lead": "bg-amber-100 text-amber-700 border-amber-200",
-  "Cold Lead": "bg-gray-100 text-gray-600 border-gray-200",
-  "Enterprise": "bg-blue-100 text-blue-700 border-blue-200",
-  "Mid-Market": "bg-teal-100 text-teal-700 border-teal-200",
-  "SMB": "bg-orange-100 text-orange-700 border-orange-200",
-  "Decision Maker": "bg-indigo-100 text-indigo-700 border-indigo-200",
-  "Referral": "bg-emerald-100 text-emerald-700 border-emerald-200",
+// Semantic tag overrides for known CRM tags
+const SEMANTIC_TAG_STYLES: Record<string, string> = {
+  "no show": "bg-red-50 text-red-700 border-red-200",
+  "noshow": "bg-red-50 text-red-700 border-red-200",
+  "stop bot": "bg-orange-50 text-orange-700 border-orange-200",
+  "Hot Lead": "bg-amber-50 text-amber-700 border-amber-200",
+  "Warm Lead": "bg-amber-50/60 text-amber-600 border-amber-100",
+  "Cold Lead": "bg-[#EAEDF1] text-[#151B28] border-border",
+  "won": "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "Referral": "bg-emerald-50 text-emerald-700 border-emerald-200",
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  open: "bg-blue-100 text-blue-700 border-blue-200",
-  won: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  lost: "bg-red-100 text-red-700 border-red-200",
+function getTagStyle(tag: string): string {
+  const lower = tag.toLowerCase()
+  for (const [key, style] of Object.entries(SEMANTIC_TAG_STYLES)) {
+    if (lower === key.toLowerCase()) return style
+  }
+  return "bg-[#EAEDF1] text-[#151B28] border-border"
+}
+
+const STATUS_STYLES: Record<string, { badge: string; label: string }> = {
+  open: {
+    badge: "bg-[#FEF3C7] text-[#92400E] border-[#FCD34D]",
+    label: "abierto",
+  },
+  won: {
+    badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    label: "ganado",
+  },
+  lost: {
+    badge: "bg-red-50 text-red-600 border-red-200",
+    label: "perdido",
+  },
+  abandoned: {
+    badge: "bg-[#EAEDF1] text-[#151B28] border-border",
+    label: "abandonado",
+  },
 }
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -96,7 +124,7 @@ function ChannelIcon({ source }: { source: string }) {
 }
 
 function formatCurrency(value: number): string {
-  return `$${value.toLocaleString()}`
+  return `$${value.toLocaleString("es-MX")}`
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -115,7 +143,7 @@ function formatRelativeTime(dateStr: string): string {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">
+    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-3">
       {children}
     </p>
   )
@@ -131,12 +159,10 @@ export function DetailDrawer({
   calls: _calls,
   appointments = [],
   messages = [],
+  pautas = [],
   locationId = "",
+  onAnalyzeWithAI,
 }: DetailDrawerProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null)
-  const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [analysisOpen, setAnalysisOpen] = useState(false)
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
 
   const opportunity = opportunities.find((o) => o.id === opportunityId)
@@ -164,59 +190,37 @@ export function DetailDrawer({
     .slice()
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
+  const contactPautas = pautas
+    .filter((p) => p.contactId === opportunity.contactId)
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
   const lastInbound = contactMessages.find((m) => m.direction === "inbound")
   const lastOutbound = contactMessages.find((m) => m.direction === "outbound")
   const latestMessage = contactMessages[0]
   const hasConversation = contactMessages.length > 0
 
-  async function handleAnalyze() {
-    if (!opportunity || !contact) return
-    setIsAnalyzing(true)
-    setAnalysisError(null)
-    try {
-      // Reuse the data already loaded in the drawer instead of forcing the
-      // server to re-fetch: appointments (contact-scoped) and the recent
-      // conversation (chronological, capped) enrich the analysis.
-      const appointmentsPayload = contactAppointments.map((a) => ({
-        title: a.title,
-        startTime: a.startTime,
-        endTime: a.endTime,
-        status: a.status,
-        notes: a.notes,
-      }))
-      const messagesPayload = contactMessages
-        .slice(0, 30)
-        .reverse()
-        .map((m) => ({
-          direction: m.direction,
-          source: m.source,
-          content: m.content,
-          createdAt: m.createdAt,
-        }))
-      const res = await fetch("/api/analyze-contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          opportunityId: opportunity.id,
-          contact,
-          opportunity,
-          appointments: appointmentsPayload,
-          messages: messagesPayload,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setAnalysisError(data.error ?? "Error desconocido")
-      } else {
-        setAnalysisResult(data.analysis)
-      }
-      setAnalysisOpen(true)
-    } catch {
-      setAnalysisError("No se pudo conectar con el servidor de análisis.")
-      setAnalysisOpen(true)
-    } finally {
-      setIsAnalyzing(false)
+  const statusInfo = STATUS_STYLES[opportunity.status] ?? {
+    badge: "bg-[#EAEDF1] text-[#151B28] border-border",
+    label: opportunity.status,
+  }
+
+  function handleAnalyzeWithAI() {
+    if (!opportunity || !onAnalyzeWithAI) return
+    const lines: string[] = ["Analiza este contacto y oportunidad de mi CRM:"]
+    if (contact) {
+      lines.push(`\nContacto: ${contact.name}`)
+      if (contact.email) lines.push(`Email: ${contact.email}`)
+      if (contact.phone) lines.push(`Teléfono: ${contact.phone}`)
+      if (contact.tags?.length) lines.push(`Etiquetas: ${contact.tags.join(", ")}`)
     }
+    lines.push(`\nOportunidad: "${opportunity.name}"`)
+    lines.push(`Etapa: ${opportunity.stage}`)
+    lines.push(`Estado: ${opportunity.status}`)
+    if (opportunity.value) lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}`)
+    if (opportunity.pipelineName) lines.push(`Pipeline: ${opportunity.pipelineName}`)
+    if (opportunity.assignedTo) lines.push(`Asignado a: ${opportunity.assignedTo}`)
+    onAnalyzeWithAI(lines.join("\n"))
   }
 
   return (
@@ -224,35 +228,42 @@ export function DetailDrawer({
       <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto p-0">
         {/* Header */}
         <div className="border-b border-border px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-0.5 min-w-0">
               <SheetHeader className="p-0">
-                <SheetTitle className="text-base">{contact?.name ?? "Contacto no encontrado"}</SheetTitle>
-                <SheetDescription className="text-xs">
+                <SheetTitle className="text-[15px] font-semibold leading-snug">
+                  {contact?.name ?? "Contacto no encontrado"}
+                </SheetTitle>
+                <SheetDescription className="text-xs text-muted-foreground mt-0.5">
                   {contact?.email ?? "Sin correo"} · {contact?.phone ?? "Sin teléfono"}
                 </SheetDescription>
               </SheetHeader>
             </div>
-            <Badge variant="outline" className={`text-[11px] ${STATUS_STYLES[opportunity.status]}`}>
-              {opportunity.status}
+            <Badge
+              variant="outline"
+              className={`text-[11px] shrink-0 capitalize font-medium ${statusInfo.badge}`}
+            >
+              {statusInfo.label}
             </Badge>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {contact?.tags && contact.tags.length > 0 ? (
-              contact.tags.map((tag) => (
+
+          {/* Tags */}
+          {contact?.tags && contact.tags.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {contact.tags.map((tag) => (
                 <span
                   key={tag}
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${TAG_COLORS[tag] ?? "bg-secondary text-secondary-foreground border-border"}`}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getTagStyle(tag)}`}
                 >
                   {tag}
                 </span>
-              ))
-            ) : (
-              <span className="text-[11px] text-muted-foreground italic">Sin etiquetas</span>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {/* Action buttons */}
           {locationId && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
                 <a
                   href={`https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${opportunity.id}?tab=Opportunity+Details`}
@@ -276,14 +287,13 @@ export function DetailDrawer({
                 </Button>
               )}
               <Button
-                variant="outline"
                 size="sm"
-                className="h-7 text-xs gap-1.5"
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
+                className="h-7 text-xs gap-1.5 bg-[#F59B1B] text-white hover:bg-[#D9870F] border-0"
+                onClick={handleAnalyzeWithAI}
+                disabled={!onAnalyzeWithAI}
               >
-                {isAnalyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                {isAnalyzing ? "Analizando…" : "Analizar con IA"}
+                <Sparkles className="h-3 w-3" />
+                Analizar con IA
               </Button>
             </div>
           )}
@@ -295,9 +305,11 @@ export function DetailDrawer({
           {/* Opportunity section */}
           <div>
             <SectionLabel>Oportunidad</SectionLabel>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <InfoCell icon={<DollarSign className="h-3.5 w-3.5" />} label="Valor">
-                {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
+                <span className="font-variant-numeric tabular-nums">
+                  {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
+                </span>
               </InfoCell>
               <InfoCell icon={<Calendar className="h-3.5 w-3.5" />} label="Cierre">
                 {opportunity.closedAt
@@ -311,7 +323,7 @@ export function DetailDrawer({
               <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Etapa">
                 {opportunity.stage ?? "No disponible"}
               </InfoCell>
-              <InfoCell icon={<Clock className="h-3.5 w-3.5" />} label="Pipeline">
+              <InfoCell icon={<GitBranch className="h-3.5 w-3.5" />} label="Pipeline">
                 {opportunity.pipelineName ?? "No disponible"}
               </InfoCell>
               {opportunity.assignedTo && (
@@ -330,29 +342,33 @@ export function DetailDrawer({
             {!contact ? (
               <p className="text-xs text-muted-foreground italic">Contacto no vinculado.</p>
             ) : (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-sm font-medium text-foreground">{contact.name}</span>
-                </div>
-                {contact.email && (
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">{contact.email}</span>
-                  </div>
-                )}
-                {contact.phone && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">{contact.phone}</span>
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Nombre">
+                  {contact.name}
+                </InfoCell>
+                <InfoCell icon={<Mail className="h-3.5 w-3.5" />} label="Email">
+                  {contact.email || "Sin correo"}
+                </InfoCell>
+                <InfoCell icon={<Phone className="h-3.5 w-3.5" />} label="Teléfono">
+                  {contact.phone || "Sin teléfono"}
+                </InfoCell>
                 {contact.assignedTo && (
-                  <div className="flex items-center gap-2">
-                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">Asignado a: {contact.assignedTo}</span>
-                  </div>
+                  <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Asignado a">
+                    {contact.assignedTo}
+                  </InfoCell>
                 )}
+                <InfoCell icon={<UserPlus className="h-3.5 w-3.5" />} label="Registro">
+                  {contact.createdAt
+                    ? new Date(contact.createdAt).toLocaleDateString("es-MX", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "No disponible"}
+                </InfoCell>
+                <InfoCell icon={<Megaphone className="h-3.5 w-3.5" />} label="Medio">
+                  {contact.adType || "No disponible"}
+                </InfoCell>
               </div>
             )}
           </div>
@@ -362,10 +378,10 @@ export function DetailDrawer({
             <>
               <Divider />
               <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-3">
                   <SectionLabel>Conversación</SectionLabel>
                   {latestMessage && (
-                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-2">
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-3">
                       <ChannelIcon source={latestMessage.source} />
                       <span>{CHANNEL_LABELS[latestMessage.source] ?? latestMessage.source}</span>
                       <span className="mx-0.5">·</span>
@@ -398,82 +414,110 @@ export function DetailDrawer({
             </>
           )}
 
-          {/* Appointments section */}
-          {contactAppointments.length > 0 && (
-            <>
-              <Divider />
-              <div>
-                <SectionLabel>Citas</SectionLabel>
-                <div className="flex flex-col gap-2">
-                  {contactAppointments.map((appt) => {
-                    const status = (appt.status ?? "").toLowerCase()
-                    const isConfirmed = ["confirmed", "showed"].includes(status)
-                    const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
-                    const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
-                    const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
-                    const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-amber-600"
-                    const badgeClass = isConfirmed
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : isCancelled
-                      ? "bg-red-50 text-red-600 border-red-200"
-                      : "bg-amber-50 text-amber-700 border-amber-200"
-                    const startDate = new Date(appt.startTime)
-                    const dateStr = startDate.toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
-                    const timeStr = startDate.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
-                    return (
-                      <button
-                        key={appt.id}
-                        type="button"
-                        onClick={() => setSelectedAppointment(appt)}
-                        className="flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent/30 transition-colors w-full"
-                      >
-                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
-                          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
-                        </div>
-                        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                          <span className="text-sm font-medium text-foreground truncate">
-                            {appt.title ?? "Cita"}
-                          </span>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                            <span>{dateStr}</span>
-                            <span>{timeStr}</span>
-                          </div>
-                          {appt.notes && (
-                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{appt.notes}</p>
-                          )}
-                        </div>
-                        <Badge variant="outline" className={`text-[10px] shrink-0 capitalize ${badgeClass}`}>
-                          {appt.status || "pendiente"}
-                        </Badge>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <Dialog open={analysisOpen} onOpenChange={setAnalysisOpen}>
-          <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="h-4 w-4" />
-                Análisis IA — {contact?.name ?? "Contacto"}
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                Generado por Claude · Basado en datos del CRM y citas
-              </DialogDescription>
-            </DialogHeader>
-            {analysisError ? (
-              <p className="text-sm text-destructive mt-2">{analysisError}</p>
+          {/* Pautas section */}
+          <Divider />
+          <div>
+            <SectionLabel>Pautas</SectionLabel>
+            {contactPautas.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Sin pautas registradas.</p>
             ) : (
-              <div className="prose prose-sm dark:prose-invert max-w-none mt-2">
-                <ReactMarkdown>{analysisResult ?? ""}</ReactMarkdown>
+              <div className="flex flex-col">
+                {contactPautas.map((pauta, idx) => (
+                  <div
+                    key={pauta.id}
+                    className={`flex items-start gap-3 py-3 ${idx !== 0 ? "border-t border-border" : ""}`}
+                  >
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-violet-100 mt-0.5">
+                      <FileText className="h-3 w-3 text-violet-600" />
+                    </div>
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                      <span className="text-sm font-medium text-foreground leading-snug">
+                        {pauta.nombrePauta.split(" - ")[0] || pauta.nombrePauta}
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {pauta.tipo && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                            <Tag className="h-2.5 w-2.5" />
+                            {pauta.tipo}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Date(pauta.createdAt).toLocaleDateString("es-MX", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-          </DialogContent>
-        </Dialog>
+          </div>
+
+          {/* Appointments section */}
+          <Divider />
+          <div>
+            <SectionLabel>Citas</SectionLabel>
+            {contactAppointments.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Sin citas registradas.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {contactAppointments.map((appt) => {
+                  const status = (appt.status ?? "").toLowerCase()
+                  const isConfirmed = ["confirmed", "showed"].includes(status)
+                  const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
+                  const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
+                  const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
+                  const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-[#F59B1B]"
+                  const badgeClass = isConfirmed
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : isCancelled
+                    ? "bg-red-50 text-red-600 border-red-200"
+                    : "bg-[#FEF3C7] text-[#92400E] border-[#FCD34D]"
+                  const startDate = new Date(appt.startTime)
+                  const dateStr = startDate.toLocaleDateString("es-MX", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                  const timeStr = startDate.toLocaleTimeString("es-MX", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                  return (
+                    <button
+                      key={appt.id}
+                      type="button"
+                      onClick={() => setSelectedAppointment(appt)}
+                      className="flex items-start gap-3 rounded-lg border border-border p-3 text-left hover:border-primary/40 hover:bg-accent/30 transition-colors w-full"
+                    >
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconBg}`}>
+                        <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
+                      </div>
+                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {appt.title ?? "Cita"}
+                        </span>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span>{dateStr}</span>
+                          <span className="tabular-nums">{timeStr}</span>
+                        </div>
+                        {appt.notes && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{appt.notes}</p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className={`text-[10px] shrink-0 capitalize ${badgeClass}`}>
+                        {appt.status || "pendiente"}
+                      </Badge>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
         <AppointmentDetailDialog
           appointment={selectedAppointment}
@@ -503,7 +547,7 @@ function InfoCell({
     <div className={`flex items-start gap-2 ${className}`}>
       <span className="mt-0.5 text-muted-foreground shrink-0">{icon}</span>
       <div>
-        <p className="text-[10px] text-muted-foreground">{label}</p>
+        <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
         <p className="text-sm font-semibold text-foreground leading-snug">{children}</p>
       </div>
     </div>
@@ -527,11 +571,11 @@ function MessageRow({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {isInbound ? (
-            <ArrowDownLeft className="h-3 w-3 text-blue-500" />
+            <ArrowDownLeft className="h-3 w-3 text-[#335577]" />
           ) : (
-            <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+            <ArrowUpRight className="h-3 w-3 text-[#F59B1B]" />
           )}
-          <span className={`text-[10px] font-semibold ${isInbound ? "text-blue-600" : "text-emerald-600"}`}>
+          <span className={`text-[10px] font-semibold ${isInbound ? "text-[#335577]" : "text-[#D9870F]"}`}>
             {isInbound ? "Lead" : "Nosotros"}
           </span>
         </div>
@@ -562,12 +606,12 @@ function AppointmentDetailDialog({
   const isCancelled = ["cancelled", "noshow", "no_show"].includes(status)
   const Icon = isConfirmed ? CalendarCheck : isCancelled ? CalendarX : CalendarClock
   const iconBg = isConfirmed ? "bg-emerald-100" : isCancelled ? "bg-red-100" : "bg-amber-100"
-  const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-amber-600"
+  const iconColor = isConfirmed ? "text-emerald-600" : isCancelled ? "text-red-500" : "text-[#F59B1B]"
   const badgeClass = isConfirmed
     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
     : isCancelled
     ? "bg-red-50 text-red-600 border-red-200"
-    : "bg-amber-50 text-amber-700 border-amber-200"
+    : "bg-[#FEF3C7] text-[#92400E] border-[#FCD34D]"
 
   let dateStr = ""
   let startTimeStr = ""
@@ -606,7 +650,7 @@ function AppointmentDetailDialog({
               <DialogTitle className="text-base leading-snug">
                 {appointment?.title ?? "Cita"}
               </DialogTitle>
-              <div className="text-xs mt-1 capitalize text-muted-foreground">
+              <div className="text-xs mt-1">
                 <Badge variant="outline" className={`text-[10px] capitalize ${badgeClass}`}>
                   {appointment?.status || "pendiente"}
                 </Badge>
@@ -624,7 +668,7 @@ function AppointmentDetailDialog({
             <p className="text-sm text-foreground capitalize">{dateStr}</p>
             <div className="flex items-center gap-2 mt-2 text-sm text-foreground">
               <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-              <span>
+              <span className="tabular-nums">
                 {startTimeStr} – {endTimeStr}
                 {durationStr && <span className="text-muted-foreground"> · {durationStr}</span>}
               </span>
@@ -640,6 +684,36 @@ function AppointmentDetailDialog({
               <p className="text-sm text-foreground">{appointment.assignedTo}</p>
             </div>
           )}
+
+          {appointment?.location && (() => {
+            const isVirtual = appointment.location.startsWith("http")
+            return (
+              <div className="rounded-lg border border-border p-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  {isVirtual
+                    ? <Video className="h-3.5 w-3.5 text-muted-foreground" />
+                    : <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                  }
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+                    {isVirtual ? "Reunión virtual" : "Ubicación"}
+                  </p>
+                </div>
+                {isVirtual ? (
+                  <a
+                    href={appointment.location}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline flex items-center gap-1.5 break-all"
+                  >
+                    {appointment.location}
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                ) : (
+                  <p className="text-sm text-foreground">{appointment.location}</p>
+                )}
+              </div>
+            )
+          })()}
 
           {appointment?.notes && (
             <div className="rounded-lg border border-border p-3">

@@ -16,7 +16,7 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Call, Message, Task, Appointment } from "@/lib/types"
+import type { Opportunity, Contact, Call, Message, Task, Appointment, Pauta } from "@/lib/types"
 import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
@@ -56,8 +56,10 @@ interface SalesDashboardProps {
   messages: Message[]
   appointments: Appointment[]
   tasks?: Task[]
+  pautas?: Pauta[]
   members?: string[]
   locationId?: string
+  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
 const STAGE_COLORS: Record<string, string> = {
@@ -169,7 +171,7 @@ function InfoTooltip({ content }: { content: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], tasks = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", onAnalyzeWithAI }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
 
@@ -224,7 +226,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           winRate:   opps.length > 0 ? (won / opps.length) * 100 : 0,
           _total:    opps.length,
         }
-      }),
+      }).sort((a, b) => b._total - a._total),
     [members, opportunities]
   )
 
@@ -325,20 +327,22 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     const reasons = [
       ...new Set(lostOpps.map((o) => o.lostReason ?? "Sin razón")),
     ]
-    return {
-      data: lostMembers.map((member) => {
-        const row: Record<string, string | number> = { member }
-        for (const reason of reasons) {
-          row[reason] = lostOpps.filter(
-            (o) =>
-              o.assignedTo === member &&
-              (o.lostReason ?? "Sin razón") === reason
-          ).length
-        }
-        return row
-      }),
-      reasons,
-    }
+    const data = lostMembers.map((member) => {
+      const row: Record<string, string | number> = { member }
+      for (const reason of reasons) {
+        row[reason] = lostOpps.filter(
+          (o) =>
+            o.assignedTo === member &&
+            (o.lostReason ?? "Sin razón") === reason
+        ).length
+      }
+      return row
+    }).sort((a, b) => {
+      const totalA = reasons.reduce((s, r) => s + ((a[r] as number) || 0), 0)
+      const totalB = reasons.reduce((s, r) => s + ((b[r] as number) || 0), 0)
+      return totalB - totalA
+    })
+    return { data, reasons }
   }, [opportunities])
 
   const lostReasonsConfig = useMemo(
@@ -681,6 +685,10 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         row[stage] = opportunities.filter((o) => o.assignedTo === member && o.stage === stage).length
       }
       return row
+    }).sort((a, b) => {
+      const totalA = allStages.reduce((s, stage) => s + ((a[stage] as number) || 0), 0)
+      const totalB = allStages.reduce((s, stage) => s + ((b[stage] as number) || 0), 0)
+      return totalB - totalA
     })
   }, [members, allStages, opportunities])
 
@@ -1576,9 +1584,11 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
+        allPautas={pautas}
         appointments={appointments}
         messages={messages}
         locationId={locationId}
+        onAnalyzeWithAI={onAnalyzeWithAI}
       />
     </DashboardShell>
   )

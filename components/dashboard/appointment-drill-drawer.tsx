@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import type { Appointment, Contact } from "@/lib/types"
-import { CalendarCheck, CalendarX, CalendarClock, User, Phone, Mail, Tag, Megaphone, Clock } from "lucide-react"
+import { CalendarCheck, CalendarX, CalendarClock, User, Phone, Mail, Tag, Megaphone, Clock, MapPin, Video, ExternalLink } from "lucide-react"
 
 export interface ApptDrillState {
   open: boolean
@@ -189,6 +189,31 @@ export function AppointmentDrillDrawer({
                         </div>
                       </div>
                     )}
+                    {/* Location / meeting link */}
+                    {appt.location && (() => {
+                      const isVirtual = appt.location.startsWith("http")
+                      return (
+                        <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                          {isVirtual
+                            ? <Video className="h-3 w-3 shrink-0 mt-0.5" />
+                            : <MapPin className="h-3 w-3 shrink-0 mt-0.5" />
+                          }
+                          {isVirtual ? (
+                            <a
+                              href={appt.location}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline flex items-center gap-1 break-all"
+                            >
+                              {appt.location}
+                              <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                            </a>
+                          ) : (
+                            <span>{appt.location}</span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Notes */}
