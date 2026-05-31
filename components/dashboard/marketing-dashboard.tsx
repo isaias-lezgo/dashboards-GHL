@@ -19,7 +19,7 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, Facebook, Instagram } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -36,6 +36,14 @@ import {
   MarketingSummaryStrip,
   NonZeroTooltipContent,
 } from "./dashboard-ui"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 interface MarketingDashboardProps {
   opportunities: Opportunity[]
@@ -152,6 +160,27 @@ function normalizeUrl(raw: string): string {
     return (u.hostname + u.pathname).replace(/\/$/, "").toLowerCase()
   } catch {
     return ""
+  }
+}
+
+// Landing URLs in this location are the social links themselves:
+// instagram.com/p/… (Instagram) and fb.me/… (Facebook).
+function urlPlatform(url: string): "facebook" | "instagram" | null {
+  const u = url.toLowerCase()
+  if (u.includes("instagram.com")) return "instagram"
+  if (u.includes("fb.me") || u.includes("facebook.com") || u.includes("fb.com")) return "facebook"
+  return null
+}
+
+// Show a compact label for a social URL (the path slug) while keeping the
+// full URL available via title for the tooltip.
+function shortUrlLabel(raw: string): string {
+  try {
+    const u = new URL(raw)
+    const slug = u.pathname.replace(/\/$/, "").split("/").pop() || u.hostname
+    return slug.length > 22 ? slug.slice(0, 22) + "…" : slug
+  } catch {
+    return raw.length > 22 ? raw.slice(0, 22) + "…" : raw
   }
 }
 
@@ -487,7 +516,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     [opportunities],
   )
 
-  // Panel 2 — Leads by Ad ID
+  // Panel 2 — Opportunities by Ad ID (table)
   const leadsByAdId = useMemo(() => {
     const counts = new Map<string, number>()
     for (const o of opportunities) {
@@ -496,21 +525,25 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
     }
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
       .map(([adId, count]) => ({ adId, count }))
   }, [opportunities])
 
-  // Panel 3 — Leads by Landing URL
-  const leadsByUrl = useMemo(() => {
-    const counts = new Map<string, number>()
+  // Panel 3 — Landing URLs split by platform (Facebook vs Instagram)
+  const leadsByPlatformUrl = useMemo(() => {
+    const fb = new Map<string, number>()
+    const ig = new Map<string, number>()
     for (const o of opportunities) {
-      const key = o.attributionUrl || "Sin URL"
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      const url = o.attributionUrl
+      if (!url) continue
+      const platform = urlPlatform(url)
+      if (platform === "facebook") fb.set(url, (fb.get(url) ?? 0) + 1)
+      else if (platform === "instagram") ig.set(url, (ig.get(url) ?? 0) + 1)
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 15)
-      .map(([url, count]) => ({ url, count }))
+    const toRows = (m: Map<string, number>) =>
+      Array.from(m.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([url, count]) => ({ url, count }))
+    return { fb: toRows(fb), ig: toRows(ig) }
   }, [opportunities])
 
   // Panel 4a — Paid traffic leads with at least one appointment
@@ -1029,11 +1062,11 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
         </ChartCardContent>
       </DashboardCard>
 
-      {/* Panel 2 — Leads por ID de Anuncio / Panel 3 — Leads por URL de Aterrizaje */}
+      {/* Panel 2 — Oportunidades por ID de Anuncio / Panel 3 — URLs por plataforma */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DashboardCard>
           <ChartCardHeader
-            title="Leads por ID de Anuncio (Top 15)"
+            title="Oportunidades por ID de Anuncio"
             total={leadsByAdId.reduce((s, e) => s + e.count, 0)}
             icon={Tag}
           />
@@ -1042,57 +1075,36 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
               <ChartEmpty message="Sin datos de ID de anuncio." height={220} />
             ) : (
               <>
-                <ChartContainer
-                  config={{ count: { label: "Leads", color: BRAND_AMBER } }}
-                  className="aspect-auto"
-                  style={{ height: 300 }}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={leadsByAdId}
-                      margin={{ top: 5, right: 8, left: 8, bottom: 80 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                      <XAxis
-                        type="category"
-                        dataKey="adId"
-                        tick={{ ...CHART_TICK }}
-                        tickLine={false}
-                        axisLine={false}
-                        interval={0}
-                        angle={-40}
-                        textAnchor="end"
-                        tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 18) + "…" : v}
-                      />
-                      <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <ChartTooltip
-                        content={
-                          <NonZeroTooltipContent
-                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.adId ?? String(_)}
-                          />
-                        }
-                      />
-                      <Bar
-                        dataKey="count"
-                        radius={[6, 6, 0, 0]}
-                        name="Leads"
-                        maxBarSize={48}
-                        cursor="pointer"
-                        onClick={(data: any) =>
-                          openDrill(
-                            `Ad ID: ${data.adId}`,
-                            opportunities.filter((o) => (o.adId || "Sin ID") === data.adId)
-                          )
-                        }
-                      >
-                        {leadsByAdId.map((entry, i) => (
-                          <Cell key={entry.adId} fill={chartPaletteColor(i)} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-                <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
+                <div className="overflow-auto max-h-[340px] rounded-md border border-border/40">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-xs">ID</TableHead>
+                        <TableHead className="text-xs text-right"># de oportunidades</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leadsByAdId.map((entry) => (
+                        <TableRow
+                          key={entry.adId}
+                          className="cursor-pointer"
+                          onClick={() =>
+                            openDrill(
+                              `Ad ID: ${entry.adId}`,
+                              opportunities.filter((o) => (o.adId || "Sin ID") === entry.adId)
+                            )
+                          }
+                        >
+                          <TableCell className="font-mono text-xs text-foreground">{entry.adId}</TableCell>
+                          <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
+                            {entry.count}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ChartHint>Haz clic en una fila para ver las oportunidades</ChartHint>
               </>
             )}
           </ChartCardContent>
@@ -1100,74 +1112,99 @@ export function MarketingDashboard({ opportunities, contacts, pautas, tasks = []
 
         <DashboardCard>
           <ChartCardHeader
-            title="Leads por URL de Aterrizaje (Top 15)"
-            total={leadsByUrl.reduce((s, e) => s + e.count, 0)}
+            title="Oportunidades por URL (Facebook / Instagram)"
+            total={
+              leadsByPlatformUrl.fb.reduce((s, e) => s + e.count, 0) +
+              leadsByPlatformUrl.ig.reduce((s, e) => s + e.count, 0)
+            }
             icon={BarChart3}
           />
           <ChartCardContent>
-            {leadsByUrl.length === 0 ? (
-              <ChartEmpty message="Sin datos de URL de aterrizaje." height={220} />
+            {leadsByPlatformUrl.fb.length === 0 && leadsByPlatformUrl.ig.length === 0 ? (
+              <ChartEmpty message="Sin datos de URL de Facebook o Instagram." height={220} />
             ) : (
               <>
-                <ChartContainer
-                  config={{ count: { label: "Leads", color: BRAND_AMBER } }}
-                  className="aspect-auto"
-                  style={{ height: 300 }}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={leadsByUrl}
-                      margin={{ top: 5, right: 8, left: 8, bottom: 80 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                      <XAxis
-                        type="category"
-                        dataKey="url"
-                        tick={{ ...CHART_TICK }}
-                        tickLine={false}
-                        axisLine={false}
-                        interval={0}
-                        angle={-40}
-                        textAnchor="end"
-                        tickFormatter={(v: string) => {
-                          try {
-                            const u = new URL(v)
-                            const slug = u.pathname.replace(/\/$/, "").split("/").pop() || u.hostname
-                            return slug.length > 18 ? slug.slice(0, 18) + "…" : slug
-                          } catch {
-                            return v.length > 18 ? v.slice(0, 18) + "…" : v
-                          }
-                        }}
-                      />
-                      <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <ChartTooltip
-                        content={
-                          <NonZeroTooltipContent
-                            labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.url ?? String(_)}
-                          />
-                        }
-                      />
-                      <Bar
-                        dataKey="count"
-                        radius={[6, 6, 0, 0]}
-                        name="Leads"
-                        maxBarSize={48}
-                        cursor="pointer"
-                        onClick={(data: any) =>
-                          openDrill(
-                            `URL: ${data.url}`,
-                            opportunities.filter((o) => (o.attributionUrl || "Sin URL") === data.url)
-                          )
-                        }
-                      >
-                        {leadsByUrl.map((entry, i) => (
-                          <Cell key={entry.url} fill={chartPaletteColor(i)} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
-                <ChartHint>Haz clic en una barra para ver los leads · URL completa en el tooltip</ChartHint>
+                <div className="overflow-auto max-h-[340px] rounded-md border border-border/40">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-xs">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Facebook className="h-3.5 w-3.5 text-[#1877f2]" /> Facebook
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-xs text-right">#</TableHead>
+                        <TableHead className="text-xs border-l border-border/40">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Instagram className="h-3.5 w-3.5 text-[#e1306c]" /> Instagram
+                          </span>
+                        </TableHead>
+                        <TableHead className="text-xs text-right">#</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {Array.from({
+                        length: Math.max(leadsByPlatformUrl.fb.length, leadsByPlatformUrl.ig.length),
+                      }).map((_, i) => {
+                        const fb = leadsByPlatformUrl.fb[i]
+                        const ig = leadsByPlatformUrl.ig[i]
+                        return (
+                          <TableRow key={i} className="hover:bg-transparent">
+                            {fb ? (
+                              <>
+                                <TableCell
+                                  className="cursor-pointer font-mono text-xs text-foreground hover:text-primary"
+                                  title={fb.url}
+                                  onClick={() =>
+                                    openDrill(
+                                      `Facebook: ${fb.url}`,
+                                      opportunities.filter((o) => o.attributionUrl === fb.url)
+                                    )
+                                  }
+                                >
+                                  {shortUrlLabel(fb.url)}
+                                </TableCell>
+                                <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
+                                  {fb.count}
+                                </TableCell>
+                              </>
+                            ) : (
+                              <>
+                                <TableCell />
+                                <TableCell />
+                              </>
+                            )}
+                            {ig ? (
+                              <>
+                                <TableCell
+                                  className="cursor-pointer border-l border-border/40 font-mono text-xs text-foreground hover:text-primary"
+                                  title={ig.url}
+                                  onClick={() =>
+                                    openDrill(
+                                      `Instagram: ${ig.url}`,
+                                      opportunities.filter((o) => o.attributionUrl === ig.url)
+                                    )
+                                  }
+                                >
+                                  {shortUrlLabel(ig.url)}
+                                </TableCell>
+                                <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
+                                  {ig.count}
+                                </TableCell>
+                              </>
+                            ) : (
+                              <>
+                                <TableCell className="border-l border-border/40" />
+                                <TableCell />
+                              </>
+                            )}
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ChartHint>Haz clic en una URL para ver las oportunidades</ChartHint>
               </>
             )}
           </ChartCardContent>
