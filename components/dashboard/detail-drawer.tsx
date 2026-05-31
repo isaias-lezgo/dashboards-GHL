@@ -49,6 +49,7 @@ interface DetailDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   opportunityId: string | null
+  contactId?: string | null
   opportunities: Opportunity[]
   contacts: Contact[]
   tasks: Task[]
@@ -153,6 +154,7 @@ export function DetailDrawer({
   open,
   onOpenChange,
   opportunityId,
+  contactId,
   opportunities,
   contacts,
   tasks: _tasks,
@@ -165,8 +167,13 @@ export function DetailDrawer({
 }: DetailDrawerProps) {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
 
-  const opportunity = opportunities.find((o) => o.id === opportunityId)
-  if (!opportunity) {
+  const opportunity = opportunityId ? opportunities.find((o) => o.id === opportunityId) : undefined
+
+  // Contact-only mode: no opportunity, open directly by contactId
+  const resolvedContactId = opportunity?.contactId ?? contactId ?? null
+  const contact = contacts.find((c) => c.id === resolvedContactId)
+
+  if (!opportunity && !contact) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
@@ -178,20 +185,18 @@ export function DetailDrawer({
       </Sheet>
     )
   }
-
-  const contact = contacts.find((c) => c.id === opportunity.contactId)
   const contactAppointments = appointments
-    .filter((a) => a.contactId === opportunity.contactId)
+    .filter((a) => a.contactId === resolvedContactId)
     .slice()
     .sort((a, b) => b.startTime.localeCompare(a.startTime))
 
   const contactMessages = messages
-    .filter((m) => m.contactId === opportunity.contactId && m.kind !== "activity")
+    .filter((m) => m.contactId === resolvedContactId && m.kind !== "activity")
     .slice()
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   const contactPautas = pautas
-    .filter((p) => p.contactId === opportunity.contactId)
+    .filter((p) => p.contactId === resolvedContactId)
     .slice()
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
@@ -200,26 +205,27 @@ export function DetailDrawer({
   const latestMessage = contactMessages[0]
   const hasConversation = contactMessages.length > 0
 
-  const statusInfo = STATUS_STYLES[opportunity.status] ?? {
-    badge: "bg-[#EAEDF1] text-[#151B28] border-border",
-    label: opportunity.status,
-  }
+  const statusInfo = opportunity
+    ? (STATUS_STYLES[opportunity.status] ?? { badge: "bg-[#EAEDF1] text-[#151B28] border-border", label: opportunity.status })
+    : null
 
   function handleAnalyzeWithAI() {
-    if (!opportunity || !onAnalyzeWithAI) return
-    const lines: string[] = ["Analiza este contacto y oportunidad de mi CRM:"]
+    if (!onAnalyzeWithAI) return
+    const lines: string[] = ["Analiza este contacto de mi CRM:"]
     if (contact) {
       lines.push(`\nContacto: ${contact.name}`)
       if (contact.email) lines.push(`Email: ${contact.email}`)
       if (contact.phone) lines.push(`Teléfono: ${contact.phone}`)
       if (contact.tags?.length) lines.push(`Etiquetas: ${contact.tags.join(", ")}`)
     }
-    lines.push(`\nOportunidad: "${opportunity.name}"`)
-    lines.push(`Etapa: ${opportunity.stage}`)
-    lines.push(`Estado: ${opportunity.status}`)
-    if (opportunity.value) lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}`)
-    if (opportunity.pipelineName) lines.push(`Pipeline: ${opportunity.pipelineName}`)
-    if (opportunity.assignedTo) lines.push(`Asignado a: ${opportunity.assignedTo}`)
+    if (opportunity) {
+      lines.push(`\nOportunidad: "${opportunity.name}"`)
+      lines.push(`Etapa: ${opportunity.stage}`)
+      lines.push(`Estado: ${opportunity.status}`)
+      if (opportunity.value) lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}`)
+      if (opportunity.pipelineName) lines.push(`Pipeline: ${opportunity.pipelineName}`)
+      if (opportunity.assignedTo) lines.push(`Asignado a: ${opportunity.assignedTo}`)
+    }
     onAnalyzeWithAI(lines.join("\n"))
   }
 
@@ -239,12 +245,14 @@ export function DetailDrawer({
                 </SheetDescription>
               </SheetHeader>
             </div>
-            <Badge
-              variant="outline"
-              className={`text-[11px] shrink-0 capitalize font-medium ${statusInfo.badge}`}
-            >
-              {statusInfo.label}
-            </Badge>
+            {statusInfo && (
+              <Badge
+                variant="outline"
+                className={`text-[11px] shrink-0 capitalize font-medium ${statusInfo.badge}`}
+              >
+                {statusInfo.label}
+              </Badge>
+            )}
           </div>
 
           {/* Tags */}
@@ -264,16 +272,18 @@ export function DetailDrawer({
           {/* Action buttons */}
           {locationId && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
-                <a
-                  href={`https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${opportunity.id}?tab=Opportunity+Details`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Ver oportunidad
-                </a>
-              </Button>
+              {opportunity && (
+                <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
+                  <a
+                    href={`https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${opportunity.id}?tab=Opportunity+Details`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Ver oportunidad
+                  </a>
+                </Button>
+              )}
               {contact && (
                 <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5">
                   <a
@@ -302,39 +312,42 @@ export function DetailDrawer({
         {/* Scrollable body */}
         <div className="flex flex-col gap-5 px-6 py-5 pb-8">
 
-          {/* Opportunity section */}
-          <div>
-            <SectionLabel>Oportunidad</SectionLabel>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <InfoCell icon={<DollarSign className="h-3.5 w-3.5" />} label="Valor">
-                <span className="font-variant-numeric tabular-nums">
-                  {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
-                </span>
-              </InfoCell>
-              <InfoCell icon={<Calendar className="h-3.5 w-3.5" />} label="Cierre">
-                {opportunity.closedAt
-                  ? new Date(opportunity.closedAt).toLocaleDateString("es-MX", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })
-                  : "No disponible"}
-              </InfoCell>
-              <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Etapa">
-                {opportunity.stage ?? "No disponible"}
-              </InfoCell>
-              <InfoCell icon={<GitBranch className="h-3.5 w-3.5" />} label="Pipeline">
-                {opportunity.pipelineName ?? "No disponible"}
-              </InfoCell>
-              {opportunity.assignedTo && (
-                <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Asignado a" className="col-span-2">
-                  {opportunity.assignedTo}
-                </InfoCell>
-              )}
-            </div>
-          </div>
-
-          <Divider />
+          {/* Opportunity section — only when an opportunity is linked */}
+          {opportunity && (
+            <>
+              <div>
+                <SectionLabel>Oportunidad</SectionLabel>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <InfoCell icon={<DollarSign className="h-3.5 w-3.5" />} label="Valor">
+                    <span className="font-variant-numeric tabular-nums">
+                      {opportunity.value ? formatCurrency(opportunity.value) : "Sin valor"}
+                    </span>
+                  </InfoCell>
+                  <InfoCell icon={<Calendar className="h-3.5 w-3.5" />} label="Cierre">
+                    {opportunity.closedAt
+                      ? new Date(opportunity.closedAt).toLocaleDateString("es-MX", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : "No disponible"}
+                  </InfoCell>
+                  <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Etapa">
+                    {opportunity.stage ?? "No disponible"}
+                  </InfoCell>
+                  <InfoCell icon={<GitBranch className="h-3.5 w-3.5" />} label="Pipeline">
+                    {opportunity.pipelineName ?? "No disponible"}
+                  </InfoCell>
+                  {opportunity.assignedTo && (
+                    <InfoCell icon={<User className="h-3.5 w-3.5" />} label="Asignado a" className="col-span-2">
+                      {opportunity.assignedTo}
+                    </InfoCell>
+                  )}
+                </div>
+              </div>
+              <Divider />
+            </>
+          )}
 
           {/* Contact section */}
           <div>

@@ -22,6 +22,8 @@ interface AnalyzeRequestBody {
   contact?: ConversationItem["contact"];
   messages?: ConversationMessage[];
   conversations?: ConversationItem[];
+  // IANA timezone from the user's browser. Falls back to America/Mexico_City.
+  userTimezone?: string;
 }
 
 const MAX_BATCH = 20;
@@ -92,7 +94,7 @@ Reglas:
 - Identifica patrones entre conversaciones, no las analices una por una.
 - Cuando menciones a un contacto, usa su nombre.`;
 
-function formatSingleConversation(item: ConversationItem, prefix = ""): string {
+function formatSingleConversation(item: ConversationItem, prefix = "", tz = "America/Mexico_City"): string {
   const { contact, messages } = item;
 
   const header = [
@@ -112,7 +114,7 @@ function formatSingleConversation(item: ConversationItem, prefix = ""): string {
 
   const body = messages
     .map((m) => {
-      const date = new Date(m.createdAt).toLocaleString("es-MX");
+      const date = new Date(m.createdAt).toLocaleString("es-MX", { timeZone: tz });
       const speaker = m.direction === "inbound" ? contact.name : "Asesor";
       return `[${date}] (${m.source}) ${speaker}: ${m.content}`;
     })
@@ -121,9 +123,9 @@ function formatSingleConversation(item: ConversationItem, prefix = ""): string {
   return `${header}\n\n${body}`;
 }
 
-function formatBatch(conversations: ConversationItem[]): string {
+function formatBatch(conversations: ConversationItem[], tz = "America/Mexico_City"): string {
   return conversations
-    .map((c, i) => `=== Conversación ${i + 1} de ${conversations.length} ===\n${formatSingleConversation(c)}`)
+    .map((c, i) => `=== Conversación ${i + 1} de ${conversations.length} ===\n${formatSingleConversation(c, "", tz)}`)
     .join("\n\n");
 }
 
@@ -146,6 +148,7 @@ export async function POST(req: Request) {
   }
 
   const batch = Array.isArray(body.conversations) ? body.conversations : null;
+  const tz = body.userTimezone ?? "America/Mexico_City";
 
   let systemPrompt: string;
   let conversationText: string;
@@ -174,7 +177,7 @@ export async function POST(req: Request) {
       );
     }
     systemPrompt = BATCH_SYSTEM_PROMPT;
-    conversationText = formatBatch(batch);
+    conversationText = formatBatch(batch, tz);
     userIntro = `Analiza el siguiente lote de ${batch.length} conversaciones de un CRM y produce el reporte agregado:`;
   } else {
     if (!body.contact?.name || !Array.isArray(body.messages)) {
@@ -187,7 +190,7 @@ export async function POST(req: Request) {
     conversationText = formatSingleConversation({
       contact: body.contact,
       messages: body.messages,
-    });
+    }, "", tz);
     userIntro = "Analiza la siguiente conversación de un CRM:";
   }
 

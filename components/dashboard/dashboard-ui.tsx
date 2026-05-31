@@ -1,16 +1,18 @@
 "use client"
 
-import type { ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartTooltipContent } from "@/components/ui/chart"
 
 /** Tooltip wrapper that hides zero-value series and sorts by value descending. */
-export function NonZeroTooltipContent(props: any) {
+type NonZeroTooltipProps = ComponentProps<typeof ChartTooltipContent>
+
+export function NonZeroTooltipContent(props: NonZeroTooltipProps) {
   const filtered = (props.payload ?? [])
-    .filter((p: any) => Number(p?.value) > 0)
-    .sort((a: any, b: any) => Number(b.value) - Number(a.value))
+    .filter((p) => Number(p?.value) > 0)
+    .sort((a, b) => Number(b.value) - Number(a.value))
   if (!props.active || filtered.length === 0) return null
   return <ChartTooltipContent {...props} payload={filtered} />
 }

@@ -203,6 +203,7 @@ export default function DashboardPage() {
             opportunities={opportunities}
             contacts={contacts}
             pautas={data?.pautas ?? []}
+            pipelines={data?.pipelines ?? []}
             tasks={data?.tasks ?? []}
             calls={calls}
             appointments={appointments}

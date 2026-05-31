@@ -17,3 +17,5 @@ node_modules/
 
 # MCP config (contains hardcoded API tokens)
 .mcp.json
+# Playwright MCP debug artifacts
+.playwright-mcp/

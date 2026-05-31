@@ -60,6 +60,8 @@ interface AnalyzeContactBody {
   appointments?: AppointmentPayload[];
   // Recent conversation, chronological (oldest→newest).
   messages?: MessagePayload[];
+  // IANA timezone from the user's browser. Falls back to America/Mexico_City.
+  userTimezone?: string;
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -102,9 +104,9 @@ Reglas:
 
 // ─── Context serializer ───────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, tz = "America/Mexico_City"): string {
   try {
-    return new Date(iso).toLocaleDateString("es-MX");
+    return new Date(iso).toLocaleDateString("es-MX", { timeZone: tz });
   } catch {
     return iso;
   }
@@ -123,7 +125,8 @@ function buildContext(
     endTime: string;
     appointmentStatus?: string;
     notes?: string;
-  }>
+  }>,
+  tz = "America/Mexico_City"
 ): string {
   const { contact, opportunity, tasks = [], calls = [] } = body;
   const lines: string[] = [];
@@ -137,16 +140,16 @@ function buildContext(
   if (location) lines.push(`Ubicación: ${location}`);
   if (contact.timezone) lines.push(`Zona horaria: ${contact.timezone}`);
   if (contact.website) lines.push(`Sitio web: ${contact.website}`);
-  if (contact.dateOfBirth) lines.push(`Fecha de nacimiento: ${formatDate(String(contact.dateOfBirth))}`);
+  if (contact.dateOfBirth) lines.push(`Fecha de nacimiento: ${formatDate(String(contact.dateOfBirth), tz)}`);
   const tags = Array.isArray(contact.tags) ? contact.tags : [];
   if (tags.length) lines.push(`Tags: ${tags.join(", ")}`);
   if (str(contact.source)) lines.push(`Fuente: ${contact.source}`);
   if (str(contact.campaign)) lines.push(`Campaña: ${contact.campaign}`);
   if (str(contact.adType)) lines.push(`Tipo de anuncio: ${contact.adType}`);
   if (str(contact.assignedTo)) lines.push(`Asignado a: ${contact.assignedTo}`);
-  if (str(contact.lastActivity)) lines.push(`Última actividad: ${formatDate(String(contact.lastActivity))}`);
+  if (str(contact.lastActivity)) lines.push(`Última actividad: ${formatDate(String(contact.lastActivity), tz)}`);
   if (contact.dnd) lines.push(`DND: sí`);
-  if (str(contact.dateAdded)) lines.push(`Creado: ${formatDate(String(contact.dateAdded))}`);
+  if (str(contact.dateAdded)) lines.push(`Creado: ${formatDate(String(contact.dateAdded), tz)}`);
   const contactCustomFields = contact.customFieldsResolved as Record<string, string> | undefined;
   if (contactCustomFields && Object.keys(contactCustomFields).length > 0) {
     lines.push("Campos personalizados:");
@@ -170,10 +173,10 @@ function buildContext(
   if (str(opportunity.notes)) lines.push(`Notas: ${opportunity.notes}`);
   if (str(opportunity.origin)) lines.push(`Origen: ${opportunity.origin}`);
   if (opportunity.archived) lines.push(`Archivada: sí`);
-  lines.push(`Creada: ${formatDate(String(opportunity.createdAt))}`);
-  if (str(opportunity.updatedAt)) lines.push(`Última actualización: ${formatDate(String(opportunity.updatedAt))}`);
-  if (str(opportunity.closedAt)) lines.push(`Fecha de cierre: ${formatDate(String(opportunity.closedAt))}`);
-  if (str(opportunity.lastActivity)) lines.push(`Última actividad: ${formatDate(String(opportunity.lastActivity))}`);
+  lines.push(`Creada: ${formatDate(String(opportunity.createdAt), tz)}`);
+  if (str(opportunity.updatedAt)) lines.push(`Última actualización: ${formatDate(String(opportunity.updatedAt), tz)}`);
+  if (str(opportunity.closedAt)) lines.push(`Fecha de cierre: ${formatDate(String(opportunity.closedAt), tz)}`);
+  if (str(opportunity.lastActivity)) lines.push(`Última actividad: ${formatDate(String(opportunity.lastActivity), tz)}`);
   const oppCustomFields = opportunity.customFieldsResolved as Record<string, string> | undefined;
   if (oppCustomFields && Object.keys(oppCustomFields).length > 0) {
     lines.push("Campos personalizados:");
@@ -185,7 +188,7 @@ function buildContext(
   if (calendarEvents.length > 0) {
     lines.push("\n=== CITAS ===");
     for (const ev of calendarEvents) {
-      const start = formatDate(ev.startTime);
+      const start = formatDate(ev.startTime, tz);
       const status = ev.appointmentStatus ?? "sin estado";
       const title = ev.title ?? "Cita";
       lines.push(
@@ -199,7 +202,7 @@ function buildContext(
   if (tasks.length > 0) {
     lines.push("\n=== TAREAS ===");
     for (const t of tasks) {
-      const due = t.dueDate ? formatDate(t.dueDate) : "sin fecha";
+      const due = t.dueDate ? formatDate(t.dueDate, tz) : "sin fecha";
       lines.push(`- [${t.status.toUpperCase()}] ${t.title} | Tipo: ${t.type} | Vence: ${due}`);
     }
   } else {
@@ -215,7 +218,7 @@ function buildContext(
         c.status === "completed"
           ? `${mins}:${String(secs).padStart(2, "0")}`
           : "no contestada";
-      lines.push(`- ${formatDate(c.createdAt)} | ${c.direction} | ${c.status} | ${dur}`);
+      lines.push(`- ${formatDate(c.createdAt, tz)} | ${c.direction} | ${c.status} | ${dur}`);
     }
   } else {
     lines.push("\n=== LLAMADAS ===\n(Sin llamadas registradas)");
@@ -227,7 +230,7 @@ function buildContext(
     for (const m of messages) {
       const when = (() => {
         try {
-          return new Date(m.createdAt).toLocaleString("es-MX");
+          return new Date(m.createdAt).toLocaleString("es-MX", { timeZone: tz });
         } catch {
           return m.createdAt;
         }
@@ -292,7 +295,8 @@ export async function POST(req: Request) {
     }
   }
 
-  const contextText = buildContext(body, calendarEvents);
+  const tz = body.userTimezone ?? "America/Mexico_City";
+  const contextText = buildContext(body, calendarEvents, tz);
   const client = new Anthropic();
 
   try {

@@ -101,7 +101,7 @@ const REINGRESO_LABELS = [
   "Primer ingreso",
   "Segundo reingreso",
   "Tercer reingreso",
-  "4to reingreso",
+  "Cuarto reingreso",
   "5to+ reingreso",
 ]
 
@@ -109,7 +109,7 @@ const REINGRESO_COLORS: Record<string, string> = {
   "Primer ingreso":    "#3b82f6",
   "Segundo reingreso": "#f59e0b",
   "Tercer reingreso":  "#10b981",
-  "4to reingreso":     "#8b5cf6",
+  "Cuarto reingreso":  "#fb5cf6",
   "5to+ reingreso":    "#ef4444",
 }
 
@@ -303,6 +303,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
   const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
   const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("url")
+  const [onlyReingresos, setOnlyReingresos] = useState(false)
   const [stageTopN, setStageTopN] = useState(30)
   const [lostTopN, setLostTopN] = useState(30)
   const [apptTopN, setApptTopN] = useState(Infinity)
@@ -606,6 +607,11 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     }
     return result
   }, [pautas])
+
+  const reingresoCount = useMemo(
+    () => Array.from(pautaReingresoMap.values()).filter((v) => v !== "Primer ingreso").length,
+    [pautaReingresoMap]
+  )
 
   // Pautas grouped by calendar month (YYYY-MM), stacked by reingreso number.
   const { pautasByMonthRows, pautasByMonthKeys } = useMemo(() => {
@@ -987,7 +993,27 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       </div>
 
       <DashboardCard>
-        <ChartCardHeader title="Pautas creadas por mes y reingresos" total={pautas.length} icon={Calendar} />
+        <ChartCardHeader
+          title="Pautas creadas por mes y reingresos"
+          total={pautas.length}
+          icon={Calendar}
+          actions={
+            <>
+              <button
+                onClick={() => setOnlyReingresos((v) => !v)}
+                className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Solo reingresos
+                <span className={`relative inline-flex h-3.5 w-6 shrink-0 rounded-full transition-colors duration-200 ${onlyReingresos ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+                  <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-transform duration-200 ${onlyReingresos ? "translate-x-2.5" : "translate-x-0.5"}`} />
+                </span>
+              </button>
+              <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium tabular-nums tracking-wide text-muted-foreground">
+                Reingresos: {reingresoCount.toLocaleString("es-MX")}
+              </span>
+            </>
+          }
+        />
         <ChartCardContent>
           {pautasByMonthKeys.length === 0 ? (
             <ChartEmpty message="Sin datos de Pautas." height={280} />
@@ -1027,32 +1053,35 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                       wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
                       formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
                     />
-                    {pautasByMonthKeys.map((key, i) => (
-                      <Bar
-                        key={key}
-                        dataKey={key}
-                        stackId="a"
-                        fill={REINGRESO_COLORS[key] ?? BRAND_AMBER}
-                        radius={i === pautasByMonthKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                        maxBarSize={40}
-                        cursor="pointer"
-                        onClick={(data: any) => {
-                          const count = data[key] as number
-                          if (!count) return
-                          const monthKey = data.monthKey as string
-                          const monthLabel = data.monthLabel as string
-                          const matchedPautas = pautas.filter(
-                            (p) =>
-                              p.contactId &&
-                              toUTCDateStr(p.createdAt).slice(0, 7) === monthKey &&
-                              pautaReingresoMap.get(p.id) === key
-                          )
-                          const contactIds = new Set(matchedPautas.map((p) => p.contactId))
-                          const contactItems = contacts.filter((c) => contactIds.has(c.id))
-                          setDrill({ open: true, title: `${key} · ${monthLabel}`, opportunities: [], contactItems })
-                        }}
-                      />
-                    ))}
+                    {(() => {
+                      const visibleKeys = pautasByMonthKeys.filter((k) => !onlyReingresos || k !== "Primer ingreso")
+                      return visibleKeys.map((key, i) => (
+                        <Bar
+                          key={key}
+                          dataKey={key}
+                          stackId="a"
+                          fill={REINGRESO_COLORS[key] ?? BRAND_AMBER}
+                          radius={i === visibleKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                          maxBarSize={40}
+                          cursor="pointer"
+                          onClick={(data: any) => {
+                            const count = data[key] as number
+                            if (!count) return
+                            const monthKey = data.monthKey as string
+                            const monthLabel = data.monthLabel as string
+                            const matchedPautas = pautas.filter(
+                              (p) =>
+                                p.contactId &&
+                                toUTCDateStr(p.createdAt).slice(0, 7) === monthKey &&
+                                pautaReingresoMap.get(p.id) === key
+                            )
+                            const contactIds = new Set(matchedPautas.map((p) => p.contactId))
+                            const contactItems = contacts.filter((c) => contactIds.has(c.id))
+                            setDrill({ open: true, title: `${key} · ${monthLabel}`, opportunities: [], contactItems })
+                          }}
+                        />
+                      ))
+                    })()}
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -1064,7 +1093,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
 
       <DashboardCard>
         <ChartCardHeader
-          title="Oportunidades por Etapa del Pipeline (Sin oportunidades perdidas)"
+          title="Oportunidades de Pauta por Etapa del Pipeline (Sin oportunidades perdidas)"
           total={pautaByStageTotal}
           icon={Layers}
           actions={

@@ -16,11 +16,13 @@ interface ChatRequestBody {
   messages: Anthropic.MessageParam[];
   // Optional: cap output tokens.
   maxTokens?: number;
+  // IANA timezone from the user's browser. Falls back to America/Mexico_City.
+  userTimezone?: string;
 }
 
 export const runtime = "nodejs";
 
-function translateAnthropicError(error: Anthropic.APIError): string {
+function translateAnthropicError(error: InstanceType<typeof Anthropic.APIError>): string {
   // The SDK parses the JSON body into error.error; fall back to error.message.
   const body = error.error as { error?: { type?: string; message?: string } } | null | undefined;
   const inner = body?.error?.message ?? error.message;
@@ -63,12 +65,13 @@ export async function POST(req: Request) {
   const client = new Anthropic();
 
   try {
+    const tz = body.userTimezone ?? "America/Mexico_City";
     const today = new Date().toLocaleDateString("es-MX", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
-      timeZone: "America/Mexico_City",
+      timeZone: tz,
     });
 
     const response = await client.messages.create({

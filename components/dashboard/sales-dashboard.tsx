@@ -791,6 +791,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         </ChartCardContent>
       </DashboardCard>
 
+
       {/* ── Rendimiento Individual ─────────────────── */}
       <SectionHeader title="Rendimiento Individual" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

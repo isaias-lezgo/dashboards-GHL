@@ -17,7 +17,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ChatDataset } from "@/lib/ai-tools";
+import type { Contact } from "@/lib/types";
 import { buildDatasetSummary, CONVERSATIONS_SYSTEM_PROMPT } from "@/lib/ai-context";
+import {
+  fetchContactMessages,
+  fetchContactTasks,
+  fetchContactNotes,
+} from "@/lib/ghl-fetchers";
 import {
   useAgentLoop,
   type UIMessage,
@@ -56,6 +62,22 @@ function buildPanelContact(row: Record<string, unknown>): PanelContact {
   };
 }
 
+// Resolve a contactId (e.g. from search_conversations, which only returns IDs)
+// into a display-ready PanelContact using the in-memory dataset. Falls back to
+// the raw ID only when the contact isn't in the loaded dataset.
+function panelContactFromId(id: string, byId: Map<string, Contact>): PanelContact {
+  const c = byId.get(id);
+  if (!c) return { id, name: id };
+  return {
+    id: c.id,
+    name: c.name || c.email || c.phone || c.id,
+    source: c.source || undefined,
+    assignedTo: c.assignedTo || undefined,
+    tags: c.tags?.length ? c.tags : undefined,
+    lastActivity: c.lastActivity || undefined,
+  };
+}
+
 // ─── Suggestions ─────────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
@@ -75,6 +97,14 @@ export function ConversationsChat({
   const [panelState, setPanelState] = useState<PanelState>({ mode: "idle" });
   const prevSummaryRef = useRef<Extract<PanelState, { mode: "summary" }> | null>(null);
 
+  // Lookup of the in-memory contacts by id, used to resolve the bare contactIds
+  // returned by search_conversations into real names + enrich the contact view.
+  const contactById = useMemo(() => {
+    const m = new Map<string, Contact>();
+    for (const c of dataset.contacts) m.set(c.id, c);
+    return m;
+  }, [dataset.contacts]);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -87,8 +117,36 @@ export function ConversationsChat({
   // ─── Panel updater ──────────────────────────────────────────────────────────
 
   const onToolExecuted = useCallback(
-    (name: string, _input: Record<string, unknown>, result: unknown) => {
+    (name: string, input: Record<string, unknown>, result: unknown) => {
       const r = result as Record<string, unknown>;
+
+      // AI-driven panel: the model curated exactly the contacts it's reporting.
+      // This is authoritative — it overrides the broad working-set that earlier
+      // search_* / search_conversations calls may have pushed into the panel.
+      if (name === "show_in_panel") {
+        const ids = Array.isArray(input.contactIds)
+          ? (input.contactIds as string[]).map(String)
+          : [];
+        const title =
+          typeof input.title === "string" && input.title.trim()
+            ? input.title.trim()
+            : undefined;
+        const contacts = ids.map((id) => panelContactFromId(id, contactById));
+        const idSet = new Set(ids);
+        const valueAtRisk = dataset.opportunities
+          .filter((o) => idSet.has(o.contactId) && o.status === "open")
+          .reduce((sum, o) => sum + (typeof o.value === "number" ? o.value : 0), 0);
+        const summary: Extract<PanelState, { mode: "summary" }> = {
+          mode: "summary",
+          title,
+          contacts,
+          total: contacts.length,
+          valueAtRisk: valueAtRisk > 0 ? valueAtRisk : undefined,
+        };
+        prevSummaryRef.current = summary;
+        setPanelState(summary);
+        return;
+      }
 
       if (name === "search_contacts") {
         const rows = Array.isArray(r?.rows)
@@ -148,10 +206,9 @@ export function ConversationsChat({
         const threads = Array.isArray(r?.threads)
           ? (r.threads as Record<string, unknown>[])
           : [];
-        const contacts: PanelContact[] = threads.map((t) => ({
-          id: String(t.contactId ?? ""),
-          name: String(t.contactId ?? ""),
-        }));
+        const contacts: PanelContact[] = threads.map((t) =>
+          panelContactFromId(String(t.contactId ?? ""), contactById)
+        );
         const summary: Extract<PanelState, { mode: "summary" }> = {
           mode: "summary",
           contacts,
@@ -287,7 +344,7 @@ export function ConversationsChat({
         });
       }
     },
-    []
+    [contactById, dataset.opportunities]
   );
 
   const {
@@ -334,18 +391,108 @@ export function ConversationsChat({
     [handleSend]
   );
 
-  const handleContactClick = useCallback((contact: PanelContact) => {
-    setPanelState((prev) => ({
-      mode: "contact",
-      contact: { ...contact, email: undefined, phone: undefined },
-      opportunities: [],
-      appointments: [],
-      tasks: [],
-      notes: [],
-      lastMessage: null,
-      prevSummary: prev.mode === "summary" ? prev : undefined,
-    }));
-  }, []);
+  const handleContactClick = useCallback(
+    (contact: PanelContact) => {
+      const full = contactById.get(contact.id);
+      const opportunities: PanelOpportunity[] = dataset.opportunities
+        .filter((o) => o.contactId === contact.id)
+        .map((o) => ({
+          id: o.id,
+          name: o.name,
+          pipelineName: o.pipelineName,
+          stage: o.stage,
+          status: o.status,
+          value: o.value,
+          currency: o.currency || undefined,
+        }));
+      const appointments: PanelAppointment[] = dataset.appointments
+        .filter((a) => a.contactId === contact.id)
+        .map((a) => ({
+          id: a.id,
+          title: a.title || undefined,
+          startTime: a.startTime,
+          status: a.status,
+        }));
+      setPanelState((prev) => ({
+        mode: "contact",
+        contact: {
+          ...contact,
+          name: full?.name || contact.name,
+          source: full?.source || contact.source,
+          assignedTo: full?.assignedTo || contact.assignedTo,
+          email: full?.email || undefined,
+          phone: full?.phone || undefined,
+          companyName: full?.companyName || undefined,
+        },
+        opportunities,
+        appointments,
+        tasks: [],
+        notes: [],
+        lastMessage: null,
+        prevSummary: prev.mode === "summary" ? prev : undefined,
+      }));
+
+      // Conversation leads usually have no in-memory opps/appointments — the
+      // real context (last message, tasks, notes) lives in GHL. Fetch it live
+      // and merge it in as it arrives, ignoring results if the user has since
+      // navigated to a different contact.
+      const id = contact.id;
+      if (!id) return;
+      void (async () => {
+        const [msgRes, taskRes, noteRes] = await Promise.allSettled([
+          fetchContactMessages({ contactId: id, limit: 1 }),
+          fetchContactTasks({ contactId: id }),
+          fetchContactNotes({ contactId: id }),
+        ]);
+
+        let lastMessage: PanelLastMessage | null = null;
+        if (msgRes.status === "fulfilled") {
+          const rows = (msgRes.value as { rows?: Record<string, unknown>[] })?.rows;
+          const last = Array.isArray(rows) ? rows[0] : undefined;
+          if (last) {
+            lastMessage = {
+              direction: (last.direction as "inbound" | "outbound") ?? "inbound",
+              source: String(last.source ?? ""),
+              content: last.content ? String(last.content) : undefined,
+              createdAt: String(last.createdAt ?? ""),
+            };
+          }
+        }
+
+        let tasks: PanelTask[] = [];
+        if (taskRes.status === "fulfilled") {
+          const list = (taskRes.value as { tasks?: Record<string, unknown>[] })?.tasks;
+          if (Array.isArray(list)) {
+            tasks = list.map((t) => ({
+              id: String(t.id ?? ""),
+              title: String(t.title ?? ""),
+              status: (t.status as "pending" | "completed") ?? "pending",
+              dueDate: t.dueDate ? String(t.dueDate) : undefined,
+            }));
+          }
+        }
+
+        let notes: PanelNote[] = [];
+        if (noteRes.status === "fulfilled") {
+          const list = (noteRes.value as { notes?: Record<string, unknown>[] })?.notes;
+          if (Array.isArray(list)) {
+            notes = list.map((n) => ({
+              id: String(n.id ?? ""),
+              body: String(n.body ?? ""),
+              userId: n.userId ? String(n.userId) : undefined,
+              dateAdded: String(n.dateAdded ?? ""),
+            }));
+          }
+        }
+
+        setPanelState((prev) => {
+          if (prev.mode !== "contact" || prev.contact.id !== id) return prev;
+          return { ...prev, lastMessage, tasks, notes };
+        });
+      })();
+    },
+    [contactById, dataset.opportunities, dataset.appointments]
+  );
 
   const handleBack = useCallback(() => {
     if (prevSummaryRef.current) {

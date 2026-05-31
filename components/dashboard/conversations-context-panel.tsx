@@ -64,9 +64,11 @@ export type PanelState =
   | {
       mode: "summary";
       query?: string;
+      title?: string;
       contacts: PanelContact[];
       groups?: SummaryGroup[];
       total: number;
+      valueAtRisk?: number;
     }
   | {
       mode: "contact";
@@ -173,7 +175,7 @@ function SummaryPanel({
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="border-b border-border px-4 py-3">
         <p className="text-xs font-semibold text-foreground">
-          Resumen · {state.total}{" "}
+          {state.title ?? "Resumen"} · {state.total}{" "}
           {state.total === 1 ? "contacto" : "contactos"}
         </p>
         {state.query && (
@@ -184,6 +186,20 @@ function SummaryPanel({
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-2 p-3">
+          {/* Value at risk */}
+          {state.valueAtRisk !== undefined && state.valueAtRisk > 0 && (
+            <div className="rounded-md border border-border/50 bg-background p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Valor en riesgo
+              </p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums">
+                ${state.valueAtRisk.toLocaleString("es-MX")}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                en oportunidades abiertas
+              </p>
+            </div>
+          )}
           {/* Aggregate groups */}
           {state.groups && state.groups.length > 0 && (
             <div className="rounded-md border border-border/50 bg-background p-3">

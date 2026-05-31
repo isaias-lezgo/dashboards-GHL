@@ -148,10 +148,13 @@ export function useAgentLoop({
             content: m.blocks,
           }));
 
+          const userTimezone =
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Mexico_City";
+
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ datasetSummary, messages: apiMessages }),
+            body: JSON.stringify({ datasetSummary, messages: apiMessages, userTimezone }),
           });
 
           if (!res.ok) {
