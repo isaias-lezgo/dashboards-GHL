@@ -323,6 +323,69 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "relate",
+    description:
+      "Cross-entity join through the shared contact — THE one tool for any question that links appointments, pautas, opportunities, or contacts to each other (e.g. '¿cuánto valen las citas de mayo?', '¿qué ventas ganadas vinieron de la pauta X?'). It filters the `from` set, hops to the SAME contacts' `to` records, applies `to` filters, and aggregates — all in ONE call. NEVER hand-roll this by extracting contactIds and calling aggregate/search yourself; that is slow and expensive. Returns { groups, total, matchedContacts, contactIds? }. matchedContacts = distinct contacts that have BOTH a `from` and a `to` record.",
+    input_schema: {
+      type: "object",
+      properties: {
+        from: {
+          type: "object",
+          description: "Anchor set. { entity, filters? }.",
+          properties: {
+            entity: {
+              type: "string",
+              enum: ["contacts", "opportunities", "pautas", "appointments"],
+            },
+            filters: {
+              type: "object",
+              additionalProperties: true,
+              description:
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, createdAfter, createdBefore.",
+            },
+          },
+          required: ["entity"],
+        },
+        to: {
+          type: "object",
+          description: "Related set, reached via the shared contact. { entity, filters? }.",
+          properties: {
+            entity: {
+              type: "string",
+              enum: ["contacts", "opportunities", "pautas", "appointments"],
+            },
+            filters: {
+              type: "object",
+              additionalProperties: true,
+              description: "Same filter keys as search_<entity>/aggregate (see from.filters).",
+            },
+          },
+          required: ["entity"],
+        },
+        metric: {
+          type: "string",
+          enum: ["count", "sum", "avg"],
+          description: "Aggregation over the `to` set. 'sum'/'avg' apply to opportunity.value only. Use 'count' otherwise.",
+        },
+        groupBy: {
+          type: "string",
+          description:
+            "Optional field on the `to` entity to group by (e.g. 'status', 'stage', 'source', 'assignedTo'). Omit (or 'none') for a single total.",
+        },
+        includeContactIds: {
+          type: "boolean",
+          description:
+            "When true, also returns the matched contactIds (capped at `limit`) so you can chain show_in_panel or a live per-contact fetch (get_contact_tasks/get_contact_notes/get_contact_messages). Default false — leave off for pure numeric questions to keep the response small.",
+        },
+        limit: {
+          type: "number",
+          description: "Max groups and max contactIds returned (default 50).",
+        },
+      },
+      required: ["from", "to", "metric"],
+    },
+  },
+  {
     name: "show_in_panel",
     description:
       "Displays a curated set of contacts in the left context panel so the user can see and click them. CRITICAL: call this as your FINAL step whenever your answer is about a specific set of contacts (e.g. 'leads con actividad hoy', 'contactos sin responder', 'clientes de Meta'). Pass ONLY the contactIds you are actually reporting in your answer — NOT every contact you inspected while researching. The panel must match your conclusion: if you tell the user about 4 leads, pass those 4 ids, not the 20 you scanned. The panel resolves names, opportunity value, and lets the user open each contact. This tool does not return data — it only updates the UI.",
