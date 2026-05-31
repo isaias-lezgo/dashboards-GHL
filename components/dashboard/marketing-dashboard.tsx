@@ -722,7 +722,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   }, [opportunities])
 
   // Panel 4a — Paid traffic leads with at least one appointment
-  const paidTrafficWithAppt = useMemo(() => {
+  const { paidTrafficWithAppt, apptKeyCount } = useMemo(() => {
     const apptContactIds = new Set(appointments.map((a) => a.contactId))
     const counts = new Map<string, number>()
     for (const o of opportunities) {
@@ -732,14 +732,18 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       if (!rawKey) continue
       counts.set(rawKey, (counts.get(rawKey) ?? 0) + 1)
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([rawKey, count]) => ({
+    const allEntries = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+    const apptKeyCount = allEntries.length
+    const sliced = apptTopN >= apptKeyCount ? allEntries : allEntries.slice(0, Math.round(apptTopN))
+    return {
+      paidTrafficWithAppt: sliced.map(([rawKey, count]) => ({
         rawKey,
         label: apptGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
         count,
-      }))
-  }, [opportunities, appointments, apptGroupBy])
+      })),
+      apptKeyCount,
+    }
+  }, [opportunities, appointments, apptGroupBy, apptTopN])
 
   // Panel 4b — Won deals from paid traffic, grouped by URL or Ad ID
   const wonPaidTraffic = useMemo(() => {
@@ -1385,7 +1389,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             title="Citas por pauta"
             total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
             icon={Calendar}
-            actions={<GroupByToggle value={apptGroupBy} onChange={setApptGroupBy} />}
+            actions={
+              <div className="flex items-center gap-2">
+                <TopNSlider value={apptTopN} max={apptKeyCount} onChange={setApptTopN} />
+                <GroupByToggle value={apptGroupBy} onChange={setApptGroupBy} />
+              </div>
+            }
           />
           <ChartCardContent>
             {paidTrafficWithAppt.length === 0 ? (
