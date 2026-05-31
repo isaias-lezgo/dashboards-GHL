@@ -543,7 +543,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     0
   )
 
-  const { lostByReasonRows, lostByReasonKeys } = useMemo(() => {
+  const { lostByReasonRows, lostByReasonKeys, lostByReasonKeyCount } = useMemo(() => {
     const totals = new Map<string, number>()
     const perReason = new Map<string, Map<string, number>>()
 
@@ -558,10 +558,11 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       totals.set(rawKey, (totals.get(rawKey) ?? 0) + 1)
     }
 
-    const keys = Array.from(totals.entries())
+    const allKeys = Array.from(totals.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
       .map(([k]) => k)
+    const lostByReasonKeyCount = allKeys.length
+    const keys = lostTopN >= lostByReasonKeyCount ? allKeys : allKeys.slice(0, Math.round(lostTopN))
 
     const reasons = Array.from(perReason.keys()).sort()
 
@@ -574,8 +575,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       })
       .filter((row) => keys.some((k) => (row[k] as number) > 0))
 
-    return { lostByReasonRows: rows, lostByReasonKeys: keys }
-  }, [opportunities, lostGroupBy])
+    return { lostByReasonRows: rows, lostByReasonKeys: keys, lostByReasonKeyCount }
+  }, [opportunities, lostGroupBy, lostTopN])
 
   const lostByReasonConfig = Object.fromEntries(
     lostByReasonKeys.map((k, i) => [
@@ -1141,7 +1142,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
           title="Oportunidades Perdidas por Razón de Pérdida"
           total={lostByReasonTotal}
           icon={TrendingDown}
-          actions={<GroupByToggle value={lostGroupBy} onChange={setLostGroupBy} />}
+          actions={
+            <div className="flex items-center gap-2">
+              <TopNSlider value={lostTopN} max={lostByReasonKeyCount} onChange={setLostTopN} />
+              <GroupByToggle value={lostGroupBy} onChange={setLostGroupBy} />
+            </div>
+          }
         />
         <ChartCardContent>
           {lostByReasonKeys.length === 0 ? (
@@ -1205,7 +1211,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                {`Apilado por ${lostGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · top 30 · haz clic en un segmento para ver las oportunidades`}
+                {`Apilado por ${lostGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · ${lostTopN >= lostByReasonKeyCount ? "todo" : `top ${lostTopN}`} · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}
