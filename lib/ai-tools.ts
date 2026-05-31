@@ -321,6 +321,28 @@ export const TOOL_DEFINITIONS = [
       required: ["contactId"],
     },
   },
+  {
+    name: "show_in_panel",
+    description:
+      "Displays a curated set of contacts in the left context panel so the user can see and click them. CRITICAL: call this as your FINAL step whenever your answer is about a specific set of contacts (e.g. 'leads con actividad hoy', 'contactos sin responder', 'clientes de Meta'). Pass ONLY the contactIds you are actually reporting in your answer — NOT every contact you inspected while researching. The panel must match your conclusion: if you tell the user about 4 leads, pass those 4 ids, not the 20 you scanned. The panel resolves names, opportunity value, and lets the user open each contact. This tool does not return data — it only updates the UI.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "The exact contact IDs your answer is about. These are shown, in this order, in the panel.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Short heading describing the set, in Spanish (e.g. 'Leads con actividad hoy', 'Sin responder +24h · Meta'). Shown at the top of the panel.",
+        },
+      },
+      required: ["contactIds"],
+    },
+  },
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
@@ -469,6 +491,13 @@ export function executeTool(
       return listAppointments(input, data);
     case "aggregate":
       return aggregate(input, data);
+    case "show_in_panel": {
+      // UI-only directive. The real panel update happens client-side in the
+      // chat component's onToolExecuted handler (it reads contactIds from the
+      // tool input). Here we just acknowledge so the model knows it succeeded.
+      const ids = Array.isArray(input.contactIds) ? (input.contactIds as string[]) : [];
+      return { ok: true, shown: ids.length };
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -950,31 +979,34 @@ function listAppointments(input: ToolInput, data: ChatDataset) {
 
 // ─── aggregate ────────────────────────────────────────────────────────────────
 
-function aggregate(input: ToolInput, data: ChatDataset) {
-  const entity = String(input.entity ?? "");
-  const groupBy = String(input.groupBy ?? "none");
-  const metric = String(input.metric ?? "count");
-  const filters = (input.filters && typeof input.filters === "object" ? input.filters : {}) as ToolInput;
-  const limit = clampLimit(input.limit, 50);
-
-  let rows: Array<Record<string, unknown>>;
+// Resolve an entity + filters to filtered rows. Shared by `aggregate` and `relate`.
+function filteredRows(
+  entity: string,
+  filters: ToolInput,
+  data: ChatDataset
+): Array<Record<string, unknown>> {
   switch (entity) {
     case "contacts":
-      rows = applyContactFilters(data.contacts, filters) as unknown as Array<Record<string, unknown>>;
-      break;
+      return applyContactFilters(data.contacts, filters) as unknown as Array<Record<string, unknown>>;
     case "opportunities":
-      rows = applyOppFilters(data.opportunities, filters) as unknown as Array<Record<string, unknown>>;
-      break;
+      return applyOppFilters(data.opportunities, filters) as unknown as Array<Record<string, unknown>>;
     case "pautas":
-      rows = applyPautaFilters(data.pautas, filters) as unknown as Array<Record<string, unknown>>;
-      break;
+      return applyPautaFilters(data.pautas, filters) as unknown as Array<Record<string, unknown>>;
     case "appointments":
-      rows = applyApptFilters(data.appointments, filters) as unknown as Array<Record<string, unknown>>;
-      break;
+      return applyApptFilters(data.appointments, filters) as unknown as Array<Record<string, unknown>>;
     default:
-      return { error: `Unknown entity: ${entity}` };
+      return [];
   }
+}
 
+// Group + metric over already-filtered rows. Shared by `aggregate` and `relate`.
+function aggregateRows(
+  rows: Array<Record<string, unknown>>,
+  groupBy: string,
+  metric: string,
+  entity: string,
+  limit: number
+) {
   if (groupBy === "none") {
     return {
       groups: [{ key: "total", count: rows.length, ...metricValue(rows, metric, entity) }],
@@ -1009,6 +1041,21 @@ function aggregate(input: ToolInput, data: ChatDataset) {
     .slice(0, limit);
 
   return { groups, total: rows.length, truncated: buckets.size > limit };
+}
+
+function aggregate(input: ToolInput, data: ChatDataset) {
+  const entity = String(input.entity ?? "");
+  const groupBy = String(input.groupBy ?? "none");
+  const metric = String(input.metric ?? "count");
+  const filters = (input.filters && typeof input.filters === "object" ? input.filters : {}) as ToolInput;
+  const limit = clampLimit(input.limit, 50);
+
+  if (!["contacts", "opportunities", "pautas", "appointments"].includes(entity)) {
+    return { error: `Unknown entity: ${entity}` };
+  }
+
+  const rows = filteredRows(entity, filters, data);
+  return aggregateRows(rows, groupBy, metric, entity, limit);
 }
 
 function push<T>(map: Map<string, T[]>, key: string, val: T) {
