@@ -291,6 +291,36 @@ export const TOOL_DEFINITIONS = [
       required: ["contactIds"],
     },
   },
+  {
+    name: "get_contact_tasks",
+    description:
+      "Fetches all tasks for a contact directly from GoHighLevel. Returns task title, due date, status (completed/pending), and assigned user. Use when the user asks about pending work, follow-ups, overdue items, or to-dos for a specific contact. Always resolve the contactId first with search_contacts if you only have a name.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactId: {
+          type: "string",
+          description: "Contact ID to fetch tasks for.",
+        },
+      },
+      required: ["contactId"],
+    },
+  },
+  {
+    name: "get_contact_notes",
+    description:
+      "Fetches all advisor-written notes for a contact from GoHighLevel. Notes are internal observations — NOT chat messages. Use when the user asks what was noted, observed, or documented about a contact, or to cross-reference notes against the conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        contactId: {
+          type: "string",
+          description: "Contact ID to fetch notes for.",
+        },
+      },
+      required: ["contactId"],
+    },
+  },
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
