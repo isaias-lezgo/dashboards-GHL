@@ -498,7 +498,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   }, [pautas])
 
   // Attribution (URL or Ad ID) × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = attribution key).
-  const { pautaByStageRows, pautaByStageKeys } = useMemo(() => {
+  const { pautaByStageRows, pautaByStageKeys, pautaByStageKeyCount } = useMemo(() => {
     const totals = new Map<string, number>()
     const perStage = new Map<string, Map<string, number>>()
     for (const stage of stageOrder) perStage.set(stage, new Map())
@@ -513,10 +513,11 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       totals.set(rawKey, (totals.get(rawKey) ?? 0) + 1)
     }
 
-    const keys = Array.from(totals.entries())
+    const allKeys = Array.from(totals.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
       .map(([name]) => name)
+    const pautaByStageKeyCount = allKeys.length
+    const keys = stageTopN >= pautaByStageKeyCount ? allKeys : allKeys.slice(0, Math.round(stageTopN))
 
     const rows = stageOrder
       .map((stage) => {
@@ -527,8 +528,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       })
       .filter((row) => keys.some((k) => (row[k] as number) > 0))
 
-    return { pautaByStageRows: rows, pautaByStageKeys: keys }
-  }, [opportunities, stageOrder, stageGroupBy])
+    return { pautaByStageRows: rows, pautaByStageKeys: keys, pautaByStageKeyCount }
+  }, [opportunities, stageOrder, stageGroupBy, stageTopN])
 
   const pautaByStageConfig = Object.fromEntries(
     pautaByStageKeys.map((k, i) => [
@@ -1057,7 +1058,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
           title="Oportunidades por Etapa del Pipeline (Sin oportunidades perdidas)"
           total={pautaByStageTotal}
           icon={Layers}
-          actions={<GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />}
+          actions={
+            <div className="flex items-center gap-2">
+              <TopNSlider value={stageTopN} max={pautaByStageKeyCount} onChange={setStageTopN} />
+              <GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />
+            </div>
+          }
         />
         <ChartCardContent>
           {pautaByStageKeys.length === 0 ? (
@@ -1123,7 +1129,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                {`Apilado por ${stageGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · top 30 · haz clic en un segmento para ver las oportunidades`}
+                {`Apilado por ${stageGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · ${stageTopN >= pautaByStageKeyCount ? "todo" : `top ${stageTopN}`} · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}
