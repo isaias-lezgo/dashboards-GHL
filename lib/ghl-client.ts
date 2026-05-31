@@ -543,6 +543,26 @@ export async function getContactTasks(contactId: string): Promise<GHLTasksRespon
   return ghlFetch<GHLTasksResponse>(`/contacts/${contactId}/tasks`);
 }
 
+// ============ NOTES ============
+
+export interface GHLNote {
+  id: string;
+  body: string;
+  userId?: string;
+  dateAdded: string;
+  contactId?: string;
+}
+
+export interface GHLNotesResponse {
+  notes: GHLNote[];
+}
+
+export async function getContactNotes(contactId: string): Promise<GHLNotesResponse> {
+  return ghlFetch<GHLNotesResponse>(`/contacts/${contactId}/notes`, {
+    noQueryLocationId: true,
+  });
+}
+
 // ============ CUSTOM FIELD DEFINITIONS ============
 
 export interface GHLCustomField {
