@@ -11,6 +11,7 @@ import type {
   Task,
   Call,
 } from "@/lib/types";
+import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
 
 export interface ChatDataset {
   contacts: Contact[];
@@ -491,6 +492,8 @@ export function executeTool(
       return listAppointments(input, data);
     case "aggregate":
       return aggregate(input, data);
+    case "relate":
+      return relate(input, data, getChatIndex(data));
     case "show_in_panel": {
       // UI-only directive. The real panel update happens client-side in the
       // chat component's onToolExecuted handler (it reads contactIds from the
@@ -1056,6 +1059,115 @@ function aggregate(input: ToolInput, data: ChatDataset) {
 
   const rows = filteredRows(entity, filters, data);
   return aggregateRows(rows, groupBy, metric, entity, limit);
+}
+
+// ─── relate (cross-entity join through the shared contact) ──────────────────────
+
+const RELATABLE = ["contacts", "opportunities", "pautas", "appointments"];
+
+function contactIdOf(entity: string, row: Record<string, unknown>): string | undefined {
+  if (entity === "contacts") return typeof row.id === "string" ? row.id : undefined;
+  return typeof row.contactId === "string" ? row.contactId : undefined;
+}
+
+// Gather rows of `entity` whose contact is in `contactIds`, using the index.
+function rowsForContacts(
+  entity: string,
+  contactIds: Set<string>,
+  index: ChatIndex
+): Array<Record<string, unknown>> {
+  const out: Array<Record<string, unknown>> = [];
+  switch (entity) {
+    case "contacts":
+      for (const id of contactIds) {
+        const c = index.contactById.get(id);
+        if (c) out.push(c as unknown as Record<string, unknown>);
+      }
+      break;
+    case "opportunities":
+      for (const id of contactIds) {
+        const arr = index.oppsByContact.get(id);
+        if (arr) for (const o of arr) out.push(o as unknown as Record<string, unknown>);
+      }
+      break;
+    case "pautas":
+      for (const id of contactIds) {
+        const arr = index.pautasByContact.get(id);
+        if (arr) for (const p of arr) out.push(p as unknown as Record<string, unknown>);
+      }
+      break;
+    case "appointments":
+      for (const id of contactIds) {
+        const arr = index.apptsByContact.get(id);
+        if (arr) for (const a of arr) out.push(a as unknown as Record<string, unknown>);
+      }
+      break;
+  }
+  return out;
+}
+
+function applyEntityFilters(
+  entity: string,
+  rows: Array<Record<string, unknown>>,
+  filters: ToolInput
+): Array<Record<string, unknown>> {
+  switch (entity) {
+    case "contacts":
+      return applyContactFilters(rows as unknown as Contact[], filters) as unknown as Array<Record<string, unknown>>;
+    case "opportunities":
+      return applyOppFilters(rows as unknown as Opportunity[], filters) as unknown as Array<Record<string, unknown>>;
+    case "pautas":
+      return applyPautaFilters(rows as unknown as Pauta[], filters) as unknown as Array<Record<string, unknown>>;
+    case "appointments":
+      return applyApptFilters(rows as unknown as Appointment[], filters) as unknown as Array<Record<string, unknown>>;
+    default:
+      return rows;
+  }
+}
+
+function relate(input: ToolInput, data: ChatDataset, index: ChatIndex) {
+  const from = (input.from && typeof input.from === "object" ? input.from : {}) as ToolInput;
+  const to = (input.to && typeof input.to === "object" ? input.to : {}) as ToolInput;
+  const fromEntity = String(from.entity ?? "");
+  const toEntity = String(to.entity ?? "");
+  const metric = String(input.metric ?? "count");
+  const groupBy = String(input.groupBy ?? "none");
+  const includeContactIds = input.includeContactIds === true;
+  const limit = clampLimit(input.limit, 50);
+
+  if (!RELATABLE.includes(fromEntity)) return { error: `Unknown from.entity: ${fromEntity}` };
+  if (!RELATABLE.includes(toEntity)) return { error: `Unknown to.entity: ${toEntity}` };
+
+  const fromFilters = (from.filters && typeof from.filters === "object" ? from.filters : {}) as ToolInput;
+  const toFilters = (to.filters && typeof to.filters === "object" ? to.filters : {}) as ToolInput;
+
+  // 1. anchor set
+  const fromRows = filteredRows(fromEntity, fromFilters, data);
+
+  // 2. contacts of the anchor set
+  const contactIds = new Set<string>();
+  for (const r of fromRows) {
+    const cid = contactIdOf(fromEntity, r);
+    if (cid) contactIds.add(cid);
+  }
+
+  // 3. related rows via index, then 4. apply to-filters
+  const related = rowsForContacts(toEntity, contactIds, index);
+  const toRows = applyEntityFilters(toEntity, related, toFilters);
+
+  // 5. aggregate
+  const agg = aggregateRows(toRows, groupBy, metric, toEntity, limit);
+
+  // distinct contacts present on BOTH sides (the join count)
+  const matched = new Set<string>();
+  for (const r of toRows) {
+    const cid = contactIdOf(toEntity, r);
+    if (cid) matched.add(cid);
+  }
+
+  const result: Record<string, unknown> = { ...agg, matchedContacts: matched.size };
+  if (includeContactIds) result.contactIds = Array.from(matched).slice(0, limit);
+  return result;
 }
 
 function push<T>(map: Map<string, T[]>, key: string, val: T) {
