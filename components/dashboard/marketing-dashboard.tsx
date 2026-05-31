@@ -1106,6 +1106,82 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
         </ChartCardContent>
       </DashboardCard>
 
+      <DashboardCard>
+        <ChartCardHeader
+          title="Oportunidades Perdidas por Razón de Pérdida"
+          total={lostByReasonTotal}
+          icon={TrendingDown}
+          actions={<GroupByToggle value={lostGroupBy} onChange={setLostGroupBy} />}
+        />
+        <ChartCardContent>
+          {lostByReasonKeys.length === 0 ? (
+            <ChartEmpty message="Sin oportunidades perdidas con datos de atribución." height={300} />
+          ) : (
+            <>
+              <ChartContainer config={lostByReasonConfig} className="aspect-auto" style={{ height: 480 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={lostByReasonRows} margin={{ top: 5, right: 16, left: 8, bottom: 16 }} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                    <XAxis
+                      dataKey="reason"
+                      tick={{ fontSize: 10, fill: CHART_TICK.fill }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      tickFormatter={(v: string) => v.length > 22 ? v.slice(0, 22) + "…" : v}
+                    />
+                    <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <ChartTooltip content={<NonZeroTooltipContent />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 10, paddingTop: 48, lineHeight: "36px" }}
+                      iconSize={8}
+                      formatter={(value: string) => (
+                        <span style={{ color: "#374151", marginRight: 4 }} title={value}>
+                          {lostGroupBy === "url" ? paidTrafficUrlLabel(value) : value.slice(0, 20)}
+                        </span>
+                      )}
+                    />
+                    {lostByReasonKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                        radius={i === lostByReasonKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={56}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const reason = data.reason as string
+                          const items = opportunities.filter((o) => {
+                            if (o.status !== "lost") return false
+                            if ((o.lostReason || "Sin razón") !== reason) return false
+                            const rawKey = lostGroupBy === "url" ? o.attributionUrl : o.adId
+                            return rawKey === key
+                          })
+                          const label = lostGroupBy === "url" ? paidTrafficUrlLabel(key) : key
+                          openDrill(
+                            `${label} · ${reason}`,
+                            items,
+                            `${items.length} oportunidad${items.length !== 1 ? "es" : ""} perdida${items.length !== 1 ? "s" : ""} — ${reason}`
+                          )
+                        }}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <ChartHint>
+                {`Apilado por ${lostGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · top 30 · haz clic en un segmento para ver las oportunidades`}
+              </ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
       {/* Panel 2 — Oportunidades por ID de Anuncio / Panel 3 — URLs por plataforma */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DashboardCard>
