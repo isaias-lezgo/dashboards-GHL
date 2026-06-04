@@ -6,7 +6,6 @@ import type {
   Opportunity,
   Call,
   Task,
-  Message,
   Pipeline,
   Pauta,
   Appointment,
@@ -18,7 +17,6 @@ export interface DashboardData {
   opportunities: Opportunity[];
   calls: Call[];
   tasks: Task[];
-  messages: Message[];
   appointments: Appointment[];
   pipelines: Pipeline[];
   members: string[];
@@ -30,7 +28,6 @@ export interface DashboardData {
   meta: {
     totalContacts: number;
     totalOpportunities: number;
-    totalMessages: number;
     fetchedAt: string;
   };
 }
