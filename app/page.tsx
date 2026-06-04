@@ -9,6 +9,7 @@ import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
 import { AIChatPanel } from "@/components/dashboard/ai-chat-panel"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
+import { useConversationsData } from "@/hooks/use-conversations-data"
 import {
   TrendingUp,
   BarChart3,
@@ -44,11 +45,11 @@ export default function DashboardPage() {
   useEffect(() => { setMounted(true) }, [])
 
   const { data, isLoading, isError, progress, refresh } = useDashboardData({})
+  const { messages, isLoading: messagesLoading } = useConversationsData()
 
   const contacts = data?.contacts ?? []
   const opportunities = data?.opportunities ?? []
   const calls = data?.calls ?? []
-  const messages = data?.messages ?? []
   const appointments = data?.appointments ?? []
   const availableMembers = data?.members ?? []
   const availableTags = data?.tags ?? []
@@ -216,6 +217,7 @@ export default function DashboardPage() {
             contacts={contacts}
             calls={calls}
             messages={messages}
+            messagesLoading={messagesLoading}
             appointments={appointments}
             tasks={data?.tasks ?? []}
             pautas={data?.pautas ?? []}
