@@ -11,7 +11,7 @@ import {
   LabelList,
   Cell,
 } from "recharts"
-import { CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
@@ -54,6 +54,7 @@ interface SalesDashboardProps {
   contacts: Contact[]
   calls: Call[]
   messages: Message[]
+  messagesLoading?: boolean
   appointments: Appointment[]
   tasks?: Task[]
   pautas?: Pauta[]
@@ -61,6 +62,10 @@ interface SalesDashboardProps {
   locationId?: string
   onAnalyzeWithAI?: (initialMessage: string) => void
 }
+
+// Vertical breathing room under the plot so angled X-axis (column) labels
+// don't collide with the legend swatches sitting directly below them.
+const LEGEND_WRAPPER_STYLE = { paddingTop: 28 }
 
 const STAGE_COLORS: Record<string, string> = {
   Discovery:    "#335577",
@@ -171,7 +176,7 @@ function InfoTooltip({ content }: { content: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", onAnalyzeWithAI }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], messagesLoading = false, appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", onAnalyzeWithAI }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
 
@@ -187,12 +192,15 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
   const kpiMetrics = useMemo(() => {
     const total = opportunities.length
     const won = opportunities.filter((o) => o.status === "won").length
+    const open = opportunities.filter((o) => o.status === "open").length
+    const lost = opportunities.filter((o) => o.status === "lost").length
+    const abandoned = opportunities.filter((o) => o.status === "abandoned").length
     const wonRevenue = opportunities.filter((o) => o.status === "won").reduce((sum, o) => sum + o.value, 0)
     const activeMembers = membersProp.length > 0
       ? membersProp.length
       : new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
     const conversionRate = total > 0 ? (won / total) * 100 : 0
-    return { total, won, wonRevenue, activeMembers, conversionRate }
+    return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate }
   }, [opportunities])
 
   const allStages = useMemo(
@@ -718,12 +726,48 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             )
           }
         />
-        <KpiCard
-          label="Oportunidades"
-          value={kpiMetrics.total.toLocaleString("es-MX")}
-          icon={Target}
-          onClick={() => openDrill("Todas las Oportunidades", opportunities)}
-        />
+        <DashboardCard interactive onClick={() => openDrill("Todas las Oportunidades", opportunities)}>
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Oportunidades
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+                  {kpiMetrics.total.toLocaleString("es-MX")}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {([
+                    { key: "open",      label: "Abiertas",   color: "#335577",  count: kpiMetrics.open },
+                    { key: "won",       label: "Ganadas",    color: "#F59B1B",  count: kpiMetrics.won },
+                    { key: "lost",      label: "Perdidas",   color: "#ef4444",  count: kpiMetrics.lost },
+                    { key: "abandoned", label: "Abandonadas",color: "#94a3b8",  count: kpiMetrics.abandoned },
+                  ] as const).filter((s) => s.count > 0).map((s) => (
+                    <span
+                      key={s.key}
+                      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      style={{ background: s.color + "22", color: s.color }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDrill(
+                          s.label,
+                          opportunities.filter((o) => o.status === s.key),
+                        )
+                      }}
+                    >
+                      <span
+                        className="inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ background: s.color }}
+                      />
+                      {s.count} {s.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <Target className="h-5 w-5 shrink-0 text-[#335577]" aria-hidden />
+            </div>
+          </CardContent>
+        </DashboardCard>
         <KpiCard
           label="Conversión"
           value={`${kpiMetrics.conversionRate.toFixed(1)}%`}
@@ -766,7 +810,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <XAxis dataKey="member" type="category" tick={{ fontSize: 11 }} interval={0} angle={-40} textAnchor="end" />
                   <YAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend />
+                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                   {allStages.map((stage, i) => (
                     <Bar
                       key={stage}
@@ -823,7 +867,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <YAxis type="number" tick={{ fontSize: 11 }} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend />
+                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                   <Bar dataKey="won" stackId="a" fill={WIN_LOSS_CONFIG.won.color} cursor="pointer"
                     onClick={(data: any) => openDrill(`${data.member} · Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
                   />
@@ -1079,7 +1123,11 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             Conversaciones únicas por día
             <InfoTooltip content="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora." />
           </CardTitle>
-          <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
+          {messagesLoading && messages.length === 0 ? (
+            <span className="text-xs text-muted-foreground">Cargando conversaciones…</span>
+          ) : (
+            <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
+          )}
         </CardHeader>
         <ChartCardContent>
           {dailyConvData.length === 0 ? (
@@ -1153,7 +1201,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 28 }} />
                   {convByAdvisorMonthData.advisors.map((advisor, i) => (
                     <Bar
                       key={advisor}
@@ -1209,7 +1257,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <ChartTooltip content={<NonZeroTooltipContent />} />
                   <Legend
                     content={() => (
-                      <div className="flex flex-wrap gap-3 justify-center pt-2">
+                      <div className="flex flex-wrap gap-3 justify-center pt-7">
                         {apptByMonthByAdvisor.statuses.map((status, i) => {
                           const { label, color } = apptStatusVisual(status, i)
                           return (
@@ -1309,7 +1357,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       />
                     }
                   />
-                  <Legend />
+                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                   <Bar
                     dataKey="avgStandard"
                     stackId="empty"
@@ -1388,7 +1436,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend />
+                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                   <Bar
                     dataKey="completed"
                     stackId="calls"
@@ -1469,7 +1517,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                   <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend />
+                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                   <Bar
                     dataKey="agendadas"
                     fill={STRUCTURAL_NAVY}
@@ -1548,7 +1596,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 />
                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                 <ChartTooltip content={<NonZeroTooltipContent />} />
-                <Legend />
+                <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
                 {lostReasonsData.reasons.map((reason, i) => (
                   <Bar
                     key={reason}
