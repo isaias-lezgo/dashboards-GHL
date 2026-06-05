@@ -150,11 +150,11 @@ function buildContext(
   if (str(contact.lastActivity)) lines.push(`Última actividad: ${formatDate(String(contact.lastActivity), tz)}`);
   if (contact.dnd) lines.push(`DND: sí`);
   if (str(contact.dateAdded)) lines.push(`Creado: ${formatDate(String(contact.dateAdded), tz)}`);
-  const contactCustomFields = contact.customFieldsResolved as Record<string, string> | undefined;
+  const contactCustomFields = contact.customFieldsResolved as Record<string, string | string[]> | undefined;
   if (contactCustomFields && Object.keys(contactCustomFields).length > 0) {
     lines.push("Campos personalizados:");
     for (const [name, value] of Object.entries(contactCustomFields)) {
-      lines.push(`  ${name}: ${value}`);
+      lines.push(`  ${name}: ${Array.isArray(value) ? value.join(", ") : value}`);
     }
   }
 
@@ -177,11 +177,11 @@ function buildContext(
   if (str(opportunity.updatedAt)) lines.push(`Última actualización: ${formatDate(String(opportunity.updatedAt), tz)}`);
   if (str(opportunity.closedAt)) lines.push(`Fecha de cierre: ${formatDate(String(opportunity.closedAt), tz)}`);
   if (str(opportunity.lastActivity)) lines.push(`Última actividad: ${formatDate(String(opportunity.lastActivity), tz)}`);
-  const oppCustomFields = opportunity.customFieldsResolved as Record<string, string> | undefined;
+  const oppCustomFields = opportunity.customFieldsResolved as Record<string, string | string[]> | undefined;
   if (oppCustomFields && Object.keys(oppCustomFields).length > 0) {
     lines.push("Campos personalizados:");
     for (const [name, value] of Object.entries(oppCustomFields)) {
-      lines.push(`  ${name}: ${value}`);
+      lines.push(`  ${name}: ${Array.isArray(value) ? value.join(", ") : value}`);
     }
   }
 

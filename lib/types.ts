@@ -31,7 +31,9 @@ export interface Contact {
   dateUpdated?: string
   lastActivity?: string
   customFields?: Array<{ id: string; value: string }>
-  customFieldsResolved?: Record<string, string>  // computed: id→name resolved custom fields
+  // computed: name→value resolved custom fields. Multi-option/checkbox fields
+  // keep their array shape; single-value fields are stored as a plain string.
+  customFieldsResolved?: Record<string, string | string[]>
   businessId?: string
   visitorId?: string
   keyword?: string
@@ -92,7 +94,9 @@ export interface Opportunity {
   lostReasonId?: string
   lostReason?: string   // computed: from the "Motivo de Perdido" opportunity custom field (lostReasonId is always null in this location)
   customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>
-  customFieldsResolved?: Record<string, string>  // computed: id→name resolved custom fields
+  // computed: name→value resolved custom fields. Multi-option/checkbox fields
+  // keep their array shape; single-value fields are stored as a plain string.
+  customFieldsResolved?: Record<string, string | string[]>
   attributions?: Array<{ [key: string]: unknown }>
 
   // Embedded contact object from search endpoint

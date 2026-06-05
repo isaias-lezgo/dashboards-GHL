@@ -8,7 +8,8 @@
 export async function fetchStream<T>(
   url: string,
   onProgress: (message: string) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onLocation?: (name: string) => void
 ): Promise<T> {
   const res = await fetch(url, { signal });
   if (!res.ok || !res.body) {
@@ -34,6 +35,8 @@ export async function fetchStream<T>(
         const msg = JSON.parse(line);
         if (msg.type === "progress") {
           onProgress(msg.message);
+        } else if (msg.type === "location") {
+          onLocation?.(msg.name);
         } else if (msg.type === "data") {
           const { type: _t, ...rest } = msg;
           data = rest as T;
