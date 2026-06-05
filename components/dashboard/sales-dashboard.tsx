@@ -726,6 +726,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             )
           }
         />
+        
         <DashboardCard interactive onClick={() => openDrill("Todas las Oportunidades", opportunities)}>
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
