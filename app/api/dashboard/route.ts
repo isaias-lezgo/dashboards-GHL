@@ -2,8 +2,6 @@ import {
   getAllContacts,
   getAllOpportunities,
   getPipelines,
-  getConversations,
-  getMessages,
   getUsers,
   getCustomFields,
   getCustomObjects,
@@ -11,17 +9,14 @@ import {
   getCalendarEvents,
   getCalendars,
   type GHLContact,
-  type GHLConversation,
   type GHLOpportunity,
   type GHLCalendarEvent,
 } from "@/lib/ghl-client";
-import { ghlMessageToInternal } from "@/lib/ghl-message-mapper";
 import type {
   Contact,
   Opportunity,
   Call,
   Task,
-  Message,
   Pipeline,
   Pauta,
   Appointment,
@@ -91,6 +86,7 @@ function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>):
     adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
     adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
     attributionUrl: firstAttr(ghl.attributions)?.url || ghl.attributionSource?.url || undefined,
+    attributionMedium: firstAttr(ghl.attributions)?.medium || firstAttr(ghl.attributions)?.utmSessionSource || undefined,
     ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
 }
@@ -119,6 +115,7 @@ function transformOpportunity(
     adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
     adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
     attributionUrl: firstAttr(ghl.attributions)?.url || undefined,
+    attributionMedium: firstAttr(ghl.attributions)?.medium || firstAttr(ghl.attributions)?.utmSessionSource || undefined,
     lostReason:
       ghl.status === "lost"
         ? customFieldsResolved["Motivo de Perdido"] || undefined
@@ -319,6 +316,7 @@ export async function GET() {
             adType: attr?.utmMedium || attr?.utmSessionSource,
             adId: attr?.utmAdId || undefined,
             attributionUrl: attr?.url || undefined,
+            attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
             assignedTo:
               raw.assignedTo && userMap.has(raw.assignedTo)
                 ? userMap.get(raw.assignedTo)
@@ -343,86 +341,13 @@ export async function GET() {
             if (!opp.source) opp.source = contact.source;
             if (!opp.adId) opp.adId = contact.adId;
             if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
+            if (!opp.attributionMedium) opp.attributionMedium = contact.attributionMedium;
           }
         }
 
-        // Fetch last 30 active conversations PER user (not 30 in total),
-        // so every advisor with activity shows up in the conversation charts.
-        send({ type: "progress", message: "Cargando conversaciones…" });
-        const messages: Message[] = [];
-        try {
-          const userIds = Array.from(userMap.keys());
-
-          // Bounded concurrency — avoid firing all user-conversation queries
-          // simultaneously, which exhausts the GHL rate-limit budget.
-          const CONCURRENCY_CONV = 4;
-          let convFetchCursor = 0;
-          const userConvResults: Array<{ userId: string; conversations: GHLConversation[] }> = [];
-          await Promise.all(
-            Array.from({ length: Math.min(CONCURRENCY_CONV, userIds.length) }, async () => {
-              while (convFetchCursor < userIds.length) {
-                const idx = convFetchCursor++;
-                const userId = userIds[idx];
-                try {
-                  const resp = await getConversations({ limit: 30, assignedTo: userId });
-                  userConvResults.push({ userId, conversations: resp.conversations });
-                } catch {
-                  userConvResults.push({ userId, conversations: [] });
-                }
-              }
-            })
-          );
-
-          // Dedupe conversations across users (a conv reassigned mid-stream
-          // could surface under multiple users) and remember which user we
-          // queried for, so we can attribute messages even if conv.assignedTo
-          // is missing from the GHL payload. Skip deleted conversations.
-          const convQueue: Array<{ conv: GHLConversation; queriedUserId: string }> = [];
-          const seenConvIds = new Set<string>();
-          for (const { userId, conversations } of userConvResults) {
-            for (const conv of conversations) {
-              if (seenConvIds.has(conv.id)) continue;
-              if (conv.deleted) continue;
-              seenConvIds.add(conv.id);
-              convQueue.push({ conv, queriedUserId: userId });
-            }
-          }
-
-          // Bounded-concurrency message fetches so a 100+-conversation queue
-          // doesn't fan out to hundreds of simultaneous requests.
-          const CONCURRENCY = 6;
-          let cursor = 0;
-          const collected: Message[][] = new Array(convQueue.length);
-          await Promise.all(
-            Array.from({ length: Math.min(CONCURRENCY, convQueue.length) }, async () => {
-              while (cursor < convQueue.length) {
-                const idx = cursor++;
-                const { conv, queriedUserId } = convQueue[idx];
-                const advisorId = conv.assignedTo ?? queriedUserId;
-                const advisorName = userMap.get(advisorId) ?? advisorId;
-                try {
-                  const msgResp = await getMessages(conv.id, { limit: 50 });
-                  const out: Message[] = [];
-                  for (const msg of msgResp.messages.messages) {
-                    const transformed = ghlMessageToInternal(msg, conv.contactId, {
-                      conversationId: conv.id,
-                      assignedTo: advisorName,
-                    });
-                    if (transformed) out.push(transformed);
-                  }
-                  collected[idx] = out;
-                } catch {
-                  collected[idx] = [];
-                }
-              }
-            })
-          );
-          for (const batch of collected) {
-            if (batch) messages.push(...batch);
-          }
-        } catch (err) {
-          console.error("[GHL] Conversations fetch failed:", err);
-        }
+        // Conversations/messages are fetched separately by /api/dashboard-messages
+        // (background load) so the expensive per-user message fan-out stays off
+        // the critical path of the initial dashboard render.
 
         // Fetch appointments per calendar over the last 90 days.
         // /calendars/events requires one of (calendarId, userId, groupId);
@@ -526,7 +451,6 @@ export async function GET() {
           opportunities,
           calls,
           tasks,
-          messages,
           appointments,
           pipelines: pipelineList,
           members,
@@ -538,7 +462,6 @@ export async function GET() {
           meta: {
             totalContacts: contacts.length,
             totalOpportunities: opportunities.length,
-            totalMessages: messages.length,
             fetchedAt: new Date().toISOString(),
             debugAttribution,
           },

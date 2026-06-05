@@ -29,7 +29,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_fields",
     description:
-      "Lists the available entities (contacts, opportunities, pautas, appointments, messages, tasks, calls) and their queryable fields. Always call this first if you're unsure what fields exist on pautas (custom-object properties vary per location).",
+      "Lists the available entities (contacts, opportunities, pautas, appointments, messages) and their queryable fields. Always call this first if you're unsure what fields exist on pautas (custom-object properties vary per location).",
     input_schema: {
       type: "object",
       properties: {
@@ -424,6 +424,26 @@ function clampLimit(n: unknown, def = DEFAULT_LIMIT): number {
   return Math.min(MAX_LIMIT, Math.max(1, Math.floor(v)));
 }
 
+// Parse an ISO date filter bound to a millisecond timestamp. A date-only string
+// ("2026-05-31") is interpreted in local time; upper ("before") bounds are pushed
+// to the end of that day so a date-only `*Before` includes records from anywhere
+// on that day instead of cutting off at local midnight. Strings carrying a time
+// component are parsed as-is.
+function dateBound(s: string, end: boolean): number {
+  const trimmed = s.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (m) {
+    const [, y, mo, d] = m;
+    return end
+      ? new Date(+y, +mo - 1, +d, 23, 59, 59, 999).getTime()
+      : new Date(+y, +mo - 1, +d, 0, 0, 0, 0).getTime();
+  }
+  return new Date(trimmed).getTime();
+}
+
+const startBound = (s: string): number => dateBound(s, false);
+const endBound = (s: string): number => dateBound(s, true);
+
 function lc(s: unknown): string {
   return typeof s === "string" ? s.toLowerCase() : "";
 }
@@ -606,7 +626,10 @@ const CSV_COLUMNS: Record<string, string[]> = {
 
 function csvCell(val: unknown): string {
   if (val === null || val === undefined) return "";
-  const str = Array.isArray(val) ? (val as unknown[]).join("|") : String(val);
+  let str: string;
+  if (Array.isArray(val)) str = (val as unknown[]).join("|");
+  else if (typeof val === "object") str = JSON.stringify(val);
+  else str = String(val);
   if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -851,8 +874,8 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
   const state = typeof input.state === "string" ? input.state : undefined;
   const country = typeof input.country === "string" ? input.country : undefined;
   const dnd = typeof input.dnd === "boolean" ? input.dnd : undefined;
-  const after = typeof input.createdAfter === "string" ? new Date(input.createdAfter).getTime() : undefined;
-  const before = typeof input.createdBefore === "string" ? new Date(input.createdBefore).getTime() : undefined;
+  const after = typeof input.createdAfter === "string" ? startBound(input.createdAfter) : undefined;
+  const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
   const limit = clampLimit(input.limit);
 
   const out: Contact[] = [];
@@ -875,12 +898,14 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
     if (after !== undefined && +new Date(c.createdAt) < after) continue;
     if (before !== undefined && +new Date(c.createdAt) > before) continue;
     out.push(c);
-    if (out.length >= limit) break;
+    if (out.length > limit) break;
   }
+  const truncated = out.length > limit;
+  const rows = truncated ? out.slice(0, limit) : out;
   return {
-    rows: out.map(compactContact),
-    returned: out.length,
-    truncated: out.length >= limit,
+    rows: rows.map(compactContact),
+    returned: rows.length,
+    truncated,
   };
 }
 
@@ -946,10 +971,10 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
   const maxValue = typeof input.maxValue === "number" ? input.maxValue : undefined;
   const minProb = typeof input.minProbability === "number" ? input.minProbability : undefined;
   const maxProb = typeof input.maxProbability === "number" ? input.maxProbability : undefined;
-  const after = typeof input.createdAfter === "string" ? new Date(input.createdAfter).getTime() : undefined;
-  const before = typeof input.createdBefore === "string" ? new Date(input.createdBefore).getTime() : undefined;
-  const closedAfter = typeof input.closedAfter === "string" ? new Date(input.closedAfter).getTime() : undefined;
-  const closedBefore = typeof input.closedBefore === "string" ? new Date(input.closedBefore).getTime() : undefined;
+  const after = typeof input.createdAfter === "string" ? startBound(input.createdAfter) : undefined;
+  const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
+  const closedAfter = typeof input.closedAfter === "string" ? startBound(input.closedAfter) : undefined;
+  const closedBefore = typeof input.closedBefore === "string" ? endBound(input.closedBefore) : undefined;
   const limit = clampLimit(input.limit);
 
   const out: Opportunity[] = [];
@@ -979,12 +1004,14 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
       if (closedBefore !== undefined && t > closedBefore) continue;
     }
     out.push(o);
-    if (out.length >= limit) break;
+    if (out.length > limit) break;
   }
+  const truncated = out.length > limit;
+  const rows = truncated ? out.slice(0, limit) : out;
   return {
-    rows: out.map(compactOpp),
-    returned: out.length,
-    truncated: out.length >= limit,
+    rows: rows.map(compactOpp),
+    returned: rows.length,
+    truncated,
   };
 }
 
@@ -1011,12 +1038,14 @@ function searchPautas(input: ToolInput, data: ChatDataset, index: ChatIndex) {
     if (tipo && p.tipo !== tipo) continue;
     if (contactId && p.contactId !== contactId) continue;
     out.push(p);
-    if (out.length >= limit) break;
+    if (out.length > limit) break;
   }
+  const truncated = out.length > limit;
+  const rows = truncated ? out.slice(0, limit) : out;
   return {
-    rows: out.map((p) => compactPauta(p, index)),
-    returned: out.length,
-    truncated: out.length >= limit,
+    rows: rows.map((p) => compactPauta(p, index)),
+    returned: rows.length,
+    truncated,
   };
 }
 
@@ -1032,8 +1061,8 @@ function listAppointments(input: ToolInput, data: ChatDataset, index: ChatIndex)
   const status = typeof input.status === "string" ? input.status : undefined;
   const assignedTo = typeof input.assignedTo === "string" ? input.assignedTo : undefined;
   const contactId = typeof input.contactId === "string" ? input.contactId : undefined;
-  const after = typeof input.startAfter === "string" ? new Date(input.startAfter).getTime() : undefined;
-  const before = typeof input.startBefore === "string" ? new Date(input.startBefore).getTime() : undefined;
+  const after = typeof input.startAfter === "string" ? startBound(input.startAfter) : undefined;
+  const before = typeof input.startBefore === "string" ? endBound(input.startBefore) : undefined;
   const limit = clampLimit(input.limit);
 
   const out: Appointment[] = [];
@@ -1047,12 +1076,14 @@ function listAppointments(input: ToolInput, data: ChatDataset, index: ChatIndex)
       if (before !== undefined && t > before) continue;
     }
     out.push(a);
-    if (out.length >= limit) break;
+    if (out.length > limit) break;
   }
+  const truncated = out.length > limit;
+  const rows = truncated ? out.slice(0, limit) : out;
   return {
-    rows: out.map((a) => compactAppt(a, index)),
-    returned: out.length,
-    truncated: out.length >= limit,
+    rows: rows.map((a) => compactAppt(a, index)),
+    returned: rows.length,
+    truncated,
   };
 }
 
@@ -1090,6 +1121,7 @@ function aggregateRows(
     return {
       groups: [{ key: "total", count: rows.length, ...metricValue(rows, metric, entity) }],
       total: rows.length,
+      truncated: false,
     };
   }
 
@@ -1281,8 +1313,8 @@ function applyContactFilters(rows: Contact[], f: ToolInput): Contact[] {
     if (typeof f.state === "string" && !isub(c.state, f.state)) return false;
     if (typeof f.country === "string" && !isub(c.country, f.country)) return false;
     if (typeof f.dnd === "boolean" && Boolean(c.dnd) !== f.dnd) return false;
-    if (typeof f.createdAfter === "string" && +new Date(c.createdAt) < +new Date(f.createdAfter)) return false;
-    if (typeof f.createdBefore === "string" && +new Date(c.createdAt) > +new Date(f.createdBefore)) return false;
+    if (typeof f.createdAfter === "string" && +new Date(c.createdAt) < startBound(f.createdAfter)) return false;
+    if (typeof f.createdBefore === "string" && +new Date(c.createdAt) > endBound(f.createdBefore)) return false;
     return true;
   });
 }
@@ -1304,13 +1336,13 @@ function applyOppFilters(rows: Opportunity[], f: ToolInput): Opportunity[] {
     if (typeof f.maxValue === "number" && o.value > f.maxValue) return false;
     if (typeof f.minProbability === "number" && (o.probability ?? 0) < f.minProbability) return false;
     if (typeof f.maxProbability === "number" && (o.probability ?? 100) > f.maxProbability) return false;
-    if (typeof f.createdAfter === "string" && +new Date(o.createdAt) < +new Date(f.createdAfter)) return false;
-    if (typeof f.createdBefore === "string" && +new Date(o.createdAt) > +new Date(f.createdBefore)) return false;
+    if (typeof f.createdAfter === "string" && +new Date(o.createdAt) < startBound(f.createdAfter)) return false;
+    if (typeof f.createdBefore === "string" && +new Date(o.createdAt) > endBound(f.createdBefore)) return false;
     if (typeof f.closedAfter === "string") {
-      if (!o.closedAt || +new Date(o.closedAt) < +new Date(f.closedAfter)) return false;
+      if (!o.closedAt || +new Date(o.closedAt) < startBound(f.closedAfter)) return false;
     }
     if (typeof f.closedBefore === "string") {
-      if (!o.closedAt || +new Date(o.closedAt) > +new Date(f.closedBefore)) return false;
+      if (!o.closedAt || +new Date(o.closedAt) > endBound(f.closedBefore)) return false;
     }
     return true;
   });
@@ -1328,8 +1360,8 @@ function applyApptFilters(rows: Appointment[], f: ToolInput): Appointment[] {
   return rows.filter((a) => {
     if (typeof f.status === "string" && !ieq(a.status, f.status)) return false;
     if (typeof f.assignedTo === "string" && !ieq(a.assignedTo, f.assignedTo)) return false;
-    if (typeof f.startAfter === "string" && +new Date(a.startTime) < +new Date(f.startAfter)) return false;
-    if (typeof f.startBefore === "string" && +new Date(a.startTime) > +new Date(f.startBefore)) return false;
+    if (typeof f.startAfter === "string" && +new Date(a.startTime) < startBound(f.startAfter)) return false;
+    if (typeof f.startBefore === "string" && +new Date(a.startTime) > endBound(f.startBefore)) return false;
     return true;
   });
 }
