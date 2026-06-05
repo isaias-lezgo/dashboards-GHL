@@ -12,6 +12,38 @@ const GHL_API_VERSION = "2023-02-21";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// ---- Global concurrency limiter ----
+// Every GHL request in this server process funnels through ghlFetch, and BOTH
+// dashboard routes (/api/dashboard and /api/dashboard-messages) import this same
+// module. Each route already bounds its own fan-out, but nothing bounds them
+// *together* — run concurrently they burst well past GHL's per-token rate limit,
+// which produced 429 storms and 401 "Command timed out" gateway errors. A single
+// process-wide semaphore caps total in-flight requests so the combined load stays
+// safe no matter how the fan-outs overlap. Tunable; GHL's burst limit is ~100
+// requests / 10s, so 8 concurrent leaves comfortable headroom.
+const MAX_CONCURRENT_GHL_REQUESTS = 8;
+let activeGhlRequests = 0;
+const ghlWaitQueue: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  if (activeGhlRequests < MAX_CONCURRENT_GHL_REQUESTS) {
+    activeGhlRequests++;
+    return Promise.resolve();
+  }
+  // At capacity — wait until a slot is handed off directly (active count stays
+  // pinned at the max while the slot transfers, so we never over-admit).
+  return new Promise<void>((resolve) => ghlWaitQueue.push(resolve));
+}
+
+function releaseSlot(): void {
+  const next = ghlWaitQueue.shift();
+  if (next) {
+    next(); // hand the slot straight to the next waiter; active count unchanged
+  } else {
+    activeGhlRequests--;
+  }
+}
+
 interface GHLRequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: Record<string, unknown>;
@@ -82,53 +114,73 @@ async function ghlFetch<T>(
     body: body ? JSON.stringify(body) : undefined,
   };
 
-  // 4 retries (5 attempts total) with exponential backoff (1s, 2s, 4s, 8s) on
-  // 429, transient 5xx, and network/timeout failures.
-  for (let attempt = 0; attempt <= 4; attempt++) {
-    let response: Response;
-    try {
-      response = await fetch(url.toString(), {
-        ...requestInit,
-        signal: AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
-      });
-    } catch (err) {
-      // Timeout (AbortError) or network failure — retry, rethrow on last attempt.
-      const message = err instanceof Error ? err.message : String(err);
-      if (attempt === 4) {
-        throw new Error(`GHL API Error: request failed after retries - ${message}`);
+  // Cap total concurrent in-flight GHL requests across the whole process. Held
+  // for the request's full lifetime — including retry backoff — so that when GHL
+  // pushes back with 429s we aggressively shed concurrency instead of hammering.
+  await acquireSlot();
+  try {
+    // 4 retries (5 attempts total) with exponential backoff (1s, 2s, 4s, 8s) on
+    // 429, transient 5xx, transient 401 timeouts, and network/timeout failures.
+    for (let attempt = 0; attempt <= 4; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(url.toString(), {
+          ...requestInit,
+          signal: AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
+        });
+      } catch (err) {
+        // Timeout (AbortError) or network failure — retry, rethrow on last attempt.
+        const message = err instanceof Error ? err.message : String(err);
+        if (attempt === 4) {
+          throw new Error(`GHL API Error: request failed after retries - ${message}`);
+        }
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`[GHL] Request failed (${message}) — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
+        await sleep(delay);
+        continue;
       }
-      const delay = Math.pow(2, attempt) * 1000;
-      console.warn(`[GHL] Request failed (${message}) — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
-      await sleep(delay);
-      continue;
-    }
 
-    if (response.status === 429 || response.status >= 500) {
-      if (attempt === 4) {
-        throw new Error(`GHL API Error: ${response.status} - retries exhausted`);
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt === 4) {
+          throw new Error(`GHL API Error: ${response.status} - retries exhausted`);
+        }
+        const retryAfter = Number(response.headers.get("Retry-After") ?? 0);
+        const delay = retryAfter > 0 ? retryAfter * 1000 : Math.pow(2, attempt) * 1000;
+        console.warn(`[GHL] ${response.status} — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
+        await sleep(delay);
+        continue;
       }
-      const retryAfter = Number(response.headers.get("Retry-After") ?? 0);
-      const delay = retryAfter > 0 ? retryAfter * 1000 : Math.pow(2, attempt) * 1000;
-      console.warn(`[GHL] ${response.status} — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
-      await sleep(delay);
-      continue;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        // GHL returns `401 {"message":"Command timed out"}` when its gateway
+        // times out under load — a transient error, NOT an auth failure (a real
+        // auth error carries a different message). Retry it like a 429; genuine
+        // 401s and all other non-ok statuses still throw immediately.
+        const isTransientTimeout =
+          response.status === 401 && /timed out/i.test(errorText);
+        if (isTransientTimeout && attempt < 4) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.warn(`[GHL] 401 timeout — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
+          await sleep(delay);
+          continue;
+        }
+        console.error(`[GHL API Error] ${response.status}: ${errorText}`);
+        throw new Error(`GHL API Error: ${response.status} - ${errorText}`);
+      }
+
+      // Some endpoints (204 No Content, or empty-body DELETE/POST mutations like
+      // the Facebook pause/resume/delete actions) return no JSON. Calling
+      // response.json() on an empty body throws, turning a success into an error.
+      if (response.status === 204) return undefined as T;
+      const text = await response.text();
+      return (text ? JSON.parse(text) : undefined) as T;
     }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[GHL API Error] ${response.status}: ${errorText}`);
-      throw new Error(`GHL API Error: ${response.status} - ${errorText}`);
-    }
-
-    // Some endpoints (204 No Content, or empty-body DELETE/POST mutations like
-    // the Facebook pause/resume/delete actions) return no JSON. Calling
-    // response.json() on an empty body throws, turning a success into an error.
-    if (response.status === 204) return undefined as T;
-    const text = await response.text();
-    return (text ? JSON.parse(text) : undefined) as T;
+    throw new Error("GHL API Error: unexpected retry loop exit");
+  } finally {
+    releaseSlot();
   }
-
-  throw new Error("GHL API Error: unexpected retry loop exit");
 }
 
 // ============ TAGS ============
@@ -145,6 +197,23 @@ export interface GHLTagsResponse {
 
 export async function getTags(): Promise<GHLTagsResponse> {
   return ghlFetch<GHLTagsResponse>("/locations/:locationId/tags");
+}
+
+// ============ LOCATIONS (SUB-ACCOUNTS) ============
+
+export interface GHLLocation {
+  id: string;
+  name: string;
+  companyId?: string;
+  logoUrl?: string;
+}
+
+export interface GHLLocationResponse {
+  location: GHLLocation;
+}
+
+export async function getLocation(): Promise<GHLLocationResponse> {
+  return ghlFetch<GHLLocationResponse>("/locations/:locationId");
 }
 
 // ============ CONTACTS ============
