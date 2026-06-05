@@ -11,7 +11,6 @@ const SYNC_STEPS = [
   "Contactos",
   "Oportunidades",
   "Pautas",
-  "Conversaciones",
   "Citas",
 ] as const
 
@@ -84,8 +83,7 @@ function stepFromMessage(message: string): number {
   if (lower.includes("contacto")) return 1
   if (lower.includes("oportunidad")) return 2
   if (lower.includes("pauta") || lower.includes("procesando")) return 3
-  if (lower.includes("conversacion")) return 4
-  if (lower.includes("citas") || /\bcita\b/.test(lower)) return 5
+  if (lower.includes("citas") || /\bcita\b/.test(lower)) return 4
   return 0
 }
 

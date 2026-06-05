@@ -51,6 +51,7 @@ export interface Contact {
   adType?: string
   adId?: string
   attributionUrl?: string
+  attributionMedium?: string
 }
 
 export interface Opportunity {
@@ -102,6 +103,7 @@ export interface Opportunity {
   adType?: string
   adId?: string
   attributionUrl?: string
+  attributionMedium?: string  // computed: GHL-internal medium (whatsapp, instagram, calendar, manual, …) or utmSessionSource fallback
 }
 
 export interface Call {

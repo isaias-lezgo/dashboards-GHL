@@ -19,8 +19,9 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check, ExternalLink } from "lucide-react"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import { OrigenDeLeadInfo } from "./origen-de-lead-criteria"
 import {
   BRAND_AMBER,
   CHART_PALETTE,
@@ -44,6 +45,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+// Spanish labels for raw GHL appointment statuses.
+const APPT_STATUS_LABELS: Record<string, string> = {
+  showed: "Asistió",
+  confirmed: "Confirmada",
+  new: "Pendiente",
+  noshow: "No asistió",
+  cancelled: "Cancelada",
+  invalid: "Inválida",
+}
+
+const apptStatusLabel = (s: string) => APPT_STATUS_LABELS[s] ?? s
 
 interface MarketingDashboardProps {
   opportunities: Opportunity[]
@@ -67,34 +87,33 @@ function toUTCDateStr(val: string | number | null | undefined): string {
   return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
 }
 
-// Stage colors — consistent across all stacked charts
-const STAGE_COLORS: Record<string, string> = {
-  "Primera Cita": "#3b82f6",
-  "Segunda Cita": "#8b5cf6",
-  "Envío de propuesta": "#f59e0b",
-  "Envío de liga de pago": "#06b6d4",
-  "Proceso de Implementación": "#10b981",
-  "Cliente Activo": "#22c55e",
-  "Servicio Terminado": "#6b7280",
-  "Prospecto Perdido": "#ef4444",
-  Discovery: "#3b82f6",
-  Proposal: "#8b5cf6",
-  Negotiation: "#f59e0b",
-  "Closed Won": "#22c55e",
-  "Closed Lost": "#ef4444",
-}
-
 // CHART_PALETTE imported from dashboard-ui (amber-led)
 
-const LOST_REASON_PALETTE = [
-  "#ef4444", "#f59e0b", "#f97316", "#dc2626", "#6b7280",
-  "#8b5cf6", "#ec4899", "#0ea5e9", "#10b981", "#84cc16",
-]
+const PLATFORM_COLORS: Record<string, string> = {
+  "Instagram":  "#E1306C",
+  "Facebook":   "#1877F2",
+  "TikTok":     "#010101",
+  "Google":     "#EA4335",
+  "WhatsApp":   "#25D366",
+  "Otro":       "#6b7280",
+}
 
-const AD_TYPE_COLORS: Record<string, string> = {
-  Form: BRAND_AMBER,
-  DM: "#335577",
-  Manual: "#10b981",
+const PLATFORM_ORDER = ["Instagram", "Facebook", "TikTok", "Google", "WhatsApp", "Otro"]
+
+function platformLabel(opp: Opportunity): string {
+  const url  = (opp.attributionUrl ?? "").toLowerCase()
+  const src  = (opp.source ?? "").toLowerCase()
+  if (url.includes("instagram.com") || src.includes("instagram")) return "Instagram"
+  if (
+    url.includes("fb.me") || url.includes("facebook.com") || url.includes("fb.com") ||
+    src.includes("facebook") || src.includes("meta") || src === "fb" ||
+    /^\d{10,}$/.test(opp.source ?? "")
+  ) return "Facebook"
+  if (src.includes("tiktok")) return "TikTok"
+  if (src.includes("google") || src.includes("bing") || src.includes("yahoo")) return "Google"
+  const med = (opp.attributionMedium ?? "").toLowerCase()
+  if (med === "whatsapp" || (opp.contact?.tags ?? []).some((t) => t.toLowerCase().includes("inbound whatsapp"))) return "WhatsApp"
+  return "Otro"
 }
 
 const REINGRESO_LABELS = [
@@ -109,7 +128,7 @@ const REINGRESO_COLORS: Record<string, string> = {
   "Primer ingreso":    "#3b82f6",
   "Segundo reingreso": "#f59e0b",
   "Tercer reingreso":  "#10b981",
-  "Cuarto reingreso":  "#fb5cf6",
+  "Cuarto reingreso":  "#8b5cf6",
   "5to+ reingreso":    "#ef4444",
 }
 
@@ -117,13 +136,6 @@ function reingresoLabel(zeroBasedIndex: number): string {
   return REINGRESO_LABELS[Math.min(zeroBasedIndex, REINGRESO_LABELS.length - 1)]
 }
 
-function adTypeColor(adType: string, index: number): string {
-  return AD_TYPE_COLORS[adType] ?? chartPaletteColor(index)
-}
-
-const FUNNEL_COLORS = [
-  "#3b82f6", "#4f46e5", "#7c3aed", "#9333ea", "#c026d3", "#db2777",
-]
 
 const PAID_SOCIAL_SOURCES = ["meta", "facebook", "instagram", "tiktok", "fb", "snapchat", "pinterest"]
 const PAID_SOCIAL_MEDIUMS = ["paid_social", "paidsocial", "paid social", "cpc", "cpm", "paid_search", "paid_ads"]
@@ -148,12 +160,28 @@ function isPaidSocial(opp: Opportunity): boolean {
   return PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) || PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m))
 }
 
-function isLostStage(stage: string): boolean {
-  const s = stage.toLowerCase()
-  return s.includes("perdido") || s.includes("lost") || s.includes("terminado")
+const SOCIAL_ORGANIC_SOURCES = ["instagram", "facebook", "twitter", "linkedin", "youtube", "tiktok", "pinterest", "social_media", "social media", "organic_social"]
+
+const SOURCE_CATEGORY_ORDER = ["Paid Social", "Paid Search", "Social Media", "CRM UI", "Orgánico Web", "Otro"]
+const SOURCE_CATEGORY_COLORS: Record<string, string> = {
+  "Paid Social":   "#3b82f6",
+  "Paid Search":   "#0891b2",
+  "Social Media":  "#8b5cf6",
+  "CRM UI":        "#f59e0b",
+  "Orgánico Web":  "#10b981",
+  "Otro":          "#6b7280",
 }
 
-function stageColor(stage: string, index: number) { return STAGE_COLORS[stage] ?? chartPaletteColor(index) }
+function sourceCategory(opp: Opportunity): string {
+  const src = (opp.source ?? "").toLowerCase()
+  const med = (opp.adType ?? "").toLowerCase()
+  if (PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) || PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m))) return "Paid Social"
+  if (PAID_SEARCH_SOURCES.some((s) => src.includes(s)) || PAID_SEARCH_MEDIUMS.some((m) => med.includes(m))) return "Paid Search"
+  if (SOCIAL_ORGANIC_SOURCES.some((s) => src.includes(s)) || med.includes("social")) return "Social Media"
+  if (src === "" || src === "crm" || src === "crm ui" || src === "manual" || med === "" ) return "CRM UI"
+  if (src.includes("web") || src.includes("website") || src.includes("landing") || med === "organic" || med === "referral") return "Orgánico Web"
+  return "Otro"
+}
 
 // Pauta names from GHL look like "HEADLINE - URL - NUMERIC_ID" with the
 // headline repeating across many creatives. Truncating from the left collapses
@@ -174,15 +202,6 @@ function shortPautaName(full: string): string {
   if (token.length > 10) token = token.slice(0, 10)
   const shortHead = head.length > 22 ? head.slice(0, 22) + "…" : head
   return token ? `${shortHead} · ${token}` : shortHead
-}
-
-function normalizeUrl(raw: string): string {
-  try {
-    const u = new URL(raw)
-    return (u.hostname + u.pathname).replace(/\/$/, "").toLowerCase()
-  } catch {
-    return ""
-  }
 }
 
 // Landing URLs in this location are the social links themselves:
@@ -220,19 +239,25 @@ function paidTrafficUrlLabel(url: string): string {
   }
 }
 
-function extractPautaUrl(nombrePauta: string): string {
-  const parts = nombrePauta.split(" - ").map((s) => s.trim()).filter(Boolean)
-  const url = parts[1] ?? ""
-  return normalizeUrl(url)
+// Contact-side counterpart of platformLabel(opp): map a contact's attribution
+// to the social platform it originated from. GHL stores the click-through URL
+// on each attribution (instagram.com/…, fb.me/…, tiktok.com/…); unknown/absent
+// signals fall back to "Otro".
+function platformFromContact(c?: Contact): string {
+  const url = (c?.attributionUrl ?? "").toLowerCase()
+  const src = (c?.source ?? "").toLowerCase()
+  if (url.includes("instagram.com") || src.includes("instagram")) return "Instagram"
+  if (
+    url.includes("fb.me") || url.includes("facebook.com") || url.includes("fb.com") ||
+    src.includes("facebook") || src.includes("meta") || src === "fb" ||
+    /^\d{10,}$/.test(c?.source ?? "")
+  ) return "Facebook"
+  if (url.includes("tiktok") || src.includes("tiktok")) return "TikTok"
+  if (src.includes("google") || src.includes("bing") || src.includes("yahoo")) return "Google"
+  const med = (c?.attributionMedium ?? "").toLowerCase()
+  if (med === "whatsapp" || (c?.tags ?? []).some((t) => t.toLowerCase().includes("inbound whatsapp"))) return "WhatsApp"
+  return "Otro"
 }
-
-function sourceLabel(opp: Opportunity): string {
-  const parts: string[] = []
-  if (opp.adType) parts.push(opp.adType)
-  if (opp.source) parts.push(opp.source)
-  return parts.length > 0 ? parts.join(" / ") : "Directo"
-}
-
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
@@ -249,6 +274,21 @@ function CopyButton({ value }: { value: string }) {
     >
       {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
     </button>
+  )
+}
+
+function LinkButton({ value }: { value: string }) {
+  return (
+    <a
+      href={value}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="ml-1.5 inline-flex shrink-0 items-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+      title={value}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <ExternalLink className="h-3 w-3" />
+    </a>
   )
 }
 
@@ -270,6 +310,36 @@ function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: 
           ].join(" ")}
         >
           {opt}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+type OriginGroupBy = "platform" | "id" | "url"
+
+const ORIGIN_GROUP_OPTIONS: { value: OriginGroupBy; label: string; column: string }[] = [
+  { value: "platform", label: "Plataforma", column: "Plataforma" },
+  { value: "id",       label: "ID Pauta",   column: "ID de Pauta" },
+  { value: "url",      label: "URL Pauta",  column: "URL de Pauta" },
+]
+
+function OriginGroupByToggle({ value, onChange }: { value: OriginGroupBy; onChange: (v: OriginGroupBy) => void }) {
+  return (
+    <div className="flex items-center overflow-hidden rounded border border-border/50 text-[10px] font-medium">
+      {ORIGIN_GROUP_OPTIONS.map((opt, i) => (
+        <button
+          key={opt.value}
+          onClick={(e) => { e.stopPropagation(); onChange(opt.value) }}
+          className={[
+            "px-2 py-0.5 transition-colors uppercase tracking-wide",
+            i > 0 ? "border-l border-border/50" : "",
+            value === opt.value
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
+          ].join(" ")}
+        >
+          {opt.label}
         </button>
       ))}
     </div>
@@ -303,21 +373,27 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
   const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
   const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("url")
+  const [originGroupBy, setOriginGroupBy] = useState<OriginGroupBy>("platform")
   const [onlyReingresos, setOnlyReingresos] = useState(false)
+  const [pautaUniqueLeads, setPautaUniqueLeads] = useState(false)
   const [stageTopN, setStageTopN] = useState(30)
   const [lostTopN, setLostTopN] = useState(30)
   const [apptTopN, setApptTopN] = useState(Infinity)
   const [wonTopN, setWonTopN] = useState(Infinity)
+  const [apptStatusFilter, setApptStatusFilter] = useState<string>("all")
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
   }, [])
 
+  // Drill to the contacts (leads) behind a set of pautas. Resolving to
+  // opportunities here would drastically undercount, since most pauta contacts
+  // never become opportunities — the drawer count must track the bar's count.
   const openPautaDrill = useCallback((title: string, pautaItems: Pauta[]) => {
     const contactIds = new Set(pautaItems.map(p => p.contactId).filter((id): id is string => Boolean(id)))
-    const opps = opportunities.filter(o => contactIds.has(o.contactId))
-    setDrill({ open: true, title, opportunities: opps })
-  }, [opportunities])
+    const contactItems = contacts.filter(c => contactIds.has(c.id))
+    setDrill({ open: true, title, opportunities: [], contactItems })
+  }, [contacts])
 
   // Derive ordered stage list using GHL pipeline order; fall back to alphabetical for unlisted stages
   const stageOrder = useMemo(() => {
@@ -334,169 +410,86 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return ordered
   }, [opportunities, pipelines])
 
-  // 1. Leads por Campaña
-  const leadsByCampaign = useMemo(() => {
-    const counts = new Map<string, number>()
+  // Leads por Plataforma — ALL opportunities, stacked by source category
+  const leadsByCategory = useMemo(() => {
+    // platform → sourceCategory → count
+    const platMap = new Map<string, Map<string, number>>()
     for (const o of opportunities) {
-      const key = o.campaign || "Sin campaña"
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      const plat = platformLabel(o)
+      const cat = sourceCategory(o)
+      if (!platMap.has(plat)) platMap.set(plat, new Map())
+      const catCounts = platMap.get(plat)!
+      catCounts.set(cat, (catCounts.get(cat) ?? 0) + 1)
     }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([campaign, count]) => ({ campaign, count }))
+    return Array.from(platMap.entries())
+      .map(([platform, catCounts]) => {
+        const breakdown = SOURCE_CATEGORY_ORDER
+          .filter((cat) => catCounts.has(cat))
+          .map((cat) => ({ category: cat, count: catCounts.get(cat)!, color: SOURCE_CATEGORY_COLORS[cat] ?? "#6b7280" }))
+        const total = breakdown.reduce((s, e) => s + e.count, 0)
+        return { platform, total, color: PLATFORM_COLORS[platform] ?? "#6b7280", breakdown }
+      })
+      .sort((a, b) => b.total - a.total)
   }, [opportunities])
 
-  // 2. Leads por Fuente
-  const leadsBySource = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const o of opportunities) {
-      const key = sourceLabel(o)
-      counts.set(key, (counts.get(key) ?? 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([source, count]) => ({ source, count }))
-  }, [opportunities])
-
-  // 3. Campaña por Etapa del Pipeline
-  const campaignByStage = useMemo(() => {
-    const campaigns = Array.from(new Set(opportunities.map((o) => o.campaign || "Sin campaña")))
-    return campaigns
-      .map((campaign) => {
-        const row: Record<string, string | number> = { campaign }
-        for (const stage of stageOrder) {
-          row[stage] = opportunities.filter(
-            (o) => (o.campaign || "Sin campaña") === campaign && o.stage === stage
-          ).length
-        }
-        return row
-      })
-      .filter((row) => stageOrder.some((s) => (row[s] as number) > 0))
-      .sort((a, b) => {
-        const sumA = stageOrder.reduce((acc, s) => acc + ((a[s] as number) || 0), 0)
-        const sumB = stageOrder.reduce((acc, s) => acc + ((b[s] as number) || 0), 0)
-        return sumB - sumA
-      })
-      .slice(0, 10)
-  }, [opportunities, stageOrder])
-
-  // 4. Fuente por Etapa del Pipeline
-  const sourceByStage = useMemo(() => {
-    const sources = Array.from(new Set(opportunities.map((o) => sourceLabel(o))))
-    return sources
-      .map((source) => {
-        const row: Record<string, string | number> = { source }
-        for (const stage of stageOrder) {
-          row[stage] = opportunities.filter(
-            (o) => sourceLabel(o) === source && o.stage === stage
-          ).length
-        }
-        return row
-      })
-      .filter((row) => stageOrder.some((s) => (row[s] as number) > 0))
-      .sort((a, b) => {
-        const sumA = stageOrder.reduce((acc, s) => acc + ((a[s] as number) || 0), 0)
-        const sumB = stageOrder.reduce((acc, s) => acc + ((b[s] as number) || 0), 0)
-        return sumB - sumA
-      })
-      .slice(0, 10)
-  }, [opportunities, stageOrder])
-
-  const stageChartConfig = Object.fromEntries(
-    stageOrder.map((stage, i) => [stage, { label: stage, color: stageColor(stage, i) }])
-  )
-
-  // 5. Leads Perdidos por Campaña y Razón
-  const lostOpps = useMemo(() => opportunities.filter((o) => o.status === "lost"), [opportunities])
-
-  const lostReasons = useMemo(() => {
-    const s = new Set(lostOpps.map((o) => o.lostReason || "Sin razón"))
-    return Array.from(s).sort()
-  }, [lostOpps])
-
-  const lostByCampaignReason = useMemo(() => {
-    const campaigns = Array.from(new Set(lostOpps.map((o) => o.campaign || "Sin campaña")))
-    return campaigns
-      .map((campaign) => {
-        const row: Record<string, string | number> = { campaign }
-        for (const reason of lostReasons) {
-          row[reason] = lostOpps.filter(
-            (o) => (o.campaign || "Sin campaña") === campaign && (o.lostReason || "Sin razón") === reason
-          ).length
-        }
-        return row
-      })
-      .filter((row) => lostReasons.some((r) => (row[r] as number) > 0))
-      .sort((a, b) => {
-        const sumA = lostReasons.reduce((acc, r) => acc + ((a[r] as number) || 0), 0)
-        const sumB = lostReasons.reduce((acc, r) => acc + ((b[r] as number) || 0), 0)
-        return sumB - sumA
-      })
-      .slice(0, 10)
-  }, [lostOpps, lostReasons])
-
-  const lostReasonConfig = Object.fromEntries(
-    lostReasons.map((r, i) => [r, { label: r, color: LOST_REASON_PALETTE[i % LOST_REASON_PALETTE.length] }])
-  )
-
-  // 6. Leads por Tipo de Anuncio (donut)
-  const leadsByAdType = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const o of opportunities) {
-      const key = o.adType || "Otro"
-      counts.set(key, (counts.get(key) ?? 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([adType, value], i) => ({ adType, value, color: adTypeColor(adType, i) }))
-  }, [opportunities])
-
-  // 7. Embudo Paid Social
-  const paidSocialFunnel = useMemo(() => {
-    const paid = opportunities.filter((o) => isPaidSocial(o) && !isLostStage(o.stage))
-    const counts = new Map<string, number>()
-    for (const o of paid) counts.set(o.stage, (counts.get(o.stage) ?? 0) + 1)
-    return stageOrder
-      .filter((s) => !isLostStage(s) && counts.has(s))
-      .map((stage) => ({ stage, count: counts.get(stage)! }))
-  }, [opportunities, stageOrder])
-
-  const pautasByTipo = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const p of pautas) counts.set(p.tipo, (counts.get(p.tipo) ?? 0) + 1)
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([tipo, count]) => ({ tipo, count }))
-  }, [pautas])
-
-  const pautasByNombre = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const p of pautas) counts.set(p.nombrePauta, (counts.get(p.nombrePauta) ?? 0) + 1)
-    return Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
-      .map(([nombre, count]) => ({ nombre, count }))
-  }, [pautas])
-
-  // contactId → { pautaName → Pauta[] } so we can both count opps per pauta
-  // and surface the matching pautas in the drill-down.
-  const contactToPautas = useMemo(() => {
-    const m = new Map<string, Map<string, Pauta[]>>()
-    for (const p of pautas) {
-      if (!p.contactId) continue
-      let byName = m.get(p.contactId)
-      if (!byName) {
-        byName = new Map<string, Pauta[]>()
-        m.set(p.contactId, byName)
-      }
-      const arr = byName.get(p.nombrePauta) ?? []
-      arr.push(p)
-      byName.set(p.nombrePauta, arr)
-    }
+  const contactById = useMemo(() => {
+    const m = new Map<string, Contact>()
+    for (const c of contacts) m.set(c.id, c)
     return m
-  }, [pautas])
+  }, [contacts])
+
+  // Pautas por canal (tipo) apiladas por plataforma de origen del contacto.
+  // pautaUniqueLeads === true counts distinct contacts per tipo×platform (so the
+  // tooltip matches the drill drawer exactly); otherwise it counts pauta records.
+  const { pautasByTipoRows, pautasByTipoPlatforms, pautasByTipoTotal } = useMemo(() => {
+    const byTipo = new Map<string, Map<string, number>>()
+    const platformTotals = new Map<string, number>()
+
+    if (pautaUniqueLeads) {
+      // tipo|platform → distinct contactIds
+      const cells = new Map<string, Map<string, Set<string>>>()
+      const perPlatform = new Map<string, Set<string>>()
+      for (const p of pautas) {
+        if (!p.contactId) continue
+        const platform = platformFromContact(contactById.get(p.contactId))
+        if (!cells.has(p.tipo)) cells.set(p.tipo, new Map())
+        const byPlatform = cells.get(p.tipo)!
+        if (!byPlatform.has(platform)) byPlatform.set(platform, new Set())
+        byPlatform.get(platform)!.add(p.contactId)
+        if (!perPlatform.has(platform)) perPlatform.set(platform, new Set())
+        perPlatform.get(platform)!.add(p.contactId)
+      }
+      for (const [tipo, byPlatform] of cells) {
+        const m = new Map<string, number>()
+        for (const [platform, ids] of byPlatform) m.set(platform, ids.size)
+        byTipo.set(tipo, m)
+      }
+      for (const [platform, ids] of perPlatform) platformTotals.set(platform, ids.size)
+    } else {
+      for (const p of pautas) {
+        const platform = platformFromContact(p.contactId ? contactById.get(p.contactId) : undefined)
+        if (!byTipo.has(p.tipo)) byTipo.set(p.tipo, new Map())
+        const m = byTipo.get(p.tipo)!
+        m.set(platform, (m.get(platform) ?? 0) + 1)
+        platformTotals.set(platform, (platformTotals.get(platform) ?? 0) + 1)
+      }
+    }
+
+    // Standardized "Origen de lead" legend: always present the full canonical
+    // platform order, including zero-count platforms, so the legend is identical
+    // across charts regardless of which platforms appear in the data.
+    const platforms = [...PLATFORM_ORDER]
+    const sumRow = (r: Record<string, string | number>) => platforms.reduce((s, k) => s + (r[k] as number), 0)
+    const rows = Array.from(byTipo.entries())
+      .map(([tipo, m]) => {
+        const row: Record<string, string | number> = { tipo }
+        for (const k of platforms) row[k] = m.get(k) ?? 0
+        return row
+      })
+      .sort((a, b) => sumRow(b) - sumRow(a))
+    const pautasByTipoTotal = rows.reduce((s, r) => s + sumRow(r), 0)
+    return { pautasByTipoRows: rows, pautasByTipoPlatforms: platforms, pautasByTipoTotal }
+  }, [pautas, contactById, pautaUniqueLeads])
 
   // Attribution (URL or Ad ID) × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = attribution key).
   const { pautaByStageRows, pautaByStageKeys, pautaByStageKeyCount } = useMemo(() => {
@@ -650,52 +643,44 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return { pautasByMonthRows: rows, pautasByMonthKeys: keys }
   }, [pautas, pautaReingresoMap])
 
-  // Last 30 days from today, grouped by adType (fuente del CRM).
-  const { oppsByDayRows, oppsByDayKeys } = useMemo(() => {
-    if (opportunities.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
-
-    // Build 30-day window ending today (UTC)
-    const todayMs = new Date(new Date().toISOString().slice(0, 10) + "T12:00:00Z").getTime()
-    const days: string[] = []
-    for (let i = 29; i >= 0; i--) {
-      days.push(new Date(todayMs - i * 86_400_000).toISOString().slice(0, 10))
-    }
-    const daySet = new Set(days)
-
-    // Map each opportunity to its UTC date string
-    const oppDates = opportunities.map((o) => toUTCDateStr(o.createdAt as string | number | null | undefined))
-
-    // Unique adType keys in window, ranked by volume
-    const adTypeTotals = new Map<string, number>()
-    for (let i = 0; i < opportunities.length; i++) {
-      if (!daySet.has(oppDates[i])) continue
-      const key = opportunities[i].adType || "Otro"
-      adTypeTotals.set(key, (adTypeTotals.get(key) ?? 0) + 1)
-    }
-    const keys = Array.from(adTypeTotals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([k]) => k)
-
-    if (keys.length === 0) return { oppsByDayRows: [], oppsByDayKeys: [] }
-
-    const rows = days.map((isoDay) => {
-      const row: Record<string, string | number> = { day: isoDay.slice(5), isoDay }
-      for (const k of keys) row[k] = 0
-      for (let i = 0; i < opportunities.length; i++) {
-        if (oppDates[i] !== isoDay) continue
-        const k = opportunities[i].adType || "Otro"
-        row[k] = (row[k] as number) + 1
-      }
-      return row
-    })
-
-    return { oppsByDayRows: rows, oppsByDayKeys: keys }
-  }, [opportunities])
-
   const paidSocialLeadCount = useMemo(
     () => opportunities.filter((o) => isPaidSocial(o)).length,
     [opportunities],
   )
+
+  // Table 1: group all opportunities by their GHL source field (normalized)
+  // source is the manually-set field in GHL — "tiktok", "Sitio Web", "Referido", numeric FB IDs, etc.
+  // Single "Rendimiento por origen" table: group opportunities by platform,
+  // Ad ID, or attribution URL (3-way toggle). In id/url modes opps without a
+  // pauta are excluded; platform mode keeps everything (falls back to "Otro").
+  const originRows = useMemo(() => {
+    const map = new Map<string, Opportunity[]>()
+    for (const o of opportunities) {
+      let key: string | null
+      if (originGroupBy === "platform") key = platformLabel(o)
+      else if (originGroupBy === "id") key = o.adId || null
+      else key = o.attributionUrl || null
+      if (!key) continue
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(o)
+    }
+    return Array.from(map.entries())
+      .map(([key, opps]) => {
+        const wonOpps = opps.filter((o) => o.status === "won")
+        const wonValue = wonOpps.reduce((s, o) => s + o.value, 0)
+        return {
+          key,
+          label: originGroupBy === "url" ? paidTrafficUrlLabel(key) : key,
+          total: opps.length,
+          wonCount: wonOpps.length,
+          wonValue,
+          closeRate: opps.length > 0 ? (wonOpps.length / opps.length) * 100 : 0,
+          avgTicket: wonOpps.length > 0 ? wonValue / wonOpps.length : 0,
+          opps,
+        }
+      })
+      .sort((a, b) => b.wonCount - a.wonCount || b.total - a.total)
+  }, [opportunities, originGroupBy])
 
   // Panel 2 — Opportunities by Ad ID (table)
   const leadsByAdId = useMemo(() => {
@@ -727,9 +712,17 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return { fb: toRows(fb), ig: toRows(ig) }
   }, [opportunities])
 
+  const apptStatuses = useMemo(() => {
+    const s = new Set(appointments.map((a) => a.status).filter(Boolean))
+    return Array.from(s).sort()
+  }, [appointments])
+
   // Panel 4a — Paid traffic leads with at least one appointment
   const { paidTrafficWithAppt, apptKeyCount } = useMemo(() => {
-    const apptContactIds = new Set(appointments.map((a) => a.contactId))
+    const filteredAppts = apptStatusFilter === "all"
+      ? appointments
+      : appointments.filter((a) => a.status === apptStatusFilter)
+    const apptContactIds = new Set(filteredAppts.map((a) => a.contactId))
     const counts = new Map<string, number>()
     for (const o of opportunities) {
       if (!isPaidTraffic(o)) continue
@@ -749,7 +742,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       })),
       apptKeyCount,
     }
-  }, [opportunities, appointments, apptGroupBy, apptTopN])
+  }, [opportunities, appointments, apptGroupBy, apptTopN, apptStatusFilter])
 
   // Panel 4b — Won deals from paid traffic, grouped by URL or Ad ID
   const { wonPaidTraffic, wonKeyCount } = useMemo(() => {
@@ -775,103 +768,73 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     }
   }, [opportunities, wonGroupBy, wonTopN])
 
-  const { apptsByPautaRows, apptsByPautaKeys } = useMemo(() => {
-    if (appointments.length === 0 || pautas.length === 0) {
-      return { apptsByPautaRows: [], apptsByPautaKeys: [] }
+  // Won opportunities: bars by the standardized "Origen de lead" platform
+  // (full PLATFORM_ORDER on the x-axis), stacked by Fuente de creación segments
+  // (SOURCE_CATEGORY_ORDER) — same two dimensions as "Oportunidades por fuente".
+  const wonBySource = useMemo(() => {
+    const byPlatform = new Map<string, Map<string, number>>()
+    for (const o of opportunities) {
+      if (o.status !== "won") continue
+      const platform = platformLabel(o)
+      const cat = sourceCategory(o)
+      if (!byPlatform.has(platform)) byPlatform.set(platform, new Map())
+      const m = byPlatform.get(platform)!
+      m.set(cat, (m.get(cat) ?? 0) + 1)
     }
-
-    const contactUrlMap = new Map<string, string>()
-    for (const c of contacts) {
-      if (c.attributionUrl) {
-        const norm = normalizeUrl(c.attributionUrl)
-        if (norm) contactUrlMap.set(c.id, norm)
-      }
-    }
-
-    const urlToPauta = new Map<string, string>()
-    for (const p of pautas) {
-      const norm = extractPautaUrl(p.nombrePauta)
-      if (norm && !urlToPauta.has(norm)) {
-        urlToPauta.set(norm, p.nombrePauta)
-      }
-    }
-
-    const counts = new Map<string, Map<string, number>>()
-    const pautaTotals = new Map<string, number>()
-
-    for (const appt of appointments) {
-      const normUrl = contactUrlMap.get(appt.contactId)
-      if (!normUrl) continue
-      const pautaName = urlToPauta.get(normUrl)
-      if (!pautaName) continue
-
-      const status = appt.status || "Sin estatus"
-      if (!counts.has(pautaName)) counts.set(pautaName, new Map())
-      const statusMap = counts.get(pautaName)!
-      statusMap.set(status, (statusMap.get(status) ?? 0) + 1)
-      pautaTotals.set(pautaName, (pautaTotals.get(pautaName) ?? 0) + 1)
-    }
-
-    const topPautas = Array.from(pautaTotals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 20)
-      .map(([name]) => name)
-
-    const statusTotals = new Map<string, number>()
-    for (const [, statusMap] of counts) {
-      for (const [status, count] of statusMap) {
-        statusTotals.set(status, (statusTotals.get(status) ?? 0) + count)
-      }
-    }
-    const statusKeys = Array.from(statusTotals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([k]) => k)
-
-    const rows = topPautas.map((pautaName) => {
-      const row: Record<string, string | number> = { pauta: pautaName }
-      const statusMap = counts.get(pautaName)!
-      for (const k of statusKeys) row[k] = statusMap.get(k) ?? 0
+    return PLATFORM_ORDER.map((platform) => {
+      const m = byPlatform.get(platform) ?? new Map<string, number>()
+      const row: Record<string, string | number> = { platform }
+      for (const cat of SOURCE_CATEGORY_ORDER) row[cat] = m.get(cat) ?? 0
       return row
     })
+  }, [opportunities])
 
-    return { apptsByPautaRows: rows, apptsByPautaKeys: statusKeys }
-  }, [appointments, pautas, contacts])
+  const wonTotal = useMemo(
+    () => opportunities.reduce((s, o) => (o.status === "won" ? s + 1 : s), 0),
+    [opportunities],
+  )
 
   return (
     <DashboardShell>
       <MarketingSummaryStrip
         opportunities={opportunities.length}
         pautas={pautas.length}
+        uniquePautas={pautas.length - reingresoCount}
+        reingresoPautas={reingresoCount}
         paidSocialLeads={paidSocialLeadCount}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+     
         <DashboardCard>
           <ChartCardHeader
-            title="Oportunidades por fuente del CRM"
+            title="Oportunidades por fuente"
             total={opportunities.length}
             icon={Tag}
+            actions={<OrigenDeLeadInfo />}
           />
           <ChartCardContent>
-            {leadsByAdType.length === 0 ? (
-              <ChartEmpty message="Sin datos de tipo de anuncio." height={200} />
+            {leadsByCategory.length === 0 ? (
+              <ChartEmpty message="Sin datos de fuente." height={200} />
             ) : (() => {
-              const total = leadsByAdType.reduce((s, e) => s + e.value, 0)
-              const maxVal = leadsByAdType[0].value
+              const total = opportunities.length
+              const maxVal = Math.max(...leadsByCategory.map((e) => e.total))
+              // Donut — one slice per platform
+              const donutData = leadsByCategory.map((e) => ({ name: e.platform, value: e.total, color: e.color }))
               return (
                 <div className="flex items-center gap-4">
-                  {/* Donut — center label via absolute positioning (more reliable than SVG text in Recharts) */}
+                  {/* Donut */}
                   <div style={{ width: 160, height: 200, flexShrink: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={leadsByAdType}
+                          data={donutData}
                           cx="50%"
                           cy="50%"
                           innerRadius={50}
                           outerRadius={72}
                           dataKey="value"
-                          nameKey="adType"
+                          nameKey="name"
                           startAngle={90}
                           endAngle={-270}
                           stroke="none"
@@ -890,8 +853,8 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                             />
                           )}
                         >
-                          {leadsByAdType.map((entry) => (
-                            <Cell key={entry.adType} fill={entry.color} />
+                          {donutData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
                           ))}
                         </Pie>
                       </PieChart>
@@ -911,37 +874,84 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                     </div>
                   </div>
 
-                  {/* Ranked bar list */}
-                  <div className="flex flex-1 flex-col gap-y-2.5">
-                    {leadsByAdType.map((entry, i) => {
-                      const pct = total > 0 ? Math.round((entry.value / total) * 100) : 0
-                      const barWidth = maxVal > 0 ? (entry.value / maxVal) * 100 : 0
-                      const label = entry.adType.length > 18 ? entry.adType.slice(0, 18) + "…" : entry.adType
+                  {/* Stacked bar list — one row per platform, segments = source category */}
+                  <div className="flex flex-1 flex-col gap-y-3">
+                    {leadsByCategory.map((entry, i) => {
+                      const pct = total > 0 ? Math.round((entry.total / total) * 100) : 0
+                      const barWidth = maxVal > 0 ? (entry.total / maxVal) * 100 : 0
                       return (
                         <div
-                          key={entry.adType}
+                          key={entry.platform}
                           className="cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-accent/20 transition-colors"
                           onClick={() =>
                             openDrill(
-                              `Tipo de Anuncio: ${entry.adType}`,
-                              opportunities.filter((o) => (o.adType || "Otro") === entry.adType)
+                              `Plataforma: ${entry.platform}`,
+                              opportunities.filter((o) => platformLabel(o) === entry.platform)
                             )
                           }
                           onMouseEnter={() => setHoveredAdType(i)}
                           onMouseLeave={() => setHoveredAdType(undefined)}
                         >
                           <div className="flex items-baseline justify-between mb-1">
-                            <span className="text-xs text-foreground">{label}</span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="inline-block h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: entry.color }}
+                              />
+                              <span className="text-xs text-foreground truncate">{entry.platform}</span>
+                            </div>
                             <span className="text-xs text-muted-foreground tabular-nums ml-2 shrink-0">
-                              {entry.value} · {pct}%
+                              {entry.total} · {pct}%
                             </span>
                           </div>
-                          <div className="h-1.5 rounded bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded transition-all"
-                              style={{ width: `${barWidth}%`, backgroundColor: entry.color }}
-                            />
+                          {/* Stacked bar — segments per source category, each individually clickable */}
+                          <div className="h-2 rounded bg-muted overflow-hidden flex" style={{ width: `${barWidth}%` }}>
+                            {entry.breakdown.map((seg) => (
+                              <div
+                                key={seg.category}
+                                title={`${seg.category}: ${seg.count}`}
+                                className="cursor-pointer hover:brightness-125 transition-[filter]"
+                                style={{
+                                  width: `${entry.total > 0 ? (seg.count / entry.total) * 100 : 0}%`,
+                                  backgroundColor: seg.color,
+                                  minWidth: seg.count > 0 ? 2 : 0,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openDrill(
+                                    `${entry.platform} · ${seg.category}`,
+                                    opportunities.filter(
+                                      (o) => platformLabel(o) === entry.platform && sourceCategory(o) === seg.category
+                                    )
+                                  )
+                                }}
+                              />
+                            ))}
                           </div>
+                          {/* Category legend — only if more than one category; pills are clickable */}
+                          {entry.breakdown.length > 1 && (
+                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+                              {entry.breakdown.map((seg) => (
+                                <button
+                                  key={seg.category}
+                                  type="button"
+                                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors rounded hover:bg-accent/30 px-0.5"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openDrill(
+                                      `${entry.platform} · ${seg.category}`,
+                                      opportunities.filter(
+                                        (o) => platformLabel(o) === entry.platform && sourceCategory(o) === seg.category
+                                      )
+                                    )
+                                  }}
+                                >
+                                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: seg.color }} />
+                                  {seg.category} {seg.count}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -954,38 +964,74 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
         </DashboardCard>
 
         <DashboardCard>
-          <ChartCardHeader title="Pautas por Tipo" total={pautas.length} icon={FileText} />
+          <ChartCardHeader
+            title="Pautas por canal de contacto"
+            total={pautasByTipoTotal}
+            icon={FileText}
+            actions={
+              <div className="flex items-center gap-2">
+                <OrigenDeLeadInfo />
+                <button
+                  onClick={() => setPautaUniqueLeads((v) => !v)}
+                  className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Leads únicos
+                  <span className={`relative inline-flex h-3.5 w-6 shrink-0 rounded-full transition-colors duration-200 ${pautaUniqueLeads ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+                    <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-transform duration-200 ${pautaUniqueLeads ? "translate-x-2.5" : "translate-x-0.5"}`} />
+                  </span>
+                </button>
+              </div>
+            }
+          />
           <ChartCardContent>
-            {pautasByTipo.length === 0 ? (
+            {pautasByTipoRows.length === 0 ? (
               <ChartEmpty message="Sin datos de Pautas." height={220} />
             ) : (
               <>
-                <ChartContainer config={{ count: { label: "Pautas", color: BRAND_AMBER } }} className="aspect-auto" style={{ height: 260 }}>
+                <ChartContainer
+                  config={Object.fromEntries(
+                    pautasByTipoPlatforms.map((k) => [k, { label: k, color: PLATFORM_COLORS[k] ?? BRAND_AMBER }])
+                  )}
+                  className="aspect-auto"
+                  style={{ height: 300 }}
+                >
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={pautasByTipo} margin={{ top: 5, right: 8, left: 8, bottom: 70 }}>
+                    <BarChart data={pautasByTipoRows} margin={{ top: 5, right: 8, left: 8, bottom: 70 }} barCategoryGap="20%">
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                       <XAxis dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} interval={0} angle={-40} textAnchor="end" tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + "…" : v} />
                       <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
-                      <Bar
-                        dataKey="count"
-                        radius={[6, 6, 0, 0]}
-                        name="Pautas"
-                        maxBarSize={48}
-                        cursor="pointer"
-                        onClick={(data: any) => openPautaDrill(
-                          `Tipo: ${data.tipo}`,
-                          pautas.filter((p) => p.tipo === data.tipo)
-                        )}
-                      >
-                        {pautasByTipo.map((entry, i) => (
-                          <Cell key={entry.tipo} fill={chartPaletteColor(i)} />
-                        ))}
-                      </Bar>
+                      <Legend
+                        wrapperStyle={{ fontSize: 11, paddingTop: 0 }}
+                        formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                      />
+                      {pautasByTipoPlatforms.map((key, i) => (
+                        <Bar
+                          key={key}
+                          dataKey={key}
+                          stackId="a"
+                          fill={PLATFORM_COLORS[key] ?? BRAND_AMBER}
+                          radius={i === pautasByTipoPlatforms.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                          maxBarSize={48}
+                          cursor="pointer"
+                          onClick={(data: any) => {
+                            const count = data[key] as number
+                            if (!count) return
+                            openPautaDrill(
+                              `${data.tipo} · ${key}`,
+                              pautas.filter(
+                                (p) =>
+                                  p.tipo === data.tipo &&
+                                  platformFromContact(p.contactId ? contactById.get(p.contactId) : undefined) === key
+                              )
+                            )
+                          }}
+                        />
+                      ))}
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
-                <ChartHint>Haz clic en una barra para ver las pautas</ChartHint>
+                <ChartHint>{`Apilado por plataforma de origen del contacto · ${pautaUniqueLeads ? "leads únicos" : "pautas"} · haz clic en un segmento para ver los contactos`}</ChartHint>
               </>
             )}
           </ChartCardContent>
@@ -1362,7 +1408,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                                 >
                                   <span className="inline-flex items-center gap-0">
                                     {shortUrlLabel(fb.url)}
-                                    <CopyButton value={fb.url} />
+                                    <LinkButton value={fb.url} />
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
@@ -1389,7 +1435,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                                 >
                                   <span className="inline-flex items-center gap-0">
                                     {shortUrlLabel(ig.url)}
-                                    <CopyButton value={ig.url} />
+                                    <LinkButton value={ig.url} />
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
@@ -1416,7 +1462,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       </div>
 
       {/* Panel 4a — Tráfico Pagado con Cita / Panel 4b — Deals Ganados de Tráfico Pagado */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-1">
         <DashboardCard>
           <ChartCardHeader
             title="Citas por pauta"
@@ -1424,6 +1470,22 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             icon={Calendar}
             actions={
               <div className="flex items-center gap-2">
+                {apptStatuses.length > 0 && (
+                  <Select value={apptStatusFilter} onValueChange={setApptStatusFilter}>
+                    <SelectTrigger
+                      className="h-7 w-[150px] text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <SelectValue placeholder="Todos los estatus" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estatus</SelectItem>
+                      {apptStatuses.map((s) => (
+                        <SelectItem key={s} value={s}>{apptStatusLabel(s)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <TopNSlider value={apptTopN} max={apptKeyCount} onChange={setApptTopN} />
                 <GroupByToggle value={apptGroupBy} onChange={setApptGroupBy} />
               </div>
@@ -1470,7 +1532,11 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                         cursor="pointer"
                         onClick={(data: any) => {
                           const rawKey = data.rawKey as string
-                          const apptContactIds = new Set(appointments.map((a) => a.contactId))
+                          // Mirror the bar's status filter so the drawer count tracks the bar.
+                          const filteredAppts = apptStatusFilter === "all"
+                            ? appointments
+                            : appointments.filter((a) => a.status === apptStatusFilter)
+                          const apptContactIds = new Set(filteredAppts.map((a) => a.contactId))
                           openDrill(
                             `Tráfico pagado con cita: ${data.label}`,
                             opportunities.filter((o) => {
@@ -1494,8 +1560,12 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             )}
           </ChartCardContent>
         </DashboardCard>
+      </div>
 
-        <DashboardCard>
+
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <DashboardCard>
           <ChartCardHeader
             title="Oportunidades ganadas por pauta"
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
@@ -1578,9 +1648,150 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             )}
           </ChartCardContent>
         </DashboardCard>
-      </div>
-
-
+      <DashboardCard>
+        <ChartCardHeader
+          title="Oportunidades Ganadas por Fuente"
+          total={wonTotal}
+          icon={TrendingUp}
+          actions={<OrigenDeLeadInfo />}
+        />
+        <ChartCardContent>
+          {wonTotal === 0 ? (
+            <ChartEmpty message="Sin oportunidades ganadas." height={220} />
+          ) : (
+            <>
+              <ChartContainer
+                config={Object.fromEntries(
+                  SOURCE_CATEGORY_ORDER.map((k) => [k, { label: k, color: SOURCE_CATEGORY_COLORS[k] ?? BRAND_AMBER }])
+                )}
+                className="aspect-auto"
+                style={{ height: 300 }}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={wonBySource} margin={{ top: 16, right: 16, left: 8, bottom: 80 }} barCategoryGap="20%">
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                    <XAxis
+                      dataKey="platform"
+                      tick={{ ...CHART_TICK }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-40}
+                      textAnchor="end"
+                      tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + "…" : v}
+                    />
+                    <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.platform ?? String(_)} />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, paddingTop: 0 }}
+                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                    />
+                    {SOURCE_CATEGORY_ORDER.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={SOURCE_CATEGORY_COLORS[key] ?? BRAND_AMBER}
+                        radius={i === SOURCE_CATEGORY_ORDER.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={48}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          openDrill(
+                            `Ganadas: ${data.platform} · ${key}`,
+                            opportunities.filter((o) => o.status === "won" && platformLabel(o) === data.platform && sourceCategory(o) === key)
+                          )
+                        }}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <ChartHint>Oportunidades ganadas · barras por plataforma de origen, apiladas por fuente de creación · haz clic en un segmento para ver los detalles</ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+          </div>
+      {/* Rendimiento por origen — single table, grouped by platform / Ad ID / URL */}
+      <DashboardCard>
+        <ChartCardHeader
+          title="Rendimiento por origen"
+          total={originRows.reduce((s, r) => s + r.wonCount, 0)}
+          icon={BarChart3}
+          actions={<OriginGroupByToggle value={originGroupBy} onChange={setOriginGroupBy} />}
+        />
+        <ChartCardContent>
+          {originRows.length === 0 ? (
+            <ChartEmpty message="Sin datos para este criterio." height={220} />
+          ) : (
+            <>
+              <div className="overflow-auto max-h-[440px] rounded-md border border-border/40">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-xs">
+                        {ORIGIN_GROUP_OPTIONS.find((o) => o.value === originGroupBy)!.column}
+                      </TableHead>
+                      <TableHead className="text-xs text-right">Leads</TableHead>
+                      <TableHead className="text-xs text-right">Ganados</TableHead>
+                      <TableHead className="text-xs text-right">% Cierre</TableHead>
+                      <TableHead className="text-xs text-right">Valor</TableHead>
+                      <TableHead className="text-xs text-right">Ticket prom.</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {originRows.map((row) => (
+                      <TableRow
+                        key={row.key}
+                        className="cursor-pointer"
+                        onClick={() => openDrill(`Leads · ${row.label}`, row.opps)}
+                      >
+                        <TableCell className="text-xs font-medium text-foreground">
+                          <span className="inline-flex items-center gap-1.5 max-w-[280px]">
+                            {originGroupBy === "platform" && row.key === "Facebook" && (
+                              <Facebook className="h-3.5 w-3.5 shrink-0 text-[#1877f2]" />
+                            )}
+                            {originGroupBy === "platform" && row.key === "Instagram" && (
+                              <Instagram className="h-3.5 w-3.5 shrink-0 text-[#e1306c]" />
+                            )}
+                            <span className="truncate">{row.label}</span>
+                            {originGroupBy !== "platform" && <CopyButton value={row.key} />}
+                            {originGroupBy === "url" && <LinkButton value={row.key} />}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">{row.total}</TableCell>
+                        <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">{row.wonCount}</TableCell>
+                        <TableCell
+                          className={`text-right text-xs font-semibold tabular-nums ${
+                            row.closeRate >= 20 ? "text-emerald-600" : row.closeRate >= 10 ? "text-amber-600" : "text-muted-foreground"
+                          }`}
+                        >
+                          {row.closeRate.toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                          {row.wonValue > 0 ? `$${row.wonValue.toLocaleString("es-MX")}` : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                          {row.avgTicket > 0
+                            ? `$${row.avgTicket.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`
+                            : "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <ChartHint>
+                {originGroupBy === "platform"
+                  ? "Todas las oportunidades clasificadas por plataforma de origen · haz clic en una fila para ver sus leads"
+                  : "Solo oportunidades con pauta · haz clic en una fila para ver sus leads"}
+              </ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
 
       <ChartDrillDrawer
         drill={drill}

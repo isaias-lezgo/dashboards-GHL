@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "ghl-mcp": {
-      "type": "http",
+    "type": "http",
       "url": "https://services.leadconnectorhq.com/mcp/",
       "headers": {
         "Authorization": "Bearer pit-5c6abb81-21c1-44a4-89f2-b9f153292388",

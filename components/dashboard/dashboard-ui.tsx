@@ -75,7 +75,7 @@ export function DashboardCard({
       className={cn(
         "shadow-none",
         interactive &&
-          "cursor-pointer transition-[box-shadow,border-color,background-color] duration-200 hover:border-primary/35 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)]",
+        "cursor-pointer transition-[box-shadow,border-color,background-color] duration-200 hover:border-primary/35 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)]",
         className,
       )}
       onClick={onClick}
@@ -211,10 +211,14 @@ export function KpiCard({
 export function MarketingSummaryStrip({
   opportunities,
   pautas,
+  uniquePautas,
+  reingresoPautas,
   paidSocialLeads,
 }: {
   opportunities: number
   pautas: number
+  uniquePautas: number
+  reingresoPautas: number
   paidSocialLeads: number
 }) {
   return (
@@ -227,12 +231,7 @@ export function MarketingSummaryStrip({
           {opportunities.toLocaleString("es-MX")}
         </p>
       </div>
-      <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pautas</p>
-        <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
-          {pautas.toLocaleString("es-MX")}
-        </p>
-      </div>
+
       <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
         <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           Oportunidades por pauta
@@ -240,6 +239,23 @@ export function MarketingSummaryStrip({
         <p className="mt-0.5 text-2xl font-bold tabular-nums text-primary">
           {paidSocialLeads.toLocaleString("es-MX")}
         </p>
+      </div>
+      <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pautas</p>
+        <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
+          {pautas.toLocaleString("es-MX")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+          <span>
+            Leads únicos{" "}
+            <span className="font-semibold text-foreground">{uniquePautas.toLocaleString("es-MX")}</span>
+          </span>
+          <span className="text-border">·</span>
+          <span>
+            Reingresos{" "}
+            <span className="font-semibold text-amber-600">{reingresoPautas.toLocaleString("es-MX")}</span>
+          </span>
+        </div>
       </div>
     </div>
   )

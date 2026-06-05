@@ -1,0 +1,65 @@
+"use client"
+
+import { Info } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+
+// Single source of truth for the "Origen de lead" classification standard.
+// Two charts surface this: "Oportunidades por fuente" (rows = Plataforma,
+// segments = Fuente de creación) and "Pautas por canal de contacto" (stacked
+// by Plataforma). Keep the copy here so both stay in lockstep.
+
+const PLATAFORMA_RULES: { label: string; rule: string }[] = [
+  { label: "Instagram", rule: 'URL contiene instagram.com o fuente incluye "instagram"' },
+  { label: "Facebook",  rule: 'URL contiene fb.me / facebook.com, fuente incluye "facebook", "meta", "fb" o es un ID numérico largo' },
+  { label: "TikTok",    rule: 'fuente incluye "tiktok"' },
+  { label: "Google",    rule: 'fuente incluye "google", "bing" o "yahoo"' },
+  { label: "WhatsApp",  rule: 'medio de atribución es "whatsapp" o el contacto tiene etiqueta "inbound whatsapp"' },
+  { label: "Otro",      rule: "no cumple ninguno de los anteriores" },
+]
+
+const FUENTE_RULES: { label: string; rule: string }[] = [
+  { label: "Paid Social",  rule: "fuente en meta/facebook/instagram/tiktok o medio en paid_social/cpc/cpm" },
+  { label: "Social Media", rule: "fuente orgánica en redes sociales sin medio de pago" },
+  { label: "CRM UI",       rule: "fuente vacía o ingresada manualmente desde el CRM" },
+  { label: "Orgánico Web", rule: 'fuente contiene "web"/"website"/"landing" o medio "organic"/"referral"; también paid search (google/bing ads)' },
+  { label: "Otro",         rule: "fuente no clasificada en los anteriores" },
+]
+
+function RuleList({ rules }: { rules: { label: string; rule: string }[] }) {
+  return (
+    <ul className="space-y-0.5 text-muted-foreground">
+      {rules.map((r) => (
+        <li key={r.label}>
+          <span className="text-foreground">{r.label}</span> — {r.rule}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// ⓘ button + tooltip documenting the Origen-de-lead criteria. Drop into a
+// ChartCardHeader `actions` slot.
+export function OrigenDeLeadInfo() {
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button type="button" className="rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors">
+            <Info className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="left" className="max-w-xs text-xs leading-relaxed space-y-2">
+          <p className="font-semibold text-foreground">Criterios de clasificación</p>
+          <div>
+            <p className="font-medium text-foreground mb-0.5">Plataforma (filas)</p>
+            <RuleList rules={PLATAFORMA_RULES} />
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-0.5">Fuente de creación (segmentos)</p>
+            <RuleList rules={FUENTE_RULES} />
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}

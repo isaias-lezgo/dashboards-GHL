@@ -3,7 +3,12 @@
 // API Docs: https://marketplace.gohighlevel.com/docs
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
-const GHL_API_VERSION = "2021-07-28";
+// GHL's current API contract. Verified (read-only probe) to return shapes
+// identical to the legacy 2021-07-28 for every core endpoint this app reads
+// (contacts, opportunities, conversations, calendars, customFields, users), so
+// we standardize on the current version everywhere. Custom-objects and the
+// /ad-publishing Facebook endpoints already require this version.
+const GHL_API_VERSION = "2023-02-21";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -13,8 +18,16 @@ interface GHLRequestOptions {
   params?: Record<string, string | number | boolean | undefined>;
   useSnakeCaseLocationId?: boolean;
   version?: string;
+  // Suppress the auto-injected `locationId`/`location_id` *query* param.
   noQueryLocationId?: boolean;
+  // Suppress the auto-injected `locationId` in the POST *body*. These are
+  // independent: noQueryLocationId only affects the query string.
+  noBodyLocationId?: boolean;
 }
+
+// Abort a single attempt if GHL doesn't respond. The dashboard route fans these
+// out in parallel, so one hung socket must not stall the whole response.
+const GHL_REQUEST_TIMEOUT_MS = 30_000;
 
 async function ghlFetch<T>(
   endpoint: string,
@@ -31,6 +44,7 @@ async function ghlFetch<T>(
   }
 
   // Replace :locationId placeholder in endpoint
+  const hadLocationPlaceholder = endpoint.includes(":locationId");
   const resolvedEndpoint = endpoint.replace(":locationId", locationId);
   const url = new URL(`${GHL_BASE_URL}${resolvedEndpoint}`);
 
@@ -43,15 +57,17 @@ async function ghlFetch<T>(
     }
   }
 
-  // Add locationId to query params for endpoints that need it
+  // Add locationId to query params for endpoints that need it. Keyed off whether
+  // the path carried a :locationId placeholder (rather than a substring match on
+  // the id, which could spuriously fire for unrelated id-shaped path segments).
   const locationKey = options.useSnakeCaseLocationId ? "location_id" : "locationId";
-  if (!options.noQueryLocationId && !resolvedEndpoint.includes(locationId) && !url.searchParams.has("locationId") && !url.searchParams.has("location_id")) {
+  if (!options.noQueryLocationId && !hadLocationPlaceholder && !url.searchParams.has("locationId") && !url.searchParams.has("location_id")) {
     url.searchParams.append(locationKey, locationId);
   }
 
-  // For POST requests, also include locationId in body
+  // For POST requests, also include locationId in body (unless suppressed).
   let body = options.body;
-  if (options.method === "POST" && body && !body.locationId) {
+  if (options.method === "POST" && body && !body.locationId && !options.noBodyLocationId) {
     body = { ...body, locationId };
   }
 
@@ -66,17 +82,34 @@ async function ghlFetch<T>(
     body: body ? JSON.stringify(body) : undefined,
   };
 
-  // Retry up to 4 times on 429 with exponential backoff (1s, 2s, 4s, 8s)
+  // 4 retries (5 attempts total) with exponential backoff (1s, 2s, 4s, 8s) on
+  // 429, transient 5xx, and network/timeout failures.
   for (let attempt = 0; attempt <= 4; attempt++) {
-    const response = await fetch(url.toString(), requestInit);
-
-    if (response.status === 429) {
+    let response: Response;
+    try {
+      response = await fetch(url.toString(), {
+        ...requestInit,
+        signal: AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      // Timeout (AbortError) or network failure — retry, rethrow on last attempt.
+      const message = err instanceof Error ? err.message : String(err);
       if (attempt === 4) {
-        throw new Error("GHL API Error: 429 - Too Many Requests (retries exhausted)");
+        throw new Error(`GHL API Error: request failed after retries - ${message}`);
+      }
+      const delay = Math.pow(2, attempt) * 1000;
+      console.warn(`[GHL] Request failed (${message}) — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
+      await sleep(delay);
+      continue;
+    }
+
+    if (response.status === 429 || response.status >= 500) {
+      if (attempt === 4) {
+        throw new Error(`GHL API Error: ${response.status} - retries exhausted`);
       }
       const retryAfter = Number(response.headers.get("Retry-After") ?? 0);
       const delay = retryAfter > 0 ? retryAfter * 1000 : Math.pow(2, attempt) * 1000;
-      console.warn(`[GHL] Rate limited — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
+      console.warn(`[GHL] ${response.status} — retrying in ${delay}ms (attempt ${attempt + 1}/4)`);
       await sleep(delay);
       continue;
     }
@@ -87,7 +120,12 @@ async function ghlFetch<T>(
       throw new Error(`GHL API Error: ${response.status} - ${errorText}`);
     }
 
-    return response.json();
+    // Some endpoints (204 No Content, or empty-body DELETE/POST mutations like
+    // the Facebook pause/resume/delete actions) return no JSON. Calling
+    // response.json() on an empty body throws, turning a success into an error.
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   throw new Error("GHL API Error: unexpected retry loop exit");
@@ -206,7 +244,7 @@ export async function getContacts(params?: {
 }): Promise<GHLContactsResponse> {
   return ghlFetch<GHLContactsResponse>("/contacts/", {
     params: {
-      limit: params?.limit || 100,
+      limit: params?.limit ?? 100,
       startAfterId: params?.startAfterId,
       startAfter: params?.startAfter,
       query: params?.query,
@@ -342,8 +380,8 @@ export async function getOpportunities(params?: {
       pipelineStageId: params?.pipelineStageId,
       status: params?.status,
       assigned_to: params?.assignedTo,
-      limit: params?.limit || 100,
-      page: params?.page || 1,
+      limit: params?.limit ?? 100,
+      page: params?.page ?? 1,
     },
   });
 }
@@ -403,7 +441,7 @@ export async function getConversations(params?: {
 }): Promise<GHLConversationsResponse> {
   return ghlFetch<GHLConversationsResponse>("/conversations/search", {
     params: {
-      limit: params?.limit || 100,
+      limit: params?.limit ?? 100,
       type: params?.type,
       assignedTo: params?.assignedTo,
       contactId: params?.contactId,
@@ -443,7 +481,7 @@ export async function getMessages(conversationId: string, params?: {
 }): Promise<GHLMessagesResponse> {
   return ghlFetch<GHLMessagesResponse>(`/conversations/${conversationId}/messages`, {
     params: {
-      limit: params?.limit || 50,
+      limit: params?.limit ?? 50,
       lastMessageId: params?.lastMessageId,
     },
   });
@@ -658,6 +696,9 @@ export async function getAllCustomObjectRecords(
       {
         method: "POST",
         version: "2023-02-21",
+        // locationId is required here, but in the request body — not the query
+        // string. noQueryLocationId keeps it out of the query; ghlFetch still
+        // injects it into the POST body (noBodyLocationId is left unset).
         noQueryLocationId: true,
         body: { page, pageLimit },
       }
@@ -740,9 +781,436 @@ export async function getAllContacts(
     // epoch ms; without it the cursor isn't unique).
     const last = response.contacts[response.contacts.length - 1];
     startAfterId = response.meta?.startAfterId ?? last.id;
-    startAfter = response.meta?.startAfter ?? new Date(last.dateAdded).getTime();
+    // Guard against a missing/malformed dateAdded producing a NaN cursor (which
+    // would serialize to the literal "NaN" on the query string). The dedupe +
+    // pageNew===0 bailout above still protect us if the cursor isn't unique.
+    const lastDateMs = new Date(last.dateAdded).getTime();
+    startAfter = response.meta?.startAfter ?? (Number.isNaN(lastDateMs) ? undefined : lastDateMs);
     await sleep(200);
   }
 
   return allContacts;
+}
+
+// ============ FACEBOOK ADS / AD MANAGER (ad-publishing) ============
+//
+// GHL Ad Manager — Facebook integration + Facebook Ads endpoints.
+//   Docs: https://marketplace.gohighlevel.com/docs/ghl/ad-manager/facebook-integration
+//         https://marketplace.gohighlevel.com/docs/ghl/ad-manager/facebook-ads
+//
+// All endpoints live under /ad-publishing/facebook and require Version 2023-02-21
+// (passed via fbFetch). locationId is appended automatically by ghlFetch as a
+// query param (and into the body on POSTs).
+//
+// SCOPE NOTE: this wires up the CONNECTION only — none of these are imported by
+// app/api/dashboard/route.ts yet, and no data is fetched into the UI. Response
+// shapes are intentionally permissive: the public docs don't publish full JSON
+// schemas, so each interface carries an index signature. Refine the shapes against
+// live data via the ghl-mcp server before depending on specific fields.
+//
+// PATH NOTE: the docs are inconsistent between the single-resource read paths
+// (singular: GET /campaign/:id, GET /entity) and the collection/action paths
+// (plural: PUT /campaigns, POST /campaigns/:id/pause). The paths below mirror the
+// docs verbatim; verify the singular/plural split against the live API if a call 404s.
+
+const GHL_AD_PUBLISHING_VERSION = "2023-02-21";
+
+// Thin wrapper that pins the ad-publishing API version. Everything else
+// (auth, locationId injection, 429 retries) is inherited from ghlFetch.
+function fbFetch<T>(endpoint: string, options: GHLRequestOptions = {}): Promise<T> {
+  return ghlFetch<T>(endpoint, { version: GHL_AD_PUBLISHING_VERSION, ...options });
+}
+
+// --- Permissive entity shapes (refine against live data before relying on fields) ---
+
+export interface GHLFacebookUser {
+  id?: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookPage {
+  id?: string;
+  facebookPageId?: string;
+  name?: string;
+  isConnected?: boolean;
+  isDefault?: boolean;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookInstagramAccount {
+  id?: string;
+  username?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookAdAccount {
+  id?: string;
+  accountId?: string;
+  name?: string;
+  currency?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookLeadForm {
+  id?: string;
+  name?: string;
+  pageId?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookIntegration {
+  id?: string;
+  locationId?: string;
+  pageId?: string;
+  adAccountId?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookPixel {
+  id?: string;
+  pixelId?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookCustomAudience {
+  id?: string;
+  name?: string;
+  description?: string;
+  approximateCount?: number;
+  [key: string]: unknown;
+}
+
+// Campaign / ad set / ad records returned by the read endpoints.
+export interface GHLFacebookCampaign {
+  id?: string;
+  name?: string;
+  status?: string;
+  objective?: string;
+  effectiveStatus?: string;
+  dailyBudget?: number;
+  lifetimeBudget?: number;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookAdSet {
+  id?: string;
+  campaignId?: string;
+  name?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookAd {
+  id?: string;
+  adSetId?: string;
+  campaignId?: string;
+  name?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+// "Get campaign with linked entities" returns the campaign plus its adsets and ads.
+export interface GHLFacebookCampaignWithEntities extends GHLFacebookCampaign {
+  adsets?: GHLFacebookAdSet[];
+  ads?: GHLFacebookAd[];
+}
+
+// ---- Facebook integration: account / page / form management ----
+
+/** GET /ad-publishing/facebook/me — authenticated Facebook user profile. */
+export async function getFacebookCurrentUser(): Promise<GHLFacebookUser> {
+  return fbFetch<GHLFacebookUser>("/ad-publishing/facebook/me");
+}
+
+/** GET /ad-publishing/facebook/pages — Facebook pages connected to the location. */
+export async function getFacebookPages(): Promise<GHLFacebookPage[]> {
+  return fbFetch<GHLFacebookPage[]>("/ad-publishing/facebook/pages");
+}
+
+/** GET /ad-publishing/facebook/page/{pageId}/instagram — Instagram accounts linked to a page. */
+export async function getFacebookInstagramAccounts(
+  pageId: string
+): Promise<GHLFacebookInstagramAccount[]> {
+  return fbFetch<GHLFacebookInstagramAccount[]>(`/ad-publishing/facebook/page/${pageId}/instagram`);
+}
+
+/** GET /ad-publishing/facebook/page/{pageId}/forms — lead gen forms for a page. */
+export async function getFacebookPageLeadForms(pageId: string): Promise<GHLFacebookLeadForm[]> {
+  return fbFetch<GHLFacebookLeadForm[]>(`/ad-publishing/facebook/page/${pageId}/forms`);
+}
+
+/** POST /ad-publishing/facebook/page/{pageId}/forms — create a lead gen form on a page. */
+export async function createFacebookPageLeadForm(
+  pageId: string,
+  body: Record<string, unknown>
+): Promise<GHLFacebookLeadForm> {
+  return fbFetch<GHLFacebookLeadForm>(`/ad-publishing/facebook/page/${pageId}/forms`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** GET /ad-publishing/facebook/lead-form/{leadFormId} — single lead form by ID. */
+export async function getFacebookLeadForm(leadFormId: string): Promise<GHLFacebookLeadForm> {
+  return fbFetch<GHLFacebookLeadForm>(`/ad-publishing/facebook/lead-form/${leadFormId}`);
+}
+
+/** GET /ad-publishing/facebook/ad-accounts — Facebook ad accounts available for the user. */
+export async function getFacebookAdAccounts(): Promise<GHLFacebookAdAccount[]> {
+  return fbFetch<GHLFacebookAdAccount[]>("/ad-publishing/facebook/ad-accounts");
+}
+
+/** GET /ad-publishing/facebook/ad-accounts/{adAccountId} — details for a single ad account. */
+export async function getFacebookAdAccount(adAccountId: string): Promise<GHLFacebookAdAccount> {
+  return fbFetch<GHLFacebookAdAccount>(`/ad-publishing/facebook/ad-accounts/${adAccountId}`);
+}
+
+/** DELETE /ad-publishing/facebook/ad-accounts/{adAccountId} — disconnect an ad account. */
+export async function deleteFacebookAdAccount(adAccountId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/ad-accounts/${adAccountId}`, { method: "DELETE" });
+}
+
+/** GET /ad-publishing/facebook/conversation-forms — conversation lead forms for the location. */
+export async function getFacebookConversationForms(): Promise<GHLFacebookLeadForm[]> {
+  return fbFetch<GHLFacebookLeadForm[]>("/ad-publishing/facebook/conversation-forms");
+}
+
+/** POST /ad-publishing/facebook/conversation-forms — create a conversation lead form. */
+export async function createFacebookConversationForm(
+  body: Record<string, unknown>
+): Promise<GHLFacebookLeadForm> {
+  return fbFetch<GHLFacebookLeadForm>("/ad-publishing/facebook/conversation-forms", {
+    method: "POST",
+    body,
+  });
+}
+
+/** GET /ad-publishing/facebook/integration — current Facebook ad integration for the location. */
+export async function getFacebookIntegration(): Promise<GHLFacebookIntegration> {
+  return fbFetch<GHLFacebookIntegration>("/ad-publishing/facebook/integration");
+}
+
+/** POST /ad-publishing/facebook/integration — create the Facebook ad integration. */
+export async function createFacebookIntegration(
+  body: Record<string, unknown>
+): Promise<GHLFacebookIntegration> {
+  return fbFetch<GHLFacebookIntegration>("/ad-publishing/facebook/integration", {
+    method: "POST",
+    body,
+  });
+}
+
+/** DELETE /ad-publishing/facebook/integration — remove the Facebook ad integration. */
+export async function deleteFacebookIntegration(): Promise<unknown> {
+  return fbFetch("/ad-publishing/facebook/integration", { method: "DELETE" });
+}
+
+/** DELETE /ad-publishing/facebook/page — remove the Facebook page connection. */
+export async function deleteFacebookPage(): Promise<unknown> {
+  return fbFetch("/ad-publishing/facebook/page", { method: "DELETE" });
+}
+
+/** PUT /ad-publishing/facebook/page/default — set the default Facebook page for the location. */
+export async function setFacebookDefaultPage(body: Record<string, unknown>): Promise<unknown> {
+  return fbFetch("/ad-publishing/facebook/page/default", { method: "PUT", body });
+}
+
+// ---- Facebook Ads: targeting, pixels, custom audiences ----
+
+/** GET /ad-publishing/facebook/targeting/search — search geolocations/interests for targeting. */
+export async function searchFacebookTargeting(
+  params?: Record<string, string | number | boolean | undefined>
+): Promise<unknown> {
+  return fbFetch("/ad-publishing/facebook/targeting/search", { params });
+}
+
+/** GET /ad-publishing/facebook/pixels — conversion pixels for the location. */
+export async function getFacebookPixels(): Promise<GHLFacebookPixel[]> {
+  return fbFetch<GHLFacebookPixel[]>("/ad-publishing/facebook/pixels");
+}
+
+/** PUT /ad-publishing/facebook/pixels — create or update a conversion pixel. */
+export async function upsertFacebookPixel(body: Record<string, unknown>): Promise<GHLFacebookPixel> {
+  return fbFetch<GHLFacebookPixel>("/ad-publishing/facebook/pixels", { method: "PUT", body });
+}
+
+/** GET /ad-publishing/facebook/custom-audience — custom audiences for the location. */
+export async function getFacebookCustomAudiences(): Promise<GHLFacebookCustomAudience[]> {
+  return fbFetch<GHLFacebookCustomAudience[]>("/ad-publishing/facebook/custom-audience");
+}
+
+/** GET /ad-publishing/facebook/custom-audience/{audienceId} — single custom audience. */
+export async function getFacebookCustomAudience(
+  audienceId: string
+): Promise<GHLFacebookCustomAudience> {
+  return fbFetch<GHLFacebookCustomAudience>(`/ad-publishing/facebook/custom-audience/${audienceId}`);
+}
+
+/** PUT /ad-publishing/facebook/custom-audience/{audienceId} — update name/description. */
+export async function updateFacebookCustomAudience(
+  audienceId: string,
+  body: Record<string, unknown>
+): Promise<GHLFacebookCustomAudience> {
+  return fbFetch<GHLFacebookCustomAudience>(`/ad-publishing/facebook/custom-audience/${audienceId}`, {
+    method: "PUT",
+    body,
+  });
+}
+
+/** DELETE /ad-publishing/facebook/custom-audience/{audienceId} — delete a custom audience. */
+export async function deleteFacebookCustomAudience(audienceId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/custom-audience/${audienceId}`, { method: "DELETE" });
+}
+
+/** PUT /ad-publishing/facebook/custom-audience/{audienceId}/member — add a member. */
+export async function addFacebookCustomAudienceMember(
+  audienceId: string,
+  body: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/custom-audience/${audienceId}/member`, {
+    method: "PUT",
+    body,
+  });
+}
+
+/** DELETE /ad-publishing/facebook/custom-audience/{audienceId}/member — remove a member. */
+export async function removeFacebookCustomAudienceMember(
+  audienceId: string,
+  body: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/custom-audience/${audienceId}/member`, {
+    method: "DELETE",
+    body,
+  });
+}
+
+/** PUT /ad-publishing/facebook/custom-audience/{audienceId}/member/batch — bulk add/remove members. */
+export async function batchUpdateFacebookCustomAudienceMembers(
+  audienceId: string,
+  body: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/custom-audience/${audienceId}/member/batch`, {
+    method: "PUT",
+    body,
+  });
+}
+
+// ---- Facebook Ads: campaigns / ad sets / ads ----
+
+/**
+ * GET /ad-publishing/facebook/entity — list campaigns, ad sets, or ads.
+ * Filtered by entity type via query params (e.g. type=campaign|adset|ad, adAccountId, …).
+ */
+export async function getFacebookEntities(
+  params?: Record<string, string | number | boolean | undefined>
+): Promise<unknown> {
+  return fbFetch("/ad-publishing/facebook/entity", { params });
+}
+
+/** GET /ad-publishing/facebook/campaign/{campaignId} — campaign with its ad sets and ads. */
+export async function getFacebookCampaign(
+  campaignId: string
+): Promise<GHLFacebookCampaignWithEntities> {
+  return fbFetch<GHLFacebookCampaignWithEntities>(`/ad-publishing/facebook/campaign/${campaignId}`);
+}
+
+/** PUT /ad-publishing/facebook/campaigns — create or update a campaign. */
+export async function upsertFacebookCampaign(
+  body: Record<string, unknown>
+): Promise<GHLFacebookCampaign> {
+  return fbFetch<GHLFacebookCampaign>("/ad-publishing/facebook/campaigns", { method: "PUT", body });
+}
+
+/** POST /ad-publishing/facebook/campaigns/{campaignId}/publish — push a campaign live. */
+export async function publishFacebookCampaign(
+  campaignId: string,
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/campaigns/${campaignId}/publish`, { method: "POST", body });
+}
+
+/** POST /ad-publishing/facebook/campaigns/{campaignId}/pause — pause a running campaign. */
+export async function pauseFacebookCampaign(campaignId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/campaigns/${campaignId}/pause`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/campaigns/{campaignId}/resume — resume a paused campaign. */
+export async function resumeFacebookCampaign(campaignId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/campaigns/${campaignId}/resume`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/campaigns/{campaignId}/duplicate — duplicate a campaign. */
+export async function duplicateFacebookCampaign(
+  campaignId: string,
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/campaigns/${campaignId}/duplicate`, { method: "POST", body });
+}
+
+/** DELETE /ad-publishing/facebook/campaigns/{campaignId} — delete a campaign. */
+export async function deleteFacebookCampaign(campaignId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/campaigns/${campaignId}`, { method: "DELETE" });
+}
+
+/** PUT /ad-publishing/facebook/adsets — create or update an ad set. */
+export async function upsertFacebookAdSet(body: Record<string, unknown>): Promise<GHLFacebookAdSet> {
+  return fbFetch<GHLFacebookAdSet>("/ad-publishing/facebook/adsets", { method: "PUT", body });
+}
+
+/** POST /ad-publishing/facebook/adsets/{adSetId}/pause — pause a running ad set. */
+export async function pauseFacebookAdSet(adSetId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/adsets/${adSetId}/pause`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/adsets/{adSetId}/resume — resume a paused ad set. */
+export async function resumeFacebookAdSet(adSetId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/adsets/${adSetId}/resume`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/adsets/{adSetId}/duplicate — duplicate an ad set. */
+export async function duplicateFacebookAdSet(
+  adSetId: string,
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/adsets/${adSetId}/duplicate`, { method: "POST", body });
+}
+
+/** DELETE /ad-publishing/facebook/adsets/{adSetId} — delete an ad set. */
+export async function deleteFacebookAdSet(adSetId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/adsets/${adSetId}`, { method: "DELETE" });
+}
+
+/** PUT /ad-publishing/facebook/ads — create or update an ad. */
+export async function upsertFacebookAd(body: Record<string, unknown>): Promise<GHLFacebookAd> {
+  return fbFetch<GHLFacebookAd>("/ad-publishing/facebook/ads", { method: "PUT", body });
+}
+
+/** POST /ad-publishing/facebook/ads/{adId}/pause — pause a running ad. */
+export async function pauseFacebookAd(adId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/ads/${adId}/pause`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/ads/{adId}/resume — resume a paused ad. */
+export async function resumeFacebookAd(adId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/ads/${adId}/resume`, { method: "POST" });
+}
+
+/** POST /ad-publishing/facebook/ads/{adId}/duplicate — duplicate an ad. */
+export async function duplicateFacebookAd(
+  adId: string,
+  body?: Record<string, unknown>
+): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/ads/${adId}/duplicate`, { method: "POST", body });
+}
+
+/** DELETE /ad-publishing/facebook/ads/{adId} — delete an ad. */
+export async function deleteFacebookAd(adId: string): Promise<unknown> {
+  return fbFetch(`/ad-publishing/facebook/ads/${adId}`, { method: "DELETE" });
 }

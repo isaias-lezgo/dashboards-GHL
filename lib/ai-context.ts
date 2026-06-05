@@ -5,7 +5,12 @@ import type { ChatDataset } from "@/lib/ai-tools";
 
 const MAX_SAMPLE = 10;
 
-function topN<T>(items: T[], key: (x: T) => string | undefined, n: number): string[] {
+function topN<T>(
+  items: T[],
+  key: (x: T) => string | undefined,
+  n: number,
+  withCounts = false
+): string[] {
   const counts = new Map<string, number>();
   for (const it of items) {
     const k = key(it);
@@ -15,21 +20,14 @@ function topN<T>(items: T[], key: (x: T) => string | undefined, n: number): stri
   return Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, n)
-    .map(([k]) => k);
+    .map(([k, v]) => (withCounts ? `${k} (${v})` : k));
 }
 
-function topNWithCounts<T>(items: T[], key: (x: T) => string | undefined, n: number): string[] {
-  const counts = new Map<string, number>();
-  for (const it of items) {
-    const k = key(it);
-    if (!k) continue;
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([k, v]) => `${k} (${v})`);
-}
+const topNWithCounts = <T>(
+  items: T[],
+  key: (x: T) => string | undefined,
+  n: number
+): string[] => topN(items, key, n, true);
 
 export function buildDatasetSummary(data: ChatDataset, locationId?: string): string {
   const lines: string[] = [];
@@ -96,7 +94,7 @@ export function buildDatasetSummary(data: ChatDataset, locationId?: string): str
   const probs = data.opportunities.map((o) => o.probability).filter((p): p is number => p !== undefined && p !== null);
   if (probs.length > 0) {
     const avg = Math.round(probs.reduce((a, b) => a + b, 0) / probs.length);
-    lines.push(`Probabilidad promedio (oportunidades con valor): ${avg}%`);
+    lines.push(`Probabilidad promedio (oportunidades con probabilidad): ${avg}%`);
   }
 
   // Won/closed date range
