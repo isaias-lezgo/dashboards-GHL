@@ -8,6 +8,7 @@ import {
   getAllCustomObjectRecords,
   getCalendarEvents,
   getCalendars,
+  getLocation,
   type GHLContact,
   type GHLOpportunity,
   type GHLCalendarEvent,
@@ -47,20 +48,35 @@ function buildCampaignLabel(content?: string, campaign?: string): string | undef
 }
 
 function resolveCustomFields(
-  fields: Array<{ id: string; value?: string; fieldValue?: string; fieldValueString?: string }> | undefined,
+  fields: Array<{ id: string; value?: unknown; fieldValue?: unknown; fieldValueString?: unknown }> | undefined,
   map: Map<string, string>
-): Record<string, string> {
+): Record<string, string | string[]> {
   if (!fields?.length || !map.size) return {};
-  const result: Record<string, string> = {};
+  const result: Record<string, string | string[]> = {};
   for (const f of fields) {
     const name = map.get(f.id);
-    // contacts use value; opportunities use fieldValue/fieldValueString
-    const value = f.fieldValue ?? f.fieldValueString ?? f.value;
-    if (name && value !== undefined && value !== null && String(value).trim() !== "") {
-      result[name] = String(value);
+    if (!name) continue;
+    // contacts use value; opportunities use fieldValue/fieldValueString.
+    // Multi-option/checkbox fields arrive as an array of strings.
+    const raw = f.fieldValue ?? f.fieldValueString ?? f.value;
+    if (raw === undefined || raw === null) continue;
+    if (Array.isArray(raw)) {
+      const arr = raw.map((v) => String(v)).filter((s) => s.trim() !== "");
+      if (arr.length === 1) result[name] = arr[0];
+      else if (arr.length > 1) result[name] = arr;
+    } else {
+      const s = String(raw);
+      if (s.trim() !== "") result[name] = s;
     }
   }
   return result;
+}
+
+// Narrow a resolved custom field to a single string (for scalar fields like
+// "Motivo de Perdido"). Multi-value fields collapse to their first entry.
+function cfString(v: string | string[] | undefined): string | undefined {
+  if (Array.isArray(v)) return v[0];
+  return v || undefined;
 }
 
 // Spread all GHL fields through; add computed fields on top.
@@ -118,7 +134,7 @@ function transformOpportunity(
     attributionMedium: firstAttr(ghl.attributions)?.medium || firstAttr(ghl.attributions)?.utmSessionSource || undefined,
     lostReason:
       ghl.status === "lost"
-        ? customFieldsResolved["Motivo de Perdido"] || undefined
+        ? cfString(customFieldsResolved["Motivo de Perdido"])
         : undefined,
     ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
@@ -190,6 +206,21 @@ export async function GET() {
 
       try {
         send({ type: "progress", message: "Iniciando sincronización…" });
+
+        // Resolve the sub-account name first so the loading screen can show which
+        // location is being opened. Cheap single call — don't block the rest on it.
+        let locationName = "";
+        const locationPromise = getLocation()
+          .then((res) => {
+            const name = res?.location?.name?.trim();
+            if (name) {
+              locationName = name;
+              send({ type: "location", name });
+            }
+          })
+          .catch(() => {
+            /* non-fatal: loading screen just omits the sub-account name */
+          });
 
         // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
         const [pipelinesResult, usersResult, customFieldsResult] =
@@ -445,8 +476,12 @@ export async function GET() {
           attributionSource: c.attributionSource ?? null,
         }));
 
+        // Ensure the sub-account name is settled before the final payload.
+        await locationPromise;
+
         send({
           type: "data",
+          locationName,
           contacts,
           opportunities,
           calls,

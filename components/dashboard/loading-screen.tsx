@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion"
 
 interface LoadingScreenProps {
   progress: string
+  /** Name of the GHL sub-account being opened. Empty until resolved. */
+  locationName?: string
 }
 
 const SYNC_STEPS = [
@@ -87,7 +89,7 @@ function stepFromMessage(message: string): number {
   return 0
 }
 
-export function LoadingScreen({ progress }: LoadingScreenProps) {
+export function LoadingScreen({ progress, locationName }: LoadingScreenProps) {
   const activeStep = stepFromMessage(progress)
 
   return (
@@ -122,8 +124,29 @@ export function LoadingScreen({ progress }: LoadingScreenProps) {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2, duration: 0.35 }}
             >
-              Sincronizando datos con Lezgo Suite
+              Abriendo subcuenta
             </motion.p>
+            {/* Skeleton → name pill swap. Deliberately NOT wrapped in
+                AnimatePresence mode="wait": the placeholder's infinite-repeat
+                opacity animation never fires an exit-complete callback, which
+                deadlocks the presence swap so the pill never mounts. A plain
+                conditional with a CSS-pulse skeleton unmounts cleanly the
+                instant the sub-account name resolves. */}
+            <div className="mt-3 flex min-h-[2rem] items-center justify-center">
+              {locationName ? (
+                <motion.span
+                  key={locationName}
+                  className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary"
+                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
+                  {locationName}
+                </motion.span>
+              ) : (
+                <span className="h-7 w-40 animate-pulse rounded-full bg-muted" aria-hidden />
+              )}
+            </div>
           </div>
 
           <div className="w-full space-y-2">

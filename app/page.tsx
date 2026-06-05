@@ -44,7 +44,7 @@ export default function DashboardPage() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  const { data, isLoading, isError, progress, refresh } = useDashboardData({})
+  const { data, isLoading, isError, progress, locationName, refresh } = useDashboardData({})
   const { messages, isLoading: messagesLoading } = useConversationsData()
 
   const contacts = data?.contacts ?? []
@@ -59,7 +59,7 @@ export default function DashboardPage() {
   return (
     <>
     <AnimatePresence>
-      {isInitialLoad && <LoadingScreen key="loader" progress={progress} />}
+      {isInitialLoad && <LoadingScreen key="loader" progress={progress} locationName={locationName} />}
     </AnimatePresence>
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}

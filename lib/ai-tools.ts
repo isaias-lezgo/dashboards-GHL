@@ -56,7 +56,7 @@ export const TOOL_DEFINITIONS = [
         field: {
           type: "string",
           description:
-            "Field name to enumerate. Common: source, campaign, adType, assignedTo, stage, pipelineName, status, tipo, tags.",
+            "Field name to enumerate. Common: source, campaign, adType, assignedTo, stage, pipelineName, status, tipo, tags. For a custom field (contacts/opportunities), pass 'cf:<Field Name>' (e.g. 'cf:Origen de Lead', 'cf:Servicio Técnico') — multi-option fields fan out per option value. Run this FIRST before filtering by a custom field so you use its exact option values.",
         },
         limit: { type: "number", description: "Max distinct values to return (default 40)." },
       },
@@ -82,6 +82,12 @@ export const TOOL_DEFINITIONS = [
         state: { type: "string", description: "State substring match, case-insensitive." },
         country: { type: "string", description: "Country substring match, case-insensitive." },
         dnd: { type: "boolean", description: "Filter by Do Not Disturb status (true = DND on, false = DND off)." },
+        customFields: {
+          type: "object",
+          additionalProperties: true,
+          description:
+            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive — multi-option fields match when the option is present. Discover exact values with list_values field='cf:<Field Name>'.",
+        },
         createdAfter: { type: "string", description: "ISO date — only contacts created on/after this date." },
         createdBefore: { type: "string", description: "ISO date — only contacts created on/before this date." },
         limit: { type: "number", description: "Max rows to return (default 25, max 100)." },
@@ -148,6 +154,12 @@ export const TOOL_DEFINITIONS = [
         maxValue: { type: "number" },
         minProbability: { type: "number", description: "Minimum probability (0–100)." },
         maxProbability: { type: "number", description: "Maximum probability (0–100)." },
+        customFields: {
+          type: "object",
+          additionalProperties: true,
+          description:
+            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive. Discover exact values with list_values field='cf:<Field Name>'.",
+        },
         createdAfter: { type: "string", description: "ISO date — only opps created on/after this date." },
         createdBefore: { type: "string", description: "ISO date — only opps created on/before this date." },
         closedAfter: { type: "string", description: "ISO date — only opps closed on/after this date." },
@@ -216,7 +228,7 @@ export const TOOL_DEFINITIONS = [
         groupBy: {
           type: "string",
           description:
-            "Field to group by. Common: 'source', 'campaign', 'adType', 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Use 'none' for a single total.",
+            "Field to group by. Common: 'source', 'campaign', 'adType', 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
         },
         metric: {
           type: "string",
@@ -226,7 +238,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive).",
           additionalProperties: true,
         },
         limit: { type: "number", description: "Max groups to return (default 50)." },
@@ -249,7 +261,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, createdAfter, createdBefore, contactIds. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore.",
+            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive).",
           additionalProperties: true,
         },
         columns: {
@@ -341,7 +353,7 @@ export const TOOL_DEFINITIONS = [
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, createdAfter, createdBefore.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }.",
             },
           },
           required: ["entity"],
@@ -357,7 +369,7 @@ export const TOOL_DEFINITIONS = [
             filters: {
               type: "object",
               additionalProperties: true,
-              description: "Same filter keys as search_<entity>/aggregate (see from.filters).",
+              description: "Same filter keys as search_<entity>/aggregate (see from.filters), including customFields for contacts/opportunities.",
             },
           },
           required: ["entity"],
@@ -370,7 +382,7 @@ export const TOOL_DEFINITIONS = [
         groupBy: {
           type: "string",
           description:
-            "Optional field on the `to` entity to group by (e.g. 'status', 'stage', 'source', 'assignedTo'). Omit (or 'none') for a single total.",
+            "Optional field on the `to` entity to group by (e.g. 'status', 'stage', 'source', 'assignedTo', or 'cf:<Field Name>' for a custom field). Omit (or 'none') for a single total.",
         },
         includeContactIds: {
           type: "boolean",
@@ -465,6 +477,54 @@ function isub(haystack: unknown, needle: unknown): boolean {
 function includesAllCI(haystack: string[], needles: string[]): boolean {
   const lower = haystack.map((h) => h.toLowerCase());
   return needles.every((n) => lower.includes(n.toLowerCase()));
+}
+
+// ─── custom-field helpers ──────────────────────────────────────────────────────
+// `customFieldsResolved` is a name→value map. Single-value fields are stored as
+// a string; multi-option / checkbox fields keep their array shape. These helpers
+// normalize both so contacts and opportunities can be filtered, grouped, and
+// enumerated by any custom field — accessed via the `customFields` filter and the
+// `cf:<Field Name>` (alias `customField:<Field Name>`) group/field convention.
+
+type CustomFieldsResolved = Record<string, string | string[]> | undefined;
+
+// Case-insensitive lookup of a custom-field value by display name.
+function cfLookup(resolved: CustomFieldsResolved, name: string): string | string[] | undefined {
+  if (!resolved) return undefined;
+  if (name in resolved) return resolved[name];
+  const target = name.trim().toLowerCase();
+  for (const k of Object.keys(resolved)) {
+    if (k.toLowerCase() === target) return resolved[k];
+  }
+  return undefined;
+}
+
+// Normalize a resolved custom-field value to a flat array of trimmed strings.
+function cfValues(resolved: CustomFieldsResolved, name: string): string[] {
+  const v = cfLookup(resolved, name);
+  if (v === undefined) return [];
+  return (Array.isArray(v) ? v : [v]).map((s) => String(s)).filter((s) => s.trim() !== "");
+}
+
+// If `field`/`groupBy` is "cf:Name" or "customField:Name", return the field name.
+function customFieldName(spec: string): string | null {
+  const m = /^(?:cf|customField):(.+)$/.exec(spec);
+  return m ? m[1].trim() : null;
+}
+
+// Apply a `customFields` filter object: { "Field Name": "value" | ["a","b"] }.
+// Each field entry must match (AND); within a field, any listed value matches
+// (OR). Matching is exact per option value, case-insensitive.
+function matchesCustomFields(resolved: CustomFieldsResolved, filter: unknown): boolean {
+  if (!filter || typeof filter !== "object" || Array.isArray(filter)) return true;
+  for (const [name, want] of Object.entries(filter as Record<string, unknown>)) {
+    if (want === undefined || want === null) continue;
+    const needles = (Array.isArray(want) ? want : [want]).map((n) => String(n).trim().toLowerCase());
+    if (needles.length === 0) continue;
+    const have = cfValues(resolved, name).map((v) => v.toLowerCase());
+    if (!needles.some((n) => have.includes(n))) return false;
+  }
+  return true;
 }
 
 function compactContact(c: Contact) {
@@ -770,7 +830,7 @@ function listFields(input: ToolInput, data: ChatDataset) {
         "dateOfBirth", "lastActivity", "dateAdded", "createdAt", "dateUpdated",
         "dnd", "type", "customFields", "customFieldsResolved", "attributionSource", "attributions",
       ],
-      note: "customFieldsResolved is a key→value object with human-readable field names (e.g. {\"Servicio Técnico\": \"Estándar\"}). Use get_contact to see the actual keys for a record.",
+      note: "customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Origen de Lead\": \"Facebook\"}); multi-option/checkbox fields hold a string[] (e.g. {\"Origen de Lead\": [\"Facebook\",\"Instagram\"]}). To filter, pass customFields: { \"Field Name\": \"value\" } to search_contacts/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
       count: data.contacts.length,
     },
     opportunities: {
@@ -782,7 +842,7 @@ function listFields(input: ToolInput, data: ChatDataset) {
         "lostReason", "lostReasonId", "notes", "archived", "origin",
         "campaignId", "funnelId", "workflowId", "customFields", "customFieldsResolved", "attributions",
       ],
-      note: "customFieldsResolved is a key→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}). Use get_opportunity to see the actual keys for a record.",
+      note: "customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}); multi-option fields hold a string[]. To filter, pass customFields: { \"Field Name\": \"value\" } to search_opportunities/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
       count: data.opportunities.length,
     },
     pautas: {
@@ -831,8 +891,15 @@ function listValues(input: ToolInput, data: ChatDataset) {
       return { error: `Unknown entity: ${entity}` };
   }
 
+  const cfName = customFieldName(field);
   const counts = new Map<string, number>();
   for (const r of rows) {
+    if (cfName) {
+      const vals = cfValues(r.customFieldsResolved as CustomFieldsResolved, cfName);
+      if (vals.length === 0) counts.set("(sin valor)", (counts.get("(sin valor)") ?? 0) + 1);
+      for (const item of vals) counts.set(item, (counts.get(item) ?? 0) + 1);
+      continue;
+    }
     const v = r[field];
     if (Array.isArray(v)) {
       if (v.length === 0) counts.set("(sin valor)", (counts.get("(sin valor)") ?? 0) + 1);
@@ -874,6 +941,7 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
   const state = typeof input.state === "string" ? input.state : undefined;
   const country = typeof input.country === "string" ? input.country : undefined;
   const dnd = typeof input.dnd === "boolean" ? input.dnd : undefined;
+  const customFields = input.customFields && typeof input.customFields === "object" ? input.customFields : undefined;
   const after = typeof input.createdAfter === "string" ? startBound(input.createdAfter) : undefined;
   const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
   const limit = clampLimit(input.limit);
@@ -895,6 +963,7 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
     if (state && !isub(c.state, state)) continue;
     if (country && !isub(c.country, country)) continue;
     if (dnd !== undefined && Boolean(c.dnd) !== dnd) continue;
+    if (customFields && !matchesCustomFields(c.customFieldsResolved, customFields)) continue;
     if (after !== undefined && +new Date(c.createdAt) < after) continue;
     if (before !== undefined && +new Date(c.createdAt) > before) continue;
     out.push(c);
@@ -971,6 +1040,7 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
   const maxValue = typeof input.maxValue === "number" ? input.maxValue : undefined;
   const minProb = typeof input.minProbability === "number" ? input.minProbability : undefined;
   const maxProb = typeof input.maxProbability === "number" ? input.maxProbability : undefined;
+  const customFields = input.customFields && typeof input.customFields === "object" ? input.customFields : undefined;
   const after = typeof input.createdAfter === "string" ? startBound(input.createdAfter) : undefined;
   const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
   const closedAfter = typeof input.closedAfter === "string" ? startBound(input.closedAfter) : undefined;
@@ -992,6 +1062,7 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
     if (maxValue !== undefined && o.value > maxValue) continue;
     if (minProb !== undefined && (o.probability ?? 0) < minProb) continue;
     if (maxProb !== undefined && (o.probability ?? 100) > maxProb) continue;
+    if (customFields && !matchesCustomFields(o.customFieldsResolved, customFields)) continue;
     if (after !== undefined || before !== undefined) {
       const t = +new Date(o.createdAt);
       if (after !== undefined && t < after) continue;
@@ -1125,8 +1196,16 @@ function aggregateRows(
     };
   }
 
+  const cfName = customFieldName(groupBy);
   const buckets = new Map<string, Array<Record<string, unknown>>>();
   for (const r of rows) {
+    if (cfName) {
+      // group by a custom field — fan out per option value (multi-option fields)
+      const vals = cfValues(r.customFieldsResolved as CustomFieldsResolved, cfName);
+      if (vals.length === 0) push(buckets, "(sin valor)", r);
+      else for (const v of vals) push(buckets, v, r);
+      continue;
+    }
     const raw = r[groupBy];
     if (groupBy === "tags" && Array.isArray(raw)) {
       // fan out per tag
@@ -1313,6 +1392,7 @@ function applyContactFilters(rows: Contact[], f: ToolInput): Contact[] {
     if (typeof f.state === "string" && !isub(c.state, f.state)) return false;
     if (typeof f.country === "string" && !isub(c.country, f.country)) return false;
     if (typeof f.dnd === "boolean" && Boolean(c.dnd) !== f.dnd) return false;
+    if (f.customFields && !matchesCustomFields(c.customFieldsResolved, f.customFields)) return false;
     if (typeof f.createdAfter === "string" && +new Date(c.createdAt) < startBound(f.createdAfter)) return false;
     if (typeof f.createdBefore === "string" && +new Date(c.createdAt) > endBound(f.createdBefore)) return false;
     return true;
@@ -1336,6 +1416,7 @@ function applyOppFilters(rows: Opportunity[], f: ToolInput): Opportunity[] {
     if (typeof f.maxValue === "number" && o.value > f.maxValue) return false;
     if (typeof f.minProbability === "number" && (o.probability ?? 0) < f.minProbability) return false;
     if (typeof f.maxProbability === "number" && (o.probability ?? 100) > f.maxProbability) return false;
+    if (f.customFields && !matchesCustomFields(o.customFieldsResolved, f.customFields)) return false;
     if (typeof f.createdAfter === "string" && +new Date(o.createdAt) < startBound(f.createdAfter)) return false;
     if (typeof f.createdBefore === "string" && +new Date(o.createdAt) > endBound(f.createdBefore)) return false;
     if (typeof f.closedAfter === "string") {

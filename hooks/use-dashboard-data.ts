@@ -25,6 +25,7 @@ export interface DashboardData {
   sources: string[];
   pautas: Pauta[];
   locationId: string;
+  locationName: string;
   meta: {
     totalContacts: number;
     totalOpportunities: number;
@@ -40,6 +41,7 @@ export function useDashboardData(params?: {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [progress, setProgress] = useState<string>("Iniciando sincronización…");
+  const [locationName, setLocationName] = useState<string>("");
   const abortRef = useRef<AbortController | null>(null);
 
   const startDate = params?.startDate;
@@ -61,8 +63,9 @@ export function useDashboardData(params?: {
     setProgress("Iniciando sincronización…");
 
     try {
-      const result = await fetchStream<DashboardData>(url, setProgress, ctrl.signal);
+      const result = await fetchStream<DashboardData>(url, setProgress, ctrl.signal, setLocationName);
       setData(result);
+      if (result.locationName) setLocationName(result.locationName);
       setProgress("");
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
@@ -91,6 +94,7 @@ export function useDashboardData(params?: {
     isLoading,
     isError,
     progress,
+    locationName,
     refresh,
   };
 }
