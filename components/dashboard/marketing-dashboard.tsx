@@ -824,7 +824,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
               return (
                 <div className="flex items-center gap-4">
                   {/* Donut */}
-                  <div style={{ width: 160, height: 200, flexShrink: 0, position: "relative" }}>
+                  <div style={{ width: 160, height: 300, flexShrink: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -996,13 +996,13 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                   style={{ height: 300 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={pautasByTipoRows} margin={{ top: 5, right: 8, left: 8, bottom: 70 }} barCategoryGap="20%">
+                    <BarChart data={pautasByTipoRows} margin={{ top: 5, right: 8, left: 8, bottom: 16 }} barCategoryGap="20%">
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                       <XAxis dataKey="tipo" tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} interval={0} angle={-40} textAnchor="end" tickFormatter={(v: string) => v.length > 20 ? v.slice(0, 20) + "…" : v} />
                       <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
                       <Legend
-                        wrapperStyle={{ fontSize: 11, paddingTop: 0 }}
+                        wrapperStyle={{ fontSize: 11, paddingTop: 32 }}
                         formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
                       />
                       {pautasByTipoPlatforms.map((key, i) => (
@@ -1075,7 +1075,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={pautasByMonthRows}
-                    margin={{ top: 5, right: 16, left: 8, bottom: 60 }}
+                    margin={{ top: 5, right: 16, left: 8, bottom: 16 }}
                     barCategoryGap="20%"
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
@@ -1668,7 +1668,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 style={{ height: 300 }}
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={wonBySource} margin={{ top: 16, right: 16, left: 8, bottom: 80 }} barCategoryGap="20%">
+                  <BarChart data={wonBySource} margin={{ top: 16, right: 16, left: 8, bottom: 16 }} barCategoryGap="20%">
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
                     <XAxis
                       dataKey="platform"
@@ -1683,7 +1683,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                     <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                     <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.platform ?? String(_)} />} />
                     <Legend
-                      wrapperStyle={{ fontSize: 11, paddingTop: 0 }}
+                      wrapperStyle={{ fontSize: 11, paddingTop: 32 }}
                       formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
                     />
                     {SOURCE_CATEGORY_ORDER.map((key, i) => (
