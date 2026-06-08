@@ -23,6 +23,67 @@ export interface ChatDataset {
   calls: Call[];
 }
 
+// ─── Chart spec (render_chart tool) ─────────────────────────────────────────────
+
+export interface ChartSeriesPoint {
+  label: string;
+  value: number;
+  /** Records behind this group, for the drill-down drawer. Omit for non-drillable groups (e.g. pure time trends). */
+  contactIds?: string[];
+}
+
+export interface ChartSpec {
+  type: "bar" | "line" | "pie";
+  title: string;
+  /** Axis/tooltip label, e.g. "Leads" or "Valor (MXN)". */
+  valueLabel?: string;
+  series: ChartSeriesPoint[];
+}
+
+/**
+ * Hard cap on contactIds kept per chart group for the drill-down, to bound
+ * token cost. The system prompt also instructs the model to send at most this
+ * many; this slice is the safety net if it sends more.
+ */
+export const MAX_CHART_CONTACT_IDS = 50;
+
+/**
+ * Safely turn an unknown render_chart tool input into a ChartSpec.
+ * Returns null when the shape is unusable so the UI can skip rendering.
+ * Truncates each group's contactIds to MAX_CHART_CONTACT_IDS.
+ */
+export function parseChartSpec(input: unknown): ChartSpec | null {
+  if (!input || typeof input !== "object") return null;
+  const o = input as Record<string, unknown>;
+  const type = o.type;
+  if (type !== "bar" && type !== "line" && type !== "pie") return null;
+  if (!Array.isArray(o.series)) return null;
+
+  const series: ChartSeriesPoint[] = [];
+  for (const raw of o.series) {
+    if (!raw || typeof raw !== "object") continue;
+    const r = raw as Record<string, unknown>;
+    const label = typeof r.label === "string" ? r.label : "";
+    const value =
+      typeof r.value === "number" && Number.isFinite(r.value)
+        ? r.value
+        : Number(r.value);
+    if (!label || !Number.isFinite(value)) continue;
+    const contactIds = Array.isArray(r.contactIds)
+      ? r.contactIds.map((x) => String(x)).slice(0, MAX_CHART_CONTACT_IDS)
+      : undefined;
+    series.push({ label, value, contactIds });
+  }
+  if (series.length === 0) return null;
+
+  return {
+    type,
+    title: typeof o.title === "string" ? o.title : "",
+    valueLabel: typeof o.valueLabel === "string" ? o.valueLabel : undefined,
+    series,
+  };
+}
+
 // ─── Tool schemas (sent to Claude) ────────────────────────────────────────────
 
 export const TOOL_DEFINITIONS = [
@@ -86,7 +147,7 @@ export const TOOL_DEFINITIONS = [
           type: "object",
           additionalProperties: true,
           description:
-            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive — multi-option fields match when the option is present. Discover exact values with list_values field='cf:<Field Name>'.",
+            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive — multi-option fields match when the option is present. To match records where the field is EMPTY/unset, pass \"(sin valor)\" as the value (the same label list_values returns) — no need to fetch records one by one. Discover exact values with list_values field='cf:<Field Name>'.",
         },
         createdAfter: { type: "string", description: "ISO date — only contacts created on/after this date." },
         createdBefore: { type: "string", description: "ISO date — only contacts created on/before this date." },
@@ -158,7 +219,7 @@ export const TOOL_DEFINITIONS = [
           type: "object",
           additionalProperties: true,
           description:
-            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive. Discover exact values with list_values field='cf:<Field Name>'.",
+            "Filter by custom fields, keyed by the field's display name: { \"Field Name\": \"value\" } or { \"Field Name\": [\"a\",\"b\"] }. Each field must match (AND); a list of values matches if ANY do (OR). Matching is exact per option value, case-insensitive. To match opportunities where the field is EMPTY/unset, pass \"(sin valor)\" as the value (the same label list_values returns) — do this in ONE call instead of fetching each opportunity with get_opportunity. Discover exact values with list_values field='cf:<Field Name>'.",
         },
         createdAfter: { type: "string", description: "ISO date — only opps created on/after this date." },
         createdBefore: { type: "string", description: "ISO date — only opps created on/before this date." },
@@ -238,7 +299,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive).",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         limit: { type: "number", description: "Max groups to return (default 50)." },
@@ -261,7 +322,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive).",
+            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         columns: {
@@ -282,7 +343,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "search_conversations",
     description:
-      "Fetches full conversation message threads for a list of contacts from GoHighLevel. Always derive contactIds first using list_appointments, search_contacts, search_opportunities, or other tools — never ask the user for IDs. May take several seconds for large batches. Returns full message history per contact (newest first), content truncated to 500 chars. For a single contact's conversation, use get_contact_messages instead.",
+      "Fetches conversation message threads for a list of contacts from GoHighLevel. Always derive contactIds first using list_appointments, search_contacts, search_opportunities, or other tools — never ask the user for IDs. May take several seconds for large batches. Returns up to `messageLimit` messages per contact (newest first), content truncated to 500 chars. Each thread reports `messageCount` (messages returned) and `hasMore` (true when older messages exist beyond this slice). When `hasMore` is true you have only seen a partial, recent sample — do NOT infer a loss reason, churn cause, or root cause from it; pull the full history with get_contact_messages for that contact first. For a single contact's conversation, use get_contact_messages instead.",
     input_schema: {
       type: "object",
       properties: {
@@ -294,7 +355,7 @@ export const TOOL_DEFINITIONS = [
         },
         limit: {
           type: "number",
-          description: "Max number of contacts to process (default 20, max 50).",
+          description: "Max number of contacts to process (default 30, max 50).",
         },
         messageLimit: {
           type: "number",
@@ -353,7 +414,7 @@ export const TOOL_DEFINITIONS = [
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
             },
           },
           required: ["entity"],
@@ -417,6 +478,48 @@ export const TOOL_DEFINITIONS = [
         },
       },
       required: ["contactIds"],
+    },
+  },
+  {
+    name: "render_chart",
+    description:
+      "Renders a visual chart inline in the chat. Use it ONLY when the user asks for a chart, or when it genuinely adds value — a comparison across several groups or a trend over time. Do NOT chart single numbers, short lists, or one-contact profiles. Call it as your FINAL step. CRITICAL: every `value` MUST come from a prior `aggregate` or `relate` call — NEVER invent or eyeball numbers. To make the chart drillable, include `contactIds` on each group with the contacts behind that bar/slice (get them from `relate({ ..., includeContactIds: true })` or a `search_*` call); include AT MOST 50 per group (the system truncates to 50 and tells the user the drill-down is limited). Groups without contactIds render but are not clickable. Always also give a one-line text summary alongside the chart.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type: {
+          type: "string",
+          enum: ["bar", "line", "pie"],
+          description:
+            "bar = counts/sums by group; line = a trend over ordered time buckets; pie = share of a total.",
+        },
+        title: {
+          type: "string",
+          description: "Short heading in Spanish shown above the chart (e.g. 'Leads por fuente').",
+        },
+        valueLabel: {
+          type: "string",
+          description: "What the numbers represent, e.g. 'Leads', 'Oportunidades', 'Valor (MXN)'. Shown in the tooltip.",
+        },
+        series: {
+          type: "array",
+          description: "The data points. One entry per bar/slice/point.",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Group name (e.g. 'Meta', 'Semana 22', 'Primera Cita')." },
+              value: { type: "number", description: "The real number from aggregate/relate for this group." },
+              contactIds: {
+                type: "array",
+                items: { type: "string" },
+                description: "The contacts behind this group, for drill-down (max 50). Omit when not contact-backed.",
+              },
+            },
+            required: ["label", "value"],
+          },
+        },
+      },
+      required: ["type", "title", "series"],
     },
   },
 ] as const;
@@ -512,9 +615,17 @@ function customFieldName(spec: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+// Sentinel values that mean "this custom field has no value". `list_values` and
+// `aggregate` groupBy both emit "(sin valor)" as the empty bucket, so honoring it
+// here lets the model filter empty fields in one call instead of fanning out to
+// per-record get_opportunity / get_contact lookups.
+const EMPTY_CF_SENTINELS = new Set(["(sin valor)", ""]);
+
 // Apply a `customFields` filter object: { "Field Name": "value" | ["a","b"] }.
 // Each field entry must match (AND); within a field, any listed value matches
-// (OR). Matching is exact per option value, case-insensitive.
+// (OR). Matching is exact per option value, case-insensitive. The sentinel
+// "(sin valor)" matches records where the field is empty/unset, so empty and
+// real values can be OR'd together (e.g. ["(sin valor)", "Estándar"]).
 function matchesCustomFields(resolved: CustomFieldsResolved, filter: unknown): boolean {
   if (!filter || typeof filter !== "object" || Array.isArray(filter)) return true;
   for (const [name, want] of Object.entries(filter as Record<string, unknown>)) {
@@ -522,6 +633,13 @@ function matchesCustomFields(resolved: CustomFieldsResolved, filter: unknown): b
     const needles = (Array.isArray(want) ? want : [want]).map((n) => String(n).trim().toLowerCase());
     if (needles.length === 0) continue;
     const have = cfValues(resolved, name).map((v) => v.toLowerCase());
+    if (have.length === 0) {
+      // Field is empty — matches only if the filter explicitly asks for empty.
+      if (!needles.some((n) => EMPTY_CF_SENTINELS.has(n))) return false;
+      continue;
+    }
+    // Field has values — match any requested real value (sentinels never match a
+    // real value, so they're harmless inside an OR list).
     if (!needles.some((n) => have.includes(n))) return false;
   }
   return true;
@@ -656,6 +774,14 @@ export function executeTool(
       // tool input). Here we just acknowledge so the model knows it succeeded.
       const ids = Array.isArray(input.contactIds) ? (input.contactIds as string[]) : [];
       return { ok: true, shown: ids.length };
+    }
+    case "render_chart": {
+      // UI-only directive. The chart is rendered client-side from the tool_use
+      // block in conversations-chat.tsx. Here we just acknowledge.
+      const series = Array.isArray((input as Record<string, unknown>).series)
+        ? ((input as Record<string, unknown>).series as unknown[])
+        : [];
+      return { ok: true, points: series.length };
     }
     default:
       return { error: `Unknown tool: ${name}` };
