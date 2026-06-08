@@ -117,7 +117,7 @@ export const TOOL_DEFINITIONS = [
         field: {
           type: "string",
           description:
-            "Field name to enumerate. Common: source, campaign, adType, assignedTo, stage, pipelineName, status, tipo, tags. For a custom field (contacts/opportunities), pass 'cf:<Field Name>' (e.g. 'cf:Origen de Lead', 'cf:Servicio Técnico') — multi-option fields fan out per option value. Run this FIRST before filtering by a custom field so you use its exact option values.",
+            "Field name to enumerate. Common: source, campaign, adId, attributionUrl, adType, attributionMedium (the real platform: whatsapp/facebook/instagram/tiktok), assignedTo, stage, pipelineName, status, tipo, tags. NOTE: campaign is empty for most leads (esp. WhatsApp/Meta paid) — use adId/attributionUrl to see the real ad/campaign identities. For a custom field (contacts/opportunities), pass 'cf:<Field Name>' (e.g. 'cf:Origen de Lead', 'cf:Servicio Técnico') — multi-option fields fan out per option value. Run this FIRST before filtering by a custom field so you use its exact option values.",
         },
         limit: { type: "number", description: "Max distinct values to return (default 40)." },
       },
@@ -127,7 +127,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "search_contacts",
     description:
-      "Search contacts by name/email/phone substring, tags, source, campaign, adType, assigned advisor, company, or location. Also accepts a contactIds array to resolve a specific set of IDs to names. Filter values are matched case-insensitively. Returns compact rows. Use get_contact for full details.",
+      "Search contacts by name/email/phone substring, tags, source, campaign, adId, attributionUrl (Ad URL), adType, attributionMedium (platform: whatsapp/facebook/instagram/tiktok), assigned advisor, company, or location. Also accepts a contactIds array to resolve a specific set of IDs to names. campaign is usually empty (esp. WhatsApp/Meta paid) — use adId/attributionUrl for the real ad/campaign identity. Filter values are matched case-insensitively. Returns compact rows. Use get_contact for full details.",
     input_schema: {
       type: "object",
       properties: {
@@ -135,8 +135,11 @@ export const TOOL_DEFINITIONS = [
         contactIds: { type: "array", items: { type: "string" }, description: "Only return contacts whose id is in this list. Use this to resolve a set of contactIds (from appointments, pautas, etc.) into human-readable names — NEVER print raw IDs; call this tool instead." },
         tags: { type: "array", items: { type: "string" }, description: "Filter to contacts having ALL of these tags (case-insensitive)." },
         source: { type: "string", description: "Source match, case-insensitive (e.g. 'meta', 'Paid Social')." },
-        campaign: { type: "string", description: "Campaign substring match, case-insensitive." },
-        adType: { type: "string", description: "AdType match, case-insensitive." },
+        campaign: { type: "string", description: "Campaign substring match, case-insensitive. NOTE: the native campaign field is empty for most leads (esp. WhatsApp/Meta paid) — the real ad identity lives in adId/attributionUrl. When the user asks 'por campaña', also break down by adId and attributionUrl." },
+        adId: { type: "string", description: "Ad ID match, case-insensitive exact. The Meta/Google ad the lead came from — the de-facto campaign identifier when `campaign` is empty. Discover values with list_values field='adId'." },
+        attributionUrl: { type: "string", description: "Attribution / Ad URL substring match, case-insensitive. The landing/ad URL the lead came from — human-readable campaign identity when `campaign` is empty. Discover values with list_values field='attributionUrl'." },
+        adType: { type: "string", description: "AdType match, case-insensitive (e.g. 'Paid Social', 'Social media') — paid vs organic, NOT the platform." },
+        attributionMedium: { type: "string", description: "Platform/channel the lead came from, case-insensitive exact (e.g. 'whatsapp', 'facebook', 'instagram', 'tiktok'). THIS is the platform — use it for 'por qué plataforma' questions, not tags. Discover exact values with list_values field='attributionMedium'." },
         assignedTo: { type: "string", description: "Advisor name, case-insensitive exact." },
         companyName: { type: "string", description: "Company name substring match, case-insensitive." },
         city: { type: "string", description: "City substring match, case-insensitive." },
@@ -198,7 +201,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "search_opportunities",
     description:
-      "Search/filter opportunities. Filter values for source/campaign/adType/assignedTo/stage/pipeline/priority are matched case-insensitively. Returns compact rows. Use get_opportunity for full details.",
+      "Search/filter opportunities. Filter values for source/campaign/adId/attributionUrl/adType/assignedTo/stage/pipeline/priority are matched case-insensitively. campaign is usually empty (esp. WhatsApp/Meta paid) — use adId/attributionUrl for the real ad/campaign identity. Returns compact rows. Use get_opportunity for full details.",
     input_schema: {
       type: "object",
       properties: {
@@ -208,6 +211,10 @@ export const TOOL_DEFINITIONS = [
         stage: { type: "string", description: "Exact stage name." },
         status: { type: "string", enum: ["open", "won", "lost", "abandoned"] },
         source: { type: "string" },
+        campaign: { type: "string", description: "Campaign substring match, case-insensitive. NOTE: usually empty (esp. WhatsApp/Meta paid) — the real ad identity lives in adId/attributionUrl. When the user asks 'por campaña', also break down by adId and attributionUrl." },
+        adId: { type: "string", description: "Ad ID match, case-insensitive exact. The de-facto campaign identifier when `campaign` is empty. Discover values with list_values field='adId'." },
+        attributionUrl: { type: "string", description: "Attribution / Ad URL substring match, case-insensitive. Human-readable campaign identity when `campaign` is empty. Discover values with list_values field='attributionUrl'." },
+        attributionMedium: { type: "string", description: "Platform/channel the opportunity's lead came from, case-insensitive exact (e.g. 'whatsapp', 'facebook', 'instagram', 'tiktok'). Use it for platform questions, not tags." },
         assignedTo: { type: "string" },
         priority: { type: "string", description: "Priority filter, case-insensitive (e.g. 'high', 'medium', 'low')." },
         archived: { type: "boolean", description: "Filter by archived status. Omit to include all." },
@@ -278,7 +285,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "aggregate",
     description:
-      "Deterministic counts/sums/averages. USE THIS for any numeric question — do not eyeball counts from search results. Filter values for source/campaign/adType/assignedTo/stage/pipeline/tipo/status are matched case-insensitively. Returns { groups: [{ key, count, sum?, avg? }], total }.",
+      "Deterministic counts/sums/averages. USE THIS for any numeric question — do not eyeball counts from search results. Filter values for source/campaign/adType/assignedTo/stage/pipeline/tipo/status are matched case-insensitively. Returns { groups: [{ key, count, sum?, avg?, contactIds? }], total }. To build a DRILLABLE chart, set includeContactIds: true and feed each group's key→label, count→value, contactIds straight into render_chart — this is ONE call; do NOT follow up with per-group search_contacts.",
     input_schema: {
       type: "object",
       properties: {
@@ -289,7 +296,7 @@ export const TOOL_DEFINITIONS = [
         groupBy: {
           type: "string",
           description:
-            "Field to group by. Common: 'source', 'campaign', 'adType', 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
+            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). CAMPAIGN questions: 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)'. When the user asks 'por campaña', ALSO group by 'adId' and 'attributionUrl' — those hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
         },
         metric: {
           type: "string",
@@ -299,8 +306,13 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
+        },
+        includeContactIds: {
+          type: "boolean",
+          description:
+            "When true, each group also includes a `contactIds` array (distinct, capped at 50) with the contacts behind it. Set this for drillable charts so you can pass the ids straight into render_chart in ONE call — avoid following up with per-group search_contacts. Leave off (default false) for pure numeric questions to keep the response small.",
         },
         limit: { type: "number", description: "Max groups to return (default 50)." },
       },
@@ -322,7 +334,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         columns: {
@@ -414,7 +426,7 @@ export const TOOL_DEFINITIONS = [
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adType, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
             },
           },
           required: ["entity"],
@@ -483,7 +495,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "render_chart",
     description:
-      "Renders a visual chart inline in the chat. Use it ONLY when the user asks for a chart, or when it genuinely adds value — a comparison across several groups or a trend over time. Do NOT chart single numbers, short lists, or one-contact profiles. Call it as your FINAL step. CRITICAL: every `value` MUST come from a prior `aggregate` or `relate` call — NEVER invent or eyeball numbers. To make the chart drillable, include `contactIds` on each group with the contacts behind that bar/slice (get them from `relate({ ..., includeContactIds: true })` or a `search_*` call); include AT MOST 50 per group (the system truncates to 50 and tells the user the drill-down is limited). Groups without contactIds render but are not clickable. Always also give a one-line text summary alongside the chart.",
+      "Renders a visual chart inline in the chat. Use it ONLY when the user asks for a chart, or when it genuinely adds value — a comparison across several groups or a trend over time. Do NOT chart single numbers, short lists, or one-contact profiles. Call it as your FINAL step. CRITICAL: every `value` MUST come from a prior `aggregate` or `relate` call — NEVER invent or eyeball numbers. To make the chart drillable, include `contactIds` on each group with the contacts behind that bar/slice — get them in ONE call from `aggregate({ ..., includeContactIds: true })` (preferred — the groups already carry contactIds) or `relate({ ..., includeContactIds: true })`, NOT from per-group `search_*` calls; include AT MOST 50 per group (the system truncates to 50 and tells the user the drill-down is limited). Groups without contactIds render but are not clickable. Always also give a one-line text summary alongside the chart.",
     input_schema: {
       type: "object",
       properties: {
@@ -659,6 +671,7 @@ function compactContact(c: Contact) {
     source: c.source,
     campaign: c.campaign || undefined,
     adType: c.adType || undefined,
+    attributionMedium: c.attributionMedium || undefined,
     assignedTo: c.assignedTo,
     dnd: c.dnd || undefined,
     lastActivity: c.lastActivity || undefined,
@@ -683,6 +696,7 @@ function compactOpp(o: Opportunity) {
     source: o.source || undefined,
     campaign: o.campaign || undefined,
     adType: o.adType || undefined,
+    attributionMedium: o.attributionMedium || undefined,
     assignedTo: o.assignedTo,
     lostReason: o.lostReason || undefined,
     notes: o.notes ? (o.notes.length > 200 ? o.notes.slice(0, 200) + "…" : o.notes) : undefined,
@@ -799,11 +813,11 @@ export interface ExportCsvResult {
 const CSV_COLUMNS: Record<string, string[]> = {
   contacts: [
     "name", "email", "phone", "companyName", "city", "state", "country",
-    "source", "campaign", "adType", "assignedTo", "tags", "dnd", "createdAt",
+    "source", "campaign", "adType", "attributionMedium", "assignedTo", "tags", "dnd", "createdAt",
   ],
   opportunities: [
     "name", "contactId", "pipeline", "stage", "status", "value", "currency",
-    "probability", "priority", "source", "campaign", "adType", "assignedTo",
+    "probability", "priority", "source", "campaign", "adType", "attributionMedium", "assignedTo",
     "closedAt", "lostReason", "createdAt",
   ],
   appointments: ["contactId", "assignedTo", "title", "status", "location", "startTime"],
@@ -861,6 +875,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
         source: c.source ?? "",
         campaign: c.campaign ?? "",
         adType: c.adType ?? "",
+        attributionMedium: c.attributionMedium ?? "",
         assignedTo: c.assignedTo ?? "",
         tags: (c.tags ?? []).join("|"),
         dnd: c.dnd ? "true" : "false",
@@ -884,6 +899,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
         source: o.source ?? "",
         campaign: o.campaign ?? "",
         adType: o.adType ?? "",
+        attributionMedium: o.attributionMedium ?? "",
         assignedTo: o.assignedTo ?? "",
         closedAt: o.closedAt ?? "",
         lostReason: o.lostReason ?? "",
@@ -952,23 +968,23 @@ function listFields(input: ToolInput, data: ChatDataset) {
       fields: [
         "id", "name", "firstName", "lastName", "email", "phone", "companyName",
         "city", "state", "country", "address1", "postalCode", "timezone", "website",
-        "tags", "source", "campaign", "adType", "assignedTo",
+        "tags", "source", "campaign", "adType", "adId", "attributionMedium", "attributionUrl", "assignedTo",
         "dateOfBirth", "lastActivity", "dateAdded", "createdAt", "dateUpdated",
         "dnd", "type", "customFields", "customFieldsResolved", "attributionSource", "attributions",
       ],
-      note: "customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Origen de Lead\": \"Facebook\"}); multi-option/checkbox fields hold a string[] (e.g. {\"Origen de Lead\": [\"Facebook\",\"Instagram\"]}). To filter, pass customFields: { \"Field Name\": \"value\" } to search_contacts/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
+      note: "attributionMedium is the REAL platform/channel a lead came from — values like 'whatsapp', 'facebook', 'instagram', 'tiktok'. For ANY 'por qué plataforma / canal' question (Facebook vs Instagram vs TikTok vs WhatsApp), group by 'attributionMedium' — NEVER infer the platform from tags, which only cover a fraction of leads. adType distinguishes paid vs organic ('Paid Social' vs 'Social media'); combine the two for a full picture. customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Origen de Lead\": \"Facebook\"}); multi-option/checkbox fields hold a string[] (e.g. {\"Origen de Lead\": [\"Facebook\",\"Instagram\"]}). To filter, pass customFields: { \"Field Name\": \"value\" } to search_contacts/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
       count: data.contacts.length,
     },
     opportunities: {
       fields: [
         "id", "name", "contactId", "pipelineId", "pipelineName", "stage", "status",
         "value", "monetaryValue", "currency", "probability",
-        "source", "campaign", "adType", "assignedTo", "tags", "priority",
+        "source", "campaign", "adType", "adId", "attributionMedium", "attributionUrl", "assignedTo", "tags", "priority",
         "closedAt", "createdAt", "updatedAt", "lastActivity",
         "lostReason", "lostReasonId", "notes", "archived", "origin",
         "campaignId", "funnelId", "workflowId", "customFields", "customFieldsResolved", "attributions",
       ],
-      note: "customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}); multi-option fields hold a string[]. To filter, pass customFields: { \"Field Name\": \"value\" } to search_opportunities/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
+      note: "attributionMedium is the REAL platform/channel the opportunity's lead came from — values like 'whatsapp', 'facebook', 'instagram', 'tiktok'. For any 'por qué plataforma / canal' question, group by 'attributionMedium' — NEVER infer the platform from tags. adType distinguishes paid vs organic. customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}); multi-option fields hold a string[]. To filter, pass customFields: { \"Field Name\": \"value\" } to search_opportunities/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
       count: data.opportunities.length,
     },
     pautas: {
@@ -1060,7 +1076,10 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
   const tags = Array.isArray(input.tags) ? (input.tags as string[]) : undefined;
   const source = typeof input.source === "string" ? input.source : undefined;
   const campaign = typeof input.campaign === "string" ? input.campaign : undefined;
+  const adId = typeof input.adId === "string" ? input.adId : undefined;
+  const attributionUrl = typeof input.attributionUrl === "string" ? input.attributionUrl : undefined;
   const adType = typeof input.adType === "string" ? input.adType : undefined;
+  const attributionMedium = typeof input.attributionMedium === "string" ? input.attributionMedium : undefined;
   const assignedTo = typeof input.assignedTo === "string" ? input.assignedTo : undefined;
   const companyName = typeof input.companyName === "string" ? input.companyName : undefined;
   const city = typeof input.city === "string" ? input.city : undefined;
@@ -1082,7 +1101,10 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
     if (tags?.length && !includesAllCI(c.tags ?? [], tags)) continue;
     if (source && !ieq(c.source, source)) continue;
     if (campaign && !isub(c.campaign, campaign)) continue;
+    if (adId && !ieq(c.adId, adId)) continue;
+    if (attributionUrl && !isub(c.attributionUrl, attributionUrl)) continue;
     if (adType && !ieq(c.adType, adType)) continue;
+    if (attributionMedium && !ieq(c.attributionMedium, attributionMedium)) continue;
     if (assignedTo && !ieq(c.assignedTo, assignedTo)) continue;
     if (companyName && !isub(c.companyName, companyName)) continue;
     if (city && !isub(c.city, city)) continue;
@@ -1159,6 +1181,10 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
   const stage = typeof input.stage === "string" ? input.stage : undefined;
   const status = typeof input.status === "string" ? input.status : undefined;
   const source = typeof input.source === "string" ? input.source : undefined;
+  const campaign = typeof input.campaign === "string" ? input.campaign : undefined;
+  const adId = typeof input.adId === "string" ? input.adId : undefined;
+  const attributionUrl = typeof input.attributionUrl === "string" ? input.attributionUrl : undefined;
+  const attributionMedium = typeof input.attributionMedium === "string" ? input.attributionMedium : undefined;
   const assignedTo = typeof input.assignedTo === "string" ? input.assignedTo : undefined;
   const priority = typeof input.priority === "string" ? input.priority : undefined;
   const archived = typeof input.archived === "boolean" ? input.archived : undefined;
@@ -1181,6 +1207,10 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
     if (stage && !ieq(o.stage, stage)) continue;
     if (status && !ieq(o.status, status)) continue;
     if (source && !ieq(o.source, source)) continue;
+    if (campaign && !isub(o.campaign, campaign)) continue;
+    if (adId && !ieq(o.adId, adId)) continue;
+    if (attributionUrl && !isub(o.attributionUrl, attributionUrl)) continue;
+    if (attributionMedium && !ieq(o.attributionMedium, attributionMedium)) continue;
     if (assignedTo && !ieq(o.assignedTo, assignedTo)) continue;
     if (priority && !ieq(o.priority, priority)) continue;
     if (archived !== undefined && Boolean(o.archived) !== archived) continue;
@@ -1312,11 +1342,17 @@ function aggregateRows(
   groupBy: string,
   metric: string,
   entity: string,
-  limit: number
+  limit: number,
+  includeContactIds = false
 ) {
   if (groupBy === "none") {
     return {
-      groups: [{ key: "total", count: rows.length, ...metricValue(rows, metric, entity) }],
+      groups: [{
+        key: "total",
+        count: rows.length,
+        ...metricValue(rows, metric, entity),
+        ...(includeContactIds ? { contactIds: contactIdsOf(entity, rows) } : {}),
+      }],
       total: rows.length,
       truncated: false,
     };
@@ -1348,6 +1384,7 @@ function aggregateRows(
       key,
       count: items.length,
       ...metricValue(items, metric, entity),
+      ...(includeContactIds ? { contactIds: contactIdsOf(entity, items) } : {}),
     }))
     .sort((a, b) => {
       const av = metric === "count" ? a.count : (a as { sum?: number; avg?: number }).sum ?? (a as { avg?: number }).avg ?? 0;
@@ -1365,13 +1402,14 @@ function aggregate(input: ToolInput, data: ChatDataset) {
   const metric = String(input.metric ?? "count");
   const filters = (input.filters && typeof input.filters === "object" ? input.filters : {}) as ToolInput;
   const limit = clampLimit(input.limit, 50);
+  const includeContactIds = input.includeContactIds === true;
 
   if (!["contacts", "opportunities", "pautas", "appointments"].includes(entity)) {
     return { error: `Unknown entity: ${entity}` };
   }
 
   const rows = filteredRows(entity, filters, data);
-  return aggregateRows(rows, groupBy, metric, entity, limit);
+  return aggregateRows(rows, groupBy, metric, entity, limit, includeContactIds);
 }
 
 // ─── relate (cross-entity join through the shared contact) ──────────────────────
@@ -1381,6 +1419,21 @@ const RELATABLE = ["contacts", "opportunities", "pautas", "appointments"];
 function contactIdOf(entity: string, row: Record<string, unknown>): string | undefined {
   if (entity === "contacts") return typeof row.id === "string" ? row.id : undefined;
   return typeof row.contactId === "string" ? row.contactId : undefined;
+}
+
+// Distinct contactIds behind a set of rows, capped at MAX_CHART_CONTACT_IDS so an
+// `aggregate({ includeContactIds: true })` response stays small enough to feed
+// straight into a drillable render_chart without a follow-up search_* call.
+function contactIdsOf(entity: string, rows: Array<Record<string, unknown>>): string[] {
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const cid = contactIdOf(entity, r);
+    if (cid) {
+      seen.add(cid);
+      if (seen.size >= MAX_CHART_CONTACT_IDS) break;
+    }
+  }
+  return Array.from(seen);
 }
 
 // Gather rows of `entity` whose contact is in `contactIds`, using the index.
@@ -1510,7 +1563,10 @@ function applyContactFilters(rows: Contact[], f: ToolInput): Contact[] {
     if (contactIdSet && !contactIdSet.has(c.id)) return false;
     if (typeof f.source === "string" && !ieq(c.source, f.source)) return false;
     if (typeof f.campaign === "string" && !isub(c.campaign, f.campaign)) return false;
+    if (typeof f.adId === "string" && !ieq(c.adId, f.adId)) return false;
+    if (typeof f.attributionUrl === "string" && !isub(c.attributionUrl, f.attributionUrl)) return false;
     if (typeof f.adType === "string" && !ieq(c.adType, f.adType)) return false;
+    if (typeof f.attributionMedium === "string" && !ieq(c.attributionMedium, f.attributionMedium)) return false;
     if (typeof f.assignedTo === "string" && !ieq(c.assignedTo, f.assignedTo)) return false;
     if (Array.isArray(f.tags) && !includesAllCI(c.tags ?? [], f.tags as string[])) return false;
     if (typeof f.companyName === "string" && !isub(c.companyName, f.companyName)) return false;
@@ -1534,7 +1590,10 @@ function applyOppFilters(rows: Opportunity[], f: ToolInput): Opportunity[] {
     if (typeof f.status === "string" && !ieq(o.status, f.status)) return false;
     if (typeof f.source === "string" && !ieq(o.source, f.source)) return false;
     if (typeof f.campaign === "string" && !isub(o.campaign, f.campaign)) return false;
+    if (typeof f.adId === "string" && !ieq(o.adId, f.adId)) return false;
+    if (typeof f.attributionUrl === "string" && !isub(o.attributionUrl, f.attributionUrl)) return false;
     if (typeof f.adType === "string" && !ieq(o.adType, f.adType)) return false;
+    if (typeof f.attributionMedium === "string" && !ieq(o.attributionMedium, f.attributionMedium)) return false;
     if (typeof f.assignedTo === "string" && !ieq(o.assignedTo, f.assignedTo)) return false;
     if (typeof f.priority === "string" && !ieq(o.priority, f.priority)) return false;
     if (typeof f.archived === "boolean" && Boolean(o.archived) !== f.archived) return false;

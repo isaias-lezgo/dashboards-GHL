@@ -13,13 +13,20 @@ import {
   ArrowUpRight,
   Wrench,
   Download,
+  CalendarClock,
+  TrendingUp,
+  MessagesSquare,
+  UserRound,
+  Megaphone,
+  ListChecks,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ChatDataset } from "@/lib/ai-tools";
 import type { Contact } from "@/lib/types";
-import { buildDatasetSummary, CONVERSATIONS_SYSTEM_PROMPT } from "@/lib/ai-context";
+import { buildDatasetSummary } from "@/lib/ai-context";
 import {
   useAgentLoop,
   type UIMessage,
@@ -87,11 +94,56 @@ function panelContactFromId(id: string, byId: Map<string, Contact>): PanelContac
 
 // ─── Suggestions ─────────────────────────────────────────────────────────────
 
-const SUGGESTIONS = [
-  "¿Qué leads de Meta no han respondido en más de 24h?",
-  "Dame el perfil completo de [nombre del contacto]",
-  "¿Quién tiene tareas vencidas hoy?",
-  "Redacta un follow-up para el lead más urgente.",
+type Suggestion = {
+  icon: LucideIcon;
+  category: string;
+  title: string;
+  prompt: string;
+};
+
+const SUGGESTIONS: Suggestion[] = [
+  {
+    icon: CalendarClock,
+    category: "Citas",
+    title: "Confirmaciones de la semana",
+    prompt:
+      "Lista las citas agendadas para esta semana y dime cuáles aún no han confirmado asistencia para enviarles un recordatorio.",
+  },
+  {
+    icon: TrendingUp,
+    category: "Oportunidades",
+    title: "Negocios estancados",
+    prompt:
+      "¿Qué oportunidades llevan más de 7 días sin movimiento en el pipeline? Ordénalas por valor y dime el siguiente paso para cada una. Dame un gráfico por etapa.",
+  },
+  {
+    icon: MessagesSquare,
+    category: "Conversaciones",
+    title: "Mensajes sin responder",
+    prompt:
+      "Resume las conversaciones sin responder de las últimas 24 horas, priorízalas por urgencia y dime quién espera respuesta.",
+  },
+  {
+    icon: UserRound,
+    category: "Contactos",
+    title: "Perfil de un contacto",
+    prompt:
+      "Dame el perfil completo de [nombre del contacto]: datos, etiquetas, oportunidades abiertas y su actividad más reciente.",
+  },
+  {
+    icon: Megaphone,
+    category: "Marketing",
+    title: "Rendimiento de campañas",
+    prompt:
+      "¿Qué campaña está generando más leads este mes y cuál es su tasa de respuesta? Compárala con el mes anterior.",
+  },
+  {
+    icon: ListChecks,
+    category: "Tareas",
+    title: "Pendientes vencidos",
+    prompt:
+      "¿Quién tiene tareas vencidas hoy y qué seguimiento requiere cada una? Sugiéreme por dónde empezar.",
+  },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -128,11 +180,12 @@ export function ConversationsChat({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Inject the conversations-focused system prompt into the cached system block
-  const datasetSummary = useMemo(() => {
-    const base = buildDatasetSummary(dataset, locationId);
-    return `${CONVERSATIONS_SYSTEM_PROMPT}\n\n${base}`;
-  }, [dataset, locationId]);
+  // The system prompt now lives entirely in /api/chat (ASSISTANT_SYSTEM_PROMPT);
+  // this block carries only the dataset summary that gets cached alongside it.
+  const datasetSummary = useMemo(
+    () => buildDatasetSummary(dataset, locationId),
+    [dataset, locationId],
+  );
 
   // ─── Panel updater ──────────────────────────────────────────────────────────
 
@@ -340,12 +393,12 @@ export function ConversationsChat({
           <div className="min-w-0">
             <p className="text-sm font-semibold">Asistente IA</p>
             <p className="hidden truncate text-[10px] text-muted-foreground sm:block">
-              Pregunta sobre contactos, conversaciones, tareas y notas en vivo.
+              Pregunta sobre cualquier cosa.
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-3">
             <span className="text-right text-[10px] text-muted-foreground/60 tabular-nums">
-              Sonnet 4.6 · {totalTools}{" "}
+              Claude · {totalTools}{" "}
               {totalTools === 1 ? "herramienta" : "herramientas"} · ~$
               {totalCost.toFixed(4)}
             </span>
@@ -407,7 +460,7 @@ export function ConversationsChat({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="¿Qué leads de Meta no han respondido en más de 24h?"
+            placeholder="¿Qué quieres saber?"
             rows={2}
             className="min-h-[52px] w-full resize-none text-sm"
             disabled={busy}
@@ -477,27 +530,45 @@ export function ConversationsChat({
 function ConvEmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
   return (
     <div className="flex flex-col gap-5 py-2">
-      <div className="space-y-2">
+      <div className="space-y-3">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
           Sugerencias
         </p>
-        <div className="flex flex-col gap-1.5">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onSuggest(s)}
-              className="group flex items-start gap-2.5 rounded-lg border border-border/40 bg-muted/15 px-3.5 py-2.5 text-left text-sm text-foreground/70 transition-all hover:border-primary/40 hover:bg-muted/30 hover:text-foreground"
-            >
-              <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/40 group-hover:text-primary/80" />
-              <span className="leading-snug">{s}</span>
-            </button>
-          ))}
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {SUGGESTIONS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <button
+                key={s.title}
+                type="button"
+                onClick={() => onSuggest(s.prompt)}
+                className="group relative flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/15 p-3.5 text-left transition-all hover:border-primary/40 hover:bg-muted/30"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary/70 transition-colors group-hover:bg-primary/15 group-hover:text-primary">
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 transition-colors group-hover:text-primary/70">
+                    {s.category}
+                  </span>
+                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground/25 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary/70" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[13px] font-medium leading-tight text-foreground/85 transition-colors group-hover:text-foreground">
+                    {s.title}
+                  </p>
+                  <p className="text-[11px] leading-snug text-muted-foreground/55">
+                    {s.prompt}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground/40">
-        Tareas y notas se obtienen en vivo de GoHighLevel. Conversaciones
-        reales, no muestras.
+        Contactos, citas, oportunidades, tareas y notas se consultan en vivo.
+        Conversaciones reales, no muestras. El sistema puede crear gráficos, tablas y exportar CSVs. 
       </p>
     </div>
   );

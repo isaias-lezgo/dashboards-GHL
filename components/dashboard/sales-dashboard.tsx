@@ -60,7 +60,6 @@ interface SalesDashboardProps {
   pautas?: Pauta[]
   members?: string[]
   locationId?: string
-  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
 // Vertical breathing room under the plot so angled X-axis (column) labels
@@ -176,7 +175,7 @@ function InfoTooltip({ content }: { content: string }) {
   )
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], messagesLoading = false, appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", onAnalyzeWithAI }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], messagesLoading = false, appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
 
@@ -1638,7 +1637,6 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         appointments={appointments}
         messages={messages}
         locationId={locationId}
-        onAnalyzeWithAI={onAnalyzeWithAI}
       />
     </DashboardShell>
   )

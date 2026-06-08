@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
-import { AIChatPanel } from "@/components/dashboard/ai-chat-panel"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { useConversationsData } from "@/hooks/use-conversations-data"
 import {
@@ -18,7 +18,6 @@ import {
   AlertCircle,
   Sun,
   Moon,
-  MessageSquare,
   Users,
   Target,
   ClipboardList,
@@ -34,13 +33,6 @@ export default function DashboardPage() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
-  const [aiChatOpen, setAiChatOpen] = useState(false)
-  const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>(undefined)
-
-  function handleAnalyzeWithAI(initialMessage: string) {
-    setAiInitialMessage(initialMessage)
-    setAiChatOpen(true)
-  }
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -63,19 +55,32 @@ export default function DashboardPage() {
     </AnimatePresence>
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
-      <header className="border-b border-[#335577]/20 bg-[#0D172F] px-6 py-3.5 text-white shadow-none">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-              <BarChart3 className="h-5 w-5 text-primary-foreground" />
+      <header className="border-b border-[#335577]/20 bg-[#0D172F] px-4 py-3 text-white shadow-none sm:px-6 sm:py-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <Image
+              src="/logo-mark.png"
+              alt="Lezgo Suite"
+              width={2851}
+              height={3371}
+              priority
+              className="h-9 w-auto shrink-0"
+            />
+            <div className="min-w-0">
+              <h1 className="truncate text-[15px] font-semibold leading-tight tracking-tight">Lezgo Suite Analíticas</h1>
+              <p className="text-[11px] font-medium tracking-wide text-white/55">Marketing y Ventas</p>
             </div>
-            <div>
-              <h1 className="text-[15px] font-bold leading-tight tracking-tight">Lezgo Suite Analíticas</h1>
-              <p className="text-[11px] text-white/70">Marketing y Ventas</p>
-            </div>
+            {locationName && (
+              <>
+                <span aria-hidden className="hidden h-6 w-px shrink-0 bg-white/15 sm:block" />
+                <span className="hidden min-w-0 max-w-[220px] truncate text-[13px] font-medium text-white/80 sm:inline-block">
+                  {locationName}
+                </span>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
             {isError && (
               <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" />
@@ -87,8 +92,8 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-1.5">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 text-[11px] font-medium text-white">
-                        <Users className="h-3 w-3 text-muted-foreground" />
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/15 bg-white/[0.07] px-2 py-1 text-[11px] font-medium tabular-nums text-white">
+                        <Users className="h-3 w-3 text-white/45" />
                         {data.contacts.length.toLocaleString("es-MX")}
                       </span>
                     </TooltipTrigger>
@@ -97,8 +102,8 @@ export default function DashboardPage() {
 
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 text-[11px] font-medium text-white">
-                        <Target className="h-3 w-3 text-muted-foreground" />
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/15 bg-white/[0.07] px-2 py-1 text-[11px] font-medium tabular-nums text-white">
+                        <Target className="h-3 w-3 text-white/45" />
                         {data.opportunities.length.toLocaleString("es-MX")}
                       </span>
                     </TooltipTrigger>
@@ -107,27 +112,17 @@ export default function DashboardPage() {
 
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1 text-[11px] font-medium text-white">
-                        <ClipboardList className="h-3 w-3 text-muted-foreground" />
+                      <span className="inline-flex cursor-default items-center gap-1 rounded-md border border-white/15 bg-white/[0.07] px-2 py-1 text-[11px] font-medium tabular-nums text-white">
+                        <ClipboardList className="h-3 w-3 text-white/45" />
                         {(data?.pautas ?? []).length.toLocaleString("es-MX")}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">Pautas cargadas</TooltipContent>
                   </Tooltip>
-
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setAiChatOpen(true)}
-                    className="h-7 gap-1.5 rounded-md bg-gradient-to-r from-violet-500 to-fuchsia-500 px-2.5 text-[11px] font-medium text-white shadow-sm transition-all hover:from-violet-400 hover:to-fuchsia-400 hover:shadow-md"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    Analizar con IA
-                  </Button>
                 </div>
               </TooltipProvider>
             )}
-            <span className="text-[11px] text-white/75">
+            <span className="hidden text-[11px] tabular-nums text-white/55 sm:inline">
               {isLoading
                 ? (progress || "Sincronizando…")
                 : data?.meta?.fetchedAt
@@ -144,7 +139,7 @@ export default function DashboardPage() {
               disabled={isLoading}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-              Actualizar
+              <span className="hidden sm:inline">Actualizar</span>
             </Button>
             
             {isLoading && <Loader2 className="h-4 w-4 animate-spin text-white/80" />}
@@ -152,7 +147,7 @@ export default function DashboardPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg"
+              className="h-8 w-8 rounded-lg text-white/70 hover:bg-white/10 hover:text-white"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               aria-label="Cambiar tema"
             >
@@ -172,7 +167,7 @@ export default function DashboardPage() {
             [
               { id: "marketing" as const, label: "Marketing", icon: TrendingUp },
               { id: "sales" as const, label: "Ventas", icon: BarChart3 },
-              { id: "conversations" as const, label: "Conversaciones", icon: MessageSquare },
+              { id: "conversations" as const, label: "Asistente IA", icon: Sparkles },
             ] as const
           ).map(({ id, label, icon: Icon }) => {
             const active = activeTab === id
@@ -199,7 +194,7 @@ export default function DashboardPage() {
 
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
-        {activeTab === "marketing" ? (
+        {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}
             contacts={contacts}
@@ -209,9 +204,9 @@ export default function DashboardPage() {
             calls={calls}
             appointments={appointments}
             locationId={data?.locationId ?? ""}
-            onAnalyzeWithAI={handleAnalyzeWithAI}
           />
-        ) : activeTab === "sales" ? (
+        )}
+        {activeTab === "sales" && (
           <SalesDashboard
             opportunities={opportunities}
             contacts={contacts}
@@ -223,9 +218,11 @@ export default function DashboardPage() {
             pautas={data?.pautas ?? []}
             members={availableMembers}
             locationId={data?.locationId ?? ""}
-            onAnalyzeWithAI={handleAnalyzeWithAI}
           />
-        ) : (
+        )}
+        {/* Kept permanently mounted (hidden when inactive) so the AI chat
+            history survives switching to the Marketing/Ventas tabs. */}
+        <div className={cn(activeTab !== "conversations" && "hidden")}>
           <ConversationsChat
             dataset={{
               contacts,
@@ -238,29 +235,8 @@ export default function DashboardPage() {
             }}
             locationId={data?.locationId}
           />
-        )}
+        </div>
       </div>
-
-      {data && (
-        <AIChatPanel
-          open={aiChatOpen}
-          onOpenChange={(o) => {
-            setAiChatOpen(o)
-            if (!o) setAiInitialMessage(undefined)
-          }}
-          dataset={{
-            contacts,
-            opportunities,
-            pautas: data.pautas ?? [],
-            appointments,
-            messages,
-            tasks: data.tasks ?? [],
-            calls,
-          }}
-          locationId={data.locationId}
-          initialMessage={aiInitialMessage}
-        />
-      )}
     </div>
     </>
   )

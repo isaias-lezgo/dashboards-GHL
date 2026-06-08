@@ -12,6 +12,7 @@ import {
   fetchContactTasks,
   fetchContactNotes,
 } from "@/lib/ghl-fetchers";
+import { triggerDownload } from "@/lib/download";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,24 +69,6 @@ function estimateCost(u: TurnUsage): number {
       u.cacheCreationTokens * PRICING.cacheWrite) /
     1_000_000
   );
-}
-
-function triggerCsvDownload({
-  csvContent,
-  filename,
-}: {
-  csvContent: string;
-  filename: string;
-}): void {
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -220,7 +203,12 @@ export function useAgentLoop({
                   result = await fetchContactNotes(tu.input);
                 } else if (tu.name === "export_csv") {
                   const exportResult = executeExportCsv(tu.input, dataset);
-                  if (exportResult.rowCount > 0) triggerCsvDownload(exportResult);
+                  if (exportResult.rowCount > 0)
+                    triggerDownload({
+                      content: exportResult.csvContent,
+                      filename: exportResult.filename,
+                      mimeType: "text/csv;charset=utf-8;",
+                    });
                   result = {
                     success: exportResult.rowCount > 0,
                     filename: exportResult.filename,

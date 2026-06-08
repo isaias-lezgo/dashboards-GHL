@@ -59,7 +59,6 @@ interface ChartDrillDrawerProps {
   appointments?: Appointment[]
   messages?: Message[]
   locationId?: string
-  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
 export function ChartDrillDrawer({
@@ -73,7 +72,6 @@ export function ChartDrillDrawer({
   appointments = [],
   messages = [],
   locationId = "",
-  onAnalyzeWithAI,
 }: ChartDrillDrawerProps) {
   const [selectedOppId, setSelectedOppId] = useState<string | null>(null)
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null)
@@ -202,7 +200,6 @@ export function ChartDrillDrawer({
         messages={messages}
         pautas={allPautas}
         locationId={locationId}
-        onAnalyzeWithAI={onAnalyzeWithAI}
       />
     </>
   )

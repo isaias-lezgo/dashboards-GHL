@@ -1,89 +1,18 @@
 "use client";
 
-import { ExternalLink, Clock, ArrowLeft, CheckCircle2, Circle } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState } from "react";
+import { ExternalLink, Clock, ArrowLeft, Calendar, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type {
+  PanelState,
+  PanelContact,
+  UrgencyBucket,
+} from "@/lib/conversations-panel";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface PanelContact {
-  id: string;
-  name: string;
-  source?: string;
-  assignedTo?: string;
-  tags?: string[];
-  lastActivity?: string;
-}
-
-export interface SummaryGroup {
-  key: string;
-  count: number;
-  sum?: number;
-}
-
-export interface PanelTask {
-  id: string;
-  title: string;
-  status: "pending" | "completed";
-  dueDate?: string;
-}
-
-export interface PanelNote {
-  id: string;
-  body: string;
-  userId?: string;
-  dateAdded: string;
-}
-
-export interface PanelOpportunity {
-  id: string;
-  name: string;
-  pipelineName: string;
-  stage: string;
-  status: string;
-  value: number;
-  currency?: string;
-}
-
-export interface PanelAppointment {
-  id: string;
-  title?: string;
-  startTime: string;
-  status: string;
-}
-
-export interface PanelLastMessage {
-  direction: "inbound" | "outbound";
-  source: string;
-  content?: string;
-  createdAt: string;
-}
-
-export type PanelState =
-  | { mode: "idle" }
-  | {
-      mode: "summary";
-      query?: string;
-      title?: string;
-      contacts: PanelContact[];
-      groups?: SummaryGroup[];
-      total: number;
-      valueAtRisk?: number;
-    }
-  | {
-      mode: "contact";
-      contact: PanelContact & {
-        email?: string;
-        phone?: string;
-        companyName?: string;
-      };
-      opportunities: PanelOpportunity[];
-      appointments: PanelAppointment[];
-      tasks: PanelTask[];
-      notes: PanelNote[];
-      lastMessage: PanelLastMessage | null;
-      prevSummary?: Extract<PanelState, { mode: "summary" }>;
-    };
+export type {
+  PanelState,
+  PanelContact,
+} from "@/lib/conversations-panel";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,10 +43,49 @@ function formatDate(iso: string): string {
   });
 }
 
-function isOverdue(dueDate?: string): boolean {
-  if (!dueDate) return false;
-  return new Date(dueDate).getTime() < Date.now();
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: "SMS",
+  email: "Email",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  google_chat: "Google Chat",
+  call: "Llamada",
+  webchat: "Web Chat",
+  live_chat: "Live Chat",
+  tiktok: "TikTok",
+  review: "Reseña",
+  form_submission: "Formulario",
+  other: "Otro",
+};
+
+function channelLabel(source?: string): string {
+  if (!source) return "";
+  return CHANNEL_LABELS[source] ?? source;
 }
+
+const URGENCY_DOT: Record<UrgencyBucket, string> = {
+  red: "bg-destructive",
+  yellow: "bg-amber-500",
+  grey: "bg-muted-foreground/50",
+  none: "bg-transparent",
+};
+
+const URGENCY_BADGE: Record<UrgencyBucket, string> = {
+  red: "bg-destructive/15 text-destructive",
+  yellow: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  grey: "bg-muted text-muted-foreground",
+  none: "bg-muted text-muted-foreground",
+};
+
+const CHANNEL_BAR = [
+  "bg-emerald-500",
+  "bg-blue-500",
+  "bg-pink-500",
+  "bg-violet-500",
+  "bg-amber-500",
+  "bg-muted-foreground/50",
+];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -135,7 +103,18 @@ export function ConversationsContextPanel({
   onBack,
 }: ConversationsContextPanelProps) {
   return (
-    <div className="flex h-full w-[300px] flex-shrink-0 flex-col border-r border-border bg-muted/10">
+    <div
+      className={cn(
+        "flex w-full flex-shrink-0 flex-col border-border bg-muted/10",
+        "md:h-full md:w-[300px] md:border-r",
+        // On mobile the panel stacks above the chat. When there's nothing to
+        // show, collapse it entirely so the chat keeps the full viewport; when
+        // populated, cap its height so the chat still gets the larger share.
+        state.mode === "idle"
+          ? "hidden md:flex"
+          : "max-h-[40vh] border-b md:max-h-none md:border-b-0",
+      )}
+    >
       {state.mode === "idle" && <IdlePanel />}
       {state.mode === "summary" && (
         <SummaryPanel state={state} onContactClick={onContactClick} />
@@ -162,7 +141,7 @@ function IdlePanel() {
   );
 }
 
-// ─── Summary ──────────────────────────────────────────────────────────────────
+// ─── Summary (triage) ──────────────────────────────────────────────────────────
 
 function SummaryPanel({
   state,
@@ -171,12 +150,20 @@ function SummaryPanel({
   state: Extract<PanelState, { mode: "summary" }>;
   onContactClick?: (c: PanelContact) => void;
 }) {
+  const total = state.total;
+  const channelTotal = (state.channels ?? []).reduce((s, c) => s + c.count, 0);
+  const [showAll, setShowAll] = useState(false);
+  const COLLAPSED_COUNT = 10;
+  const visibleContacts = showAll
+    ? state.contacts
+    : state.contacts.slice(0, COLLAPSED_COUNT);
+  const hiddenCount = state.contacts.length - COLLAPSED_COUNT;
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="border-b border-border px-4 py-3">
         <p className="text-xs font-semibold text-foreground">
-          {state.title ?? "Resumen"} · {state.total}{" "}
-          {state.total === 1 ? "contacto" : "contactos"}
+          {state.title ?? "Resumen"} · {total}{" "}
+          {total === 1 ? "contacto" : "contactos"}
         </p>
         {state.query && (
           <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-2">
@@ -184,22 +171,98 @@ function SummaryPanel({
           </p>
         )}
       </div>
-      <ScrollArea className="flex-1">
-        <div className="space-y-2 p-3">
-          {/* Value at risk */}
-          {state.valueAtRisk !== undefined && state.valueAtRisk > 0 && (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-2.5 p-3">
+          {/* Urgency */}
+          {state.urgency && (
             <div className="rounded-md border border-border/50 bg-background p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Valor en riesgo
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Urgencia
               </p>
-              <p className="mt-0.5 text-lg font-bold tabular-nums">
-                ${state.valueAtRisk.toLocaleString("es-MX")}
-              </p>
-              <p className="text-[10px] text-muted-foreground">
-                en oportunidades abiertas
-              </p>
+              <div className="mb-2.5 flex gap-1.5">
+                {state.urgency.red > 0 && (
+                  <div
+                    className="h-1.5 rounded-full bg-destructive"
+                    style={{ flex: state.urgency.red }}
+                  />
+                )}
+                {state.urgency.yellow > 0 && (
+                  <div
+                    className="h-1.5 rounded-full bg-amber-500"
+                    style={{ flex: state.urgency.yellow }}
+                  />
+                )}
+                {state.urgency.grey > 0 && (
+                  <div
+                    className="h-1.5 rounded-full bg-muted-foreground/40"
+                    style={{ flex: state.urgency.grey }}
+                  />
+                )}
+              </div>
+              <div className="space-y-1">
+                <UrgencyRow
+                  color="bg-destructive"
+                  count={state.urgency.red}
+                  label="sin respuesta +3d"
+                />
+                <UrgencyRow
+                  color="bg-amber-500"
+                  count={state.urgency.yellow}
+                  label="+24h"
+                />
+                <UrgencyRow
+                  color="bg-muted-foreground/50"
+                  count={state.urgency.grey}
+                  label="recientes"
+                />
+              </div>
             </div>
           )}
+
+          {/* Value at risk + channels */}
+          {((state.valueAtRisk !== undefined && state.valueAtRisk > 0) ||
+            (state.channels && state.channels.length > 0)) && (
+            <div className="flex gap-2">
+              {state.valueAtRisk !== undefined && state.valueAtRisk > 0 && (
+                <div className="flex-1 rounded-md border border-border/50 bg-background p-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    En riesgo
+                  </p>
+                  <p className="mt-0.5 text-sm font-bold tabular-nums">
+                    ${state.valueAtRisk.toLocaleString("es-MX")}
+                  </p>
+                </div>
+              )}
+              {state.channels && state.channels.length > 0 && (
+                <div className="flex-1 rounded-md border border-border/50 bg-background p-2.5">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Canales
+                  </p>
+                  <div className="flex h-2 overflow-hidden rounded-full bg-muted">
+                    {state.channels.map((c, i) => (
+                      <div
+                        key={c.key}
+                        className={cn(
+                          "h-full",
+                          CHANNEL_BAR[i % CHANNEL_BAR.length],
+                        )}
+                        style={{
+                          width: `${channelTotal ? (c.count / channelTotal) * 100 : 0}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-1.5 truncate text-[9px] text-muted-foreground">
+                    {state.channels
+                      .slice(0, 3)
+                      .map((c) => channelLabel(c.key))
+                      .join(" · ")}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Aggregate groups */}
           {state.groups && state.groups.length > 0 && (
             <div className="rounded-md border border-border/50 bg-background p-3">
@@ -208,11 +271,8 @@ function SummaryPanel({
               </p>
               <div className="space-y-1.5">
                 {state.groups.slice(0, 8).map((g) => (
-                  <div
-                    key={g.key}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-xs text-muted-foreground truncate max-w-[60%]">
+                  <div key={g.key} className="flex items-center justify-between">
+                    <span className="max-w-[60%] truncate text-xs text-muted-foreground">
                       {g.key}
                     </span>
                     <span className="text-xs font-medium tabular-nums">
@@ -230,41 +290,91 @@ function SummaryPanel({
           {state.contacts.length > 0 && (
             <div className="space-y-1">
               <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Contactos
+                {state.urgency ? "Más urgentes" : "Contactos"}
               </p>
-              {state.contacts.slice(0, 10).map((c) => (
+              {visibleContacts.map((c) => {
+                const bucket = c.urgency ?? "none";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => onContactClick?.(c)}
+                    className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
+                      {initials(c.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1.5 truncate text-xs font-medium">
+                        <span className="truncate">{c.name}</span>
+                        {bucket !== "none" && bucket !== "grey" && (
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 flex-shrink-0 rounded-full",
+                              URGENCY_DOT[bucket],
+                            )}
+                          />
+                        )}
+                      </p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {c.channel && c.channel !== "system"
+                          ? `${channelLabel(c.channel)}${c.unanswered ? " · sin respuesta" : ""}`
+                          : c.source ?? c.assignedTo ?? ""}
+                      </p>
+                    </div>
+                    {c.lastActivityAt ? (
+                      <span
+                        className={cn(
+                          "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                          URGENCY_BADGE[bucket],
+                        )}
+                      >
+                        {relativeTime(c.lastActivityAt)}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/60">
+                        →
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {hiddenCount > 0 && (
                 <button
-                  key={c.id}
                   type="button"
-                  onClick={() => onContactClick?.(c)}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="w-full rounded-md px-2 py-1.5 text-center text-[10px] font-medium text-primary transition-colors hover:bg-muted/50"
                 >
-                  <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
-                    {initials(c.name)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium">{c.name}</p>
-                    <p className="truncate text-[10px] text-muted-foreground">
-                      {c.source ?? c.assignedTo ?? ""}
-                    </p>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground/60">→</span>
+                  {showAll ? "Ver menos" : `Ver los ${state.contacts.length} →`}
                 </button>
-              ))}
-              {state.contacts.length > 10 && (
-                <p className="px-2 text-center text-[10px] text-muted-foreground">
-                  + {state.contacts.length - 10} más
-                </p>
               )}
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
 
-// ─── Contact detail ───────────────────────────────────────────────────────────
+function UrgencyRow({
+  color,
+  count,
+  label,
+}: {
+  color: string;
+  count: number;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className={cn("h-1.5 w-1.5 rounded-full", color)} />
+      <span className="font-semibold tabular-nums">{count}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+// ─── Contact detail (drawer-style, from memory) ─────────────────────────────────
 
 function ContactPanel({
   state,
@@ -275,12 +385,23 @@ function ContactPanel({
   locationId?: string;
   onBack?: () => void;
 }) {
-  const { contact, opportunities, appointments, tasks, notes, lastMessage } =
-    state;
-  const pendingTasks = tasks.filter((t) => t.status !== "completed");
-  const ghlUrl = locationId
+  const {
+    contact,
+    opportunities,
+    appointments,
+    pautas,
+    lastInbound,
+    lastOutbound,
+    messageCount,
+  } = state;
+  const primaryOpp = opportunities[0];
+  const contactUrl = locationId
     ? `https://login.lezgosuite.com/v2/location/${locationId}/contacts/detail/${contact.id}`
     : undefined;
+  const oppUrl =
+    locationId && primaryOpp
+      ? `https://login.lezgosuite.com/v2/location/${locationId}/opportunities/${primaryOpp.id}?tab=Opportunity+Details`
+      : undefined;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -296,161 +417,143 @@ function ContactPanel({
             Volver
           </button>
         )}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
-            {initials(contact.name)}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">
+              {initials(contact.name)}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{contact.name}</p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {[channelLabel(contact.channel), contact.assignedTo]
+                  .filter(Boolean)
+                  .join(" · ") ||
+                  contact.source ||
+                  ""}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{contact.name}</p>
-            <p className="truncate text-[10px] text-muted-foreground">
-              {[contact.source, contact.assignedTo].filter(Boolean).join(" · ")}
-            </p>
-          </div>
+          {state.status && (
+            <Chip
+              className={cn(
+                "flex-shrink-0 capitalize",
+                state.status === "won" && "bg-green-100 text-green-800",
+                state.status === "lost" && "bg-red-100 text-red-800",
+                state.status === "open" && "bg-yellow-100 text-yellow-800",
+              )}
+            >
+              {state.status}
+            </Chip>
+          )}
         </div>
+        {contact.tags && contact.tags.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1">
+            {contact.tags.slice(0, 6).map((t) => (
+              <Chip key={t}>{t}</Chip>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Sections */}
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-3 p-3">
           {/* Opportunity */}
-          {opportunities.length > 0 && (
+          {primaryOpp && (
             <Section label="Oportunidad">
-              {opportunities.slice(0, 1).map((o) => (
-                <div
-                  key={o.id}
-                  className="rounded-md bg-background border border-border/50 p-2.5"
-                >
-                  <p className="text-xs font-medium text-primary truncate">
-                    {o.name}
-                  </p>
-                  <p className="mt-0.5 text-sm font-bold">
-                    ${o.value.toLocaleString("es-MX")}
-                    {o.currency ? ` ${o.currency}` : ""}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    <Chip>{o.pipelineName}</Chip>
-                    <Chip>{o.stage}</Chip>
-                    <Chip
-                      className={cn(
-                        o.status === "won" && "bg-green-100 text-green-800",
-                        o.status === "lost" && "bg-red-100 text-red-800",
-                        o.status === "open" && "bg-yellow-100 text-yellow-800"
-                      )}
-                    >
-                      {o.status}
-                    </Chip>
-                  </div>
+              <div className="rounded-md border border-border/50 bg-background p-2.5">
+                <p className="text-sm font-bold">
+                  ${primaryOpp.value.toLocaleString("es-MX")}
+                  {primaryOpp.currency ? ` ${primaryOpp.currency}` : ""}
+                </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {primaryOpp.name}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <Chip>{primaryOpp.pipelineName}</Chip>
+                  <Chip>{primaryOpp.stage}</Chip>
                 </div>
-              ))}
+              </div>
             </Section>
           )}
+
+          {/* Contact info */}
+          <Section label="Contacto">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-md border border-border/50 bg-background p-2.5">
+              <InfoCell label="Email" value={contact.email || "—"} />
+              <InfoCell label="Teléfono" value={contact.phone || "—"} />
+              <InfoCell
+                label="Registro"
+                value={contact.createdAt ? formatDate(contact.createdAt) : "—"}
+              />
+              <InfoCell label="Medio" value={contact.adType || "—"} />
+            </div>
+          </Section>
 
           {/* Appointments */}
           {appointments.length > 0 && (
             <Section label="Citas">
-              {appointments.slice(0, 2).map((a) => (
-                <div
-                  key={a.id}
-                  className="rounded-md bg-background border border-border/50 p-2.5"
-                >
-                  <p className="text-xs text-muted-foreground">
-                    📅 {formatDate(a.startTime)}
-                  </p>
-                  {a.title && (
-                    <p className="mt-0.5 text-xs font-medium truncate">
-                      {a.title}
-                    </p>
-                  )}
-                  <Chip className="mt-1">{a.status}</Chip>
-                </div>
-              ))}
+              <div className="space-y-1.5">
+                {appointments.slice(0, 3).map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-start gap-2 rounded-md border border-border/50 bg-background p-2.5"
+                  >
+                    <Calendar className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">
+                        {a.title ?? "Cita"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatDate(a.startTime)}
+                      </p>
+                    </div>
+                    <Chip className="flex-shrink-0">{a.status}</Chip>
+                  </div>
+                ))}
+              </div>
             </Section>
           )}
 
-          {/* Tasks */}
-          {pendingTasks.length > 0 && (
-            <Section
-              label={`Tareas · ${pendingTasks.length} pendiente${pendingTasks.length !== 1 ? "s" : ""}`}
-            >
+          {/* Pautas */}
+          {pautas.length > 0 && (
+            <Section label="Pautas">
               <div className="space-y-1.5">
-                {pendingTasks.slice(0, 4).map((t) => {
-                  const overdue = isOverdue(t.dueDate);
-                  return (
-                    <div key={t.id} className="flex items-start gap-2">
-                      {t.status === "completed" ? (
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-green-500" />
-                      ) : (
-                        <Circle
-                          className={cn(
-                            "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
-                            overdue
-                              ? "text-destructive"
-                              : "text-muted-foreground"
-                          )}
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-xs leading-tight">{t.title}</p>
-                        {t.dueDate && (
-                          <p
-                            className={cn(
-                              "text-[10px]",
-                              overdue
-                                ? "text-destructive"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {overdue ? "⚠ Vencida · " : ""}
-                            {formatDate(t.dueDate)}
-                          </p>
-                        )}
+                {pautas.slice(0, 3).map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-start gap-2 rounded-md border border-border/50 bg-background p-2.5"
+                  >
+                    <FileText className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-violet-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">
+                        {p.nombrePauta.split(" - ")[0] || p.nombrePauta}
+                      </p>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        {p.tipo && <Chip>{p.tipo}</Chip>}
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDate(p.createdAt)}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </Section>
           )}
 
-          {/* Notes */}
-          {notes.length > 0 && (
-            <Section label="Notas">
-              <div className="rounded-md bg-background border border-border/50 p-2.5">
-                <p className="text-[10px] text-muted-foreground">
-                  {formatDate(notes[0].dateAdded)}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed line-clamp-4">
-                  {notes[0].body}
-                </p>
-                {notes.length > 1 && (
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    + {notes.length - 1} nota{notes.length > 2 ? "s" : ""} más
-                  </p>
+          {/* Conversation snippet */}
+          {messageCount > 0 && (
+            <Section
+              label={`Conversación · ${messageCount} mensaje${messageCount !== 1 ? "s" : ""}`}
+            >
+              <div className="space-y-1.5">
+                {lastInbound && (
+                  <MsgCard msg={lastInbound} label="Lead" inbound />
                 )}
-              </div>
-            </Section>
-          )}
-
-          {/* Last message */}
-          {lastMessage && (
-            <Section label="Último mensaje">
-              <div className="rounded-md bg-background border border-border/50 p-2.5">
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <p className="text-[10px] text-muted-foreground">
-                    {lastMessage.direction === "inbound"
-                      ? "↙ Entrante"
-                      : "↗ Saliente"}{" "}
-                    · {lastMessage.source}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground flex-shrink-0">
-                    {relativeTime(lastMessage.createdAt)}
-                  </p>
-                </div>
-                <p className="text-xs leading-relaxed line-clamp-3">
-                  {lastMessage.content ?? "(sin contenido)"}
-                </p>
-                {lastMessage.direction === "inbound" && (
-                  <p className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+                {lastOutbound && <MsgCard msg={lastOutbound} label="Nosotros" />}
+                {lastInbound && !lastOutbound && (
+                  <p className="px-0.5 text-[10px] text-amber-600 dark:text-amber-400">
                     ⚠ Sin respuesta del asesor
                   </p>
                 )}
@@ -458,22 +561,76 @@ function ContactPanel({
             </Section>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
-      {/* GHL link */}
-      {ghlUrl && (
-        <div className="border-t border-border px-4 py-2.5">
-          <a
-            href={ghlUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Ver en Lezgo Suite
-          </a>
+      {/* Footer links */}
+      {(contactUrl || oppUrl) && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-4 py-2.5">
+          {contactUrl && (
+            <a
+              href={contactUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Ver contacto
+            </a>
+          )}
+          {oppUrl && (
+            <a
+              href={oppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[11px] text-primary hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Ver oportunidad
+            </a>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[9px] text-muted-foreground">{label}</p>
+      <p className="truncate text-xs font-medium">{value}</p>
+    </div>
+  );
+}
+
+function MsgCard({
+  msg,
+  label,
+  inbound,
+}: {
+  msg: { source: string; content?: string; createdAt: string };
+  label: string;
+  inbound?: boolean;
+}) {
+  return (
+    <div className="rounded-md border border-border/50 bg-background p-2.5">
+      <div className="mb-1 flex items-center justify-between">
+        <span
+          className={cn(
+            "text-[10px] font-semibold",
+            inbound ? "text-sky-600 dark:text-sky-400" : "text-primary",
+          )}
+        >
+          {inbound ? "↙ " : "↗ "}
+          {label}
+        </span>
+        <span className="text-[10px] text-muted-foreground">
+          {relativeTime(msg.createdAt)}
+        </span>
+      </div>
+      <p className="line-clamp-3 break-words text-xs leading-relaxed">
+        {msg.content ?? "(sin contenido)"}
+      </p>
     </div>
   );
 }
@@ -508,7 +665,7 @@ function Chip({
     <span
       className={cn(
         "inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground",
-        className
+        className,
       )}
     >
       {children}

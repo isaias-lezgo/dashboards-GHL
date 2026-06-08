@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
-import { CHAT_SYSTEM_PROMPT } from "@/lib/ai-context";
+import { ASSISTANT_SYSTEM_PROMPT } from "@/lib/ai-context";
 
 // Server-side, one Anthropic turn per request. The client runs the agent
 // loop: when we return tool_use blocks, the client executes them locally
@@ -38,6 +38,36 @@ function translateAnthropicError(error: InstanceType<typeof Anthropic.APIError>)
   if (/not found/i.test(inner) && error.status === 404)
     return "Modelo o recurso no encontrado. Revisa la configuración.";
   return `Error del servicio de IA (código ${error.status}). Intenta de nuevo.`;
+}
+
+// Attach a rolling cache breakpoint to the most-recently-appended turn. In the
+// agent loop the message history is append-only, so the cached prefix stays
+// byte-stable and every turn reads the prior conversation from cache (~0.1x)
+// instead of reprocessing the accumulated tool_use/tool_result history at full
+// input price. The static system+tools prefix keeps its own breakpoint; this is
+// the second of the 4 allowed per request.
+function withRollingCacheBreakpoint(
+  messages: Anthropic.MessageParam[]
+): Anthropic.MessageParam[] {
+  if (messages.length === 0) return messages;
+  const lastIndex = messages.length - 1;
+  const last = messages[lastIndex];
+
+  const blocks: Anthropic.ContentBlockParam[] =
+    typeof last.content === "string"
+      ? [{ type: "text", text: last.content }]
+      : [...last.content];
+
+  if (blocks.length === 0) return messages;
+
+  blocks[blocks.length - 1] = {
+    ...blocks[blocks.length - 1],
+    cache_control: { type: "ephemeral" },
+  } as Anthropic.ContentBlockParam;
+
+  const next = [...messages];
+  next[lastIndex] = { ...last, content: blocks };
+  return next;
 }
 
 export async function POST(req: Request) {
@@ -80,7 +110,7 @@ export async function POST(req: Request) {
       system: [
         {
           type: "text",
-          text: `Hoy es ${today}.\n\n${CHAT_SYSTEM_PROMPT}`,
+          text: `Hoy es ${today}.\n\n${ASSISTANT_SYSTEM_PROMPT}`,
         },
         {
           type: "text",
@@ -89,7 +119,7 @@ export async function POST(req: Request) {
         },
       ],
       tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
-      messages: body.messages,
+      messages: withRollingCacheBreakpoint(body.messages),
     });
 
     return NextResponse.json({

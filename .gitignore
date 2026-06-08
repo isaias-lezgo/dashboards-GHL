@@ -19,3 +19,4 @@ node_modules/
 .mcp.json
 # Playwright MCP debug artifacts
 .playwright-mcp/
+.superpowers/

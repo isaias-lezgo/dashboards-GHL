@@ -58,7 +58,7 @@ export async function fetchConversationThreads(
   const limit =
     typeof input.limit === "number"
       ? Math.min(50, Math.max(1, Math.floor(input.limit)))
-      : 20;
+      : 30;
   const messageLimit =
     typeof input.messageLimit === "number"
       ? Math.max(1, Math.floor(input.messageLimit))
@@ -74,7 +74,7 @@ export async function fetchConversationThreads(
   if (!res.ok) return { error: `GHL fetch failed (HTTP ${res.status})` };
 
   const data = (await res.json()) as {
-    threads: Array<{ contactId: string; messages: Array<Record<string, unknown>> }>;
+    threads: Array<{ contactId: string; messages: Array<Record<string, unknown>>; hasMore?: boolean }>;
   };
 
   const threads = (data.threads ?? []).map((t) => {
@@ -87,6 +87,10 @@ export async function fetchConversationThreads(
     return {
       contactId: t.contactId,
       messageCount: chat.length,
+      // true when older messages exist beyond this slice (messageLimit hit).
+      // The model must NOT infer loss reasons / root cause from a hasMore=true
+      // thread — pull the full history with get_contact_messages first.
+      hasMore: t.hasMore ?? false,
       messages: sorted.map((m) => ({
         id: m.id,
         direction: m.direction,

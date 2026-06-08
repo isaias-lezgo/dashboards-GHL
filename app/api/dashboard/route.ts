@@ -398,9 +398,13 @@ export async function GET() {
           if (calendarIds.length > 0) {
             // /calendars/events expects startTime/endTime as epoch ms strings;
             // ISO strings silently return empty.
+            // Window spans 90 days back AND 90 days forward: appointments are
+            // inherently future-facing, so an end of `now` would silently drop
+            // every upcoming appointment (e.g. "citas de mañana" → 0). Widening
+            // the range adds no extra requests — GHL returns all events in it.
             const now = Date.now();
             const apptStartTime = String(now - 90 * 86_400_000);
-            const apptEndTime = String(now);
+            const apptEndTime = String(now + 90 * 86_400_000);
 
             // Concurrency 3: appointments piggy-back on the same rate-limit
             // budget as the in-flight conversation fan-out (CONCURRENCY=6).

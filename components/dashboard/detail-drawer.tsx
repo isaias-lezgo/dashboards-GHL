@@ -26,7 +26,6 @@ import {
   DollarSign,
   User,
   ExternalLink,
-  Sparkles,
   CalendarCheck,
   CalendarX,
   CalendarClock,
@@ -58,7 +57,6 @@ interface DetailDrawerProps {
   messages?: Message[]
   pautas?: Pauta[]
   locationId?: string
-  onAnalyzeWithAI?: (initialMessage: string) => void
 }
 
 // Semantic tag overrides for known CRM tags
@@ -163,7 +161,6 @@ export function DetailDrawer({
   messages = [],
   pautas = [],
   locationId = "",
-  onAnalyzeWithAI,
 }: DetailDrawerProps) {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
 
@@ -208,26 +205,6 @@ export function DetailDrawer({
   const statusInfo = opportunity
     ? (STATUS_STYLES[opportunity.status] ?? { badge: "bg-[#EAEDF1] text-[#151B28] border-border", label: opportunity.status })
     : null
-
-  function handleAnalyzeWithAI() {
-    if (!onAnalyzeWithAI) return
-    const lines: string[] = ["Analiza este contacto de mi CRM:"]
-    if (contact) {
-      lines.push(`\nContacto: ${contact.name}`)
-      if (contact.email) lines.push(`Email: ${contact.email}`)
-      if (contact.phone) lines.push(`Teléfono: ${contact.phone}`)
-      if (contact.tags?.length) lines.push(`Etiquetas: ${contact.tags.join(", ")}`)
-    }
-    if (opportunity) {
-      lines.push(`\nOportunidad: "${opportunity.name}"`)
-      lines.push(`Etapa: ${opportunity.stage}`)
-      lines.push(`Estado: ${opportunity.status}`)
-      if (opportunity.value) lines.push(`Valor: $${opportunity.value.toLocaleString("es-MX")}`)
-      if (opportunity.pipelineName) lines.push(`Pipeline: ${opportunity.pipelineName}`)
-      if (opportunity.assignedTo) lines.push(`Asignado a: ${opportunity.assignedTo}`)
-    }
-    onAnalyzeWithAI(lines.join("\n"))
-  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -296,15 +273,6 @@ export function DetailDrawer({
                   </a>
                 </Button>
               )}
-              <Button
-                size="sm"
-                className="h-7 text-xs gap-1.5 bg-[#F59B1B] text-white hover:bg-[#D9870F] border-0"
-                onClick={handleAnalyzeWithAI}
-                disabled={!onAnalyzeWithAI}
-              >
-                <Sparkles className="h-3 w-3" />
-                Analizar con IA
-              </Button>
             </div>
           )}
         </div>
