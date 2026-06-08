@@ -12,6 +12,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Wrench,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,27 +21,33 @@ import type { ChatDataset } from "@/lib/ai-tools";
 import type { Contact } from "@/lib/types";
 import { buildDatasetSummary, CONVERSATIONS_SYSTEM_PROMPT } from "@/lib/ai-context";
 import {
-  fetchContactMessages,
-  fetchContactTasks,
-  fetchContactNotes,
-} from "@/lib/ghl-fetchers";
-import {
   useAgentLoop,
   type UIMessage,
   type TextBlock,
   type ToolUseBlock,
   type ToolResultBlock,
 } from "@/hooks/use-agent-loop";
+import { triggerDownload } from "@/lib/download";
 import {
-  ConversationsContextPanel,
+  buildChatMarkdown,
+  buildChatJson,
+  exportTimestamp,
+  type ChatExportMeta,
+} from "@/lib/chat-export";
+import {
+  buildSummaryState,
+  buildContactState,
   type PanelState,
   type PanelContact,
-  type PanelOpportunity,
-  type PanelAppointment,
-  type PanelTask,
-  type PanelNote,
-  type PanelLastMessage,
-} from "@/components/dashboard/conversations-context-panel";
+} from "@/lib/conversations-panel";
+import { ConversationsContextPanel } from "@/components/dashboard/conversations-context-panel";
+import { ChatChart } from "@/components/dashboard/chat-chart";
+import {
+  ChartDrillDrawer,
+  DRILL_CLOSED,
+  type DrillState,
+} from "@/components/dashboard/chart-drill-drawer";
+import { parseChartSpec } from "@/lib/ai-tools";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +103,7 @@ export function ConversationsChat({
   const [input, setInput] = useState("");
   const [panelState, setPanelState] = useState<PanelState>({ mode: "idle" });
   const prevSummaryRef = useRef<Extract<PanelState, { mode: "summary" }> | null>(null);
+  const [chartDrill, setChartDrill] = useState<DrillState>(DRILL_CLOSED);
 
   // Lookup of the in-memory contacts by id, used to resolve the bare contactIds
   // returned by search_conversations into real names + enrich the contact view.
@@ -104,6 +112,18 @@ export function ConversationsChat({
     for (const c of dataset.contacts) m.set(c.id, c);
     return m;
   }, [dataset.contacts]);
+
+  // Open the drill-down drawer for a clicked chart group. Resolves the group's
+  // contactIds to full Contact records via the in-memory dataset.
+  const handleChartDrill = useCallback(
+    (title: string, contactIds: string[]) => {
+      const items = contactIds
+        .map((id) => contactById.get(id))
+        .filter((c): c is Contact => Boolean(c));
+      setChartDrill({ open: true, title, opportunities: [], contactItems: items });
+    },
+    [contactById],
+  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -120,6 +140,29 @@ export function ConversationsChat({
     (name: string, input: Record<string, unknown>, result: unknown) => {
       const r = result as Record<string, unknown>;
 
+      const setSummary = (
+        contacts: PanelContact[],
+        opts: {
+          title?: string;
+          total?: number;
+          groups?: { key: string; count: number; sum?: number }[];
+        } = {},
+      ) => {
+        const summary = buildSummaryState(contacts, dataset, opts);
+        prevSummaryRef.current = summary;
+        setPanelState(summary);
+      };
+
+      const focusContact = (id: string) => {
+        setPanelState((prev) =>
+          buildContactState(
+            id,
+            dataset,
+            prev.mode === "summary" ? prev : prevSummaryRef.current ?? undefined,
+          ),
+        );
+      };
+
       // AI-driven panel: the model curated exactly the contacts it's reporting.
       // This is authoritative — it overrides the broad working-set that earlier
       // search_* / search_conversations calls may have pushed into the panel.
@@ -131,20 +174,11 @@ export function ConversationsChat({
           typeof input.title === "string" && input.title.trim()
             ? input.title.trim()
             : undefined;
-        const contacts = ids.map((id) => panelContactFromId(id, contactById));
-        const idSet = new Set(ids);
-        const valueAtRisk = dataset.opportunities
-          .filter((o) => idSet.has(o.contactId) && o.status === "open")
-          .reduce((sum, o) => sum + (typeof o.value === "number" ? o.value : 0), 0);
-        const summary: Extract<PanelState, { mode: "summary" }> = {
-          mode: "summary",
-          title,
-          contacts,
-          total: contacts.length,
-          valueAtRisk: valueAtRisk > 0 ? valueAtRisk : undefined,
-        };
-        prevSummaryRef.current = summary;
-        setPanelState(summary);
+        if (ids.length === 1) return focusContact(ids[0]);
+        setSummary(
+          ids.map((id) => panelContactFromId(id, contactById)),
+          { title, total: ids.length },
+        );
         return;
       }
 
@@ -153,32 +187,11 @@ export function ConversationsChat({
           ? (r.rows as Record<string, unknown>[])
           : [];
         if (rows.length > 1) {
-          const contacts = rows.map(buildPanelContact);
-          const summary: Extract<PanelState, { mode: "summary" }> = {
-            mode: "summary",
-            contacts,
-            total:
-              typeof r.returned === "number" ? r.returned : rows.length,
-          };
-          prevSummaryRef.current = summary;
-          setPanelState(summary);
+          setSummary(rows.map(buildPanelContact), {
+            total: typeof r.returned === "number" ? r.returned : rows.length,
+          });
         } else if (rows.length === 1) {
-          const c = buildPanelContact(rows[0]);
-          setPanelState((prev) => ({
-            mode: "contact",
-            contact: {
-              ...c,
-              email: rows[0].email ? String(rows[0].email) : undefined,
-              phone: rows[0].phone ? String(rows[0].phone) : undefined,
-            },
-            opportunities: [],
-            appointments: [],
-            tasks: [],
-            notes: [],
-            lastMessage: null,
-            prevSummary:
-              prev.mode === "summary" ? prev : prevSummaryRef.current ?? undefined,
-          }));
+          focusContact(String(rows[0].id ?? ""));
         }
         return;
       }
@@ -187,16 +200,14 @@ export function ConversationsChat({
         const groups = Array.isArray(r?.groups)
           ? (r.groups as Record<string, unknown>[])
           : [];
-        const summary: Extract<PanelState, { mode: "summary" }> = {
-          mode: "summary",
-          contacts: [],
+        const summary = buildSummaryState([], dataset, {
           total: typeof r.total === "number" ? r.total : 0,
           groups: groups.map((g) => ({
             key: String(g.key ?? ""),
             count: typeof g.count === "number" ? g.count : 0,
             sum: typeof g.sum === "number" ? g.sum : undefined,
           })),
-        };
+        });
         prevSummaryRef.current = summary;
         setPanelState(summary);
         return;
@@ -206,145 +217,23 @@ export function ConversationsChat({
         const threads = Array.isArray(r?.threads)
           ? (r.threads as Record<string, unknown>[])
           : [];
-        const contacts: PanelContact[] = threads.map((t) =>
-          panelContactFromId(String(t.contactId ?? ""), contactById)
+        const contacts = threads.map((t) =>
+          panelContactFromId(String(t.contactId ?? ""), contactById),
         );
-        const summary: Extract<PanelState, { mode: "summary" }> = {
-          mode: "summary",
-          contacts,
+        if (contacts.length === 1) return focusContact(contacts[0].id);
+        setSummary(contacts, {
           total: typeof r.returned === "number" ? r.returned : threads.length,
-        };
-        prevSummaryRef.current = summary;
-        setPanelState(summary);
+        });
         return;
       }
 
       if (name === "get_contact") {
         const c = r as Record<string, unknown>;
-        setPanelState((prev) => ({
-          mode: "contact",
-          contact: {
-            id: String(c.id ?? ""),
-            name: String(c.name ?? ""),
-            email: c.email ? String(c.email) : undefined,
-            phone: c.phone ? String(c.phone) : undefined,
-            source: c.source ? String(c.source) : undefined,
-            assignedTo: c.assignedTo ? String(c.assignedTo) : undefined,
-            companyName: c.companyName ? String(c.companyName) : undefined,
-            tags: Array.isArray(c.tags) ? (c.tags as string[]) : undefined,
-          },
-          opportunities: [],
-          appointments: [],
-          tasks: [],
-          notes: [],
-          lastMessage: null,
-          prevSummary:
-            prev.mode === "summary"
-              ? prev
-              : prevSummaryRef.current ?? undefined,
-        }));
+        focusContact(String(c.id ?? ""));
         return;
-      }
-
-      if (name === "get_contact_related") {
-        const opps = Array.isArray(r?.opportunities)
-          ? (r.opportunities as Record<string, unknown>[])
-          : [];
-        const appts = Array.isArray(r?.appointments)
-          ? (r.appointments as Record<string, unknown>[])
-          : [];
-        setPanelState((prev) => {
-          if (prev.mode !== "contact") return prev;
-          return {
-            ...prev,
-            opportunities: opps.map(
-              (o): PanelOpportunity => ({
-                id: String(o.id ?? ""),
-                name: String(o.name ?? ""),
-                pipelineName: String(o.pipeline ?? ""),
-                stage: String(o.stage ?? ""),
-                status: String(o.status ?? "open"),
-                value: typeof o.value === "number" ? o.value : 0,
-                currency: o.currency ? String(o.currency) : undefined,
-              })
-            ),
-            appointments: appts.map(
-              (a): PanelAppointment => ({
-                id: String(a.id ?? ""),
-                title: a.title ? String(a.title) : undefined,
-                startTime: String(a.startTime ?? ""),
-                status: String(a.status ?? ""),
-              })
-            ),
-          };
-        });
-        return;
-      }
-
-      if (name === "get_contact_messages") {
-        const rows = Array.isArray(r?.rows)
-          ? (r.rows as Record<string, unknown>[])
-          : [];
-        const last = rows[0];
-        if (last) {
-          const lastMessage: PanelLastMessage = {
-            direction:
-              (last.direction as "inbound" | "outbound") ?? "inbound",
-            source: String(last.source ?? ""),
-            content: last.content ? String(last.content) : undefined,
-            createdAt: String(last.createdAt ?? ""),
-          };
-          setPanelState((prev) => {
-            if (prev.mode !== "contact") return prev;
-            return { ...prev, lastMessage };
-          });
-        }
-        return;
-      }
-
-      if (name === "get_contact_tasks") {
-        const tasks = Array.isArray(r?.tasks)
-          ? (r.tasks as Record<string, unknown>[])
-          : [];
-        setPanelState((prev) => {
-          if (prev.mode !== "contact") return prev;
-          return {
-            ...prev,
-            tasks: tasks.map(
-              (t): PanelTask => ({
-                id: String(t.id ?? ""),
-                title: String(t.title ?? ""),
-                status:
-                  (t.status as "pending" | "completed") ?? "pending",
-                dueDate: t.dueDate ? String(t.dueDate) : undefined,
-              })
-            ),
-          };
-        });
-        return;
-      }
-
-      if (name === "get_contact_notes") {
-        const notes = Array.isArray(r?.notes)
-          ? (r.notes as Record<string, unknown>[])
-          : [];
-        setPanelState((prev) => {
-          if (prev.mode !== "contact") return prev;
-          return {
-            ...prev,
-            notes: notes.map(
-              (n): PanelNote => ({
-                id: String(n.id ?? ""),
-                body: String(n.body ?? ""),
-                userId: n.userId ? String(n.userId) : undefined,
-                dateAdded: String(n.dateAdded ?? ""),
-              })
-            ),
-          };
-        });
       }
     },
-    [contactById, dataset.opportunities]
+    [contactById, dataset],
   );
 
   const {
@@ -381,6 +270,27 @@ export function ConversationsChat({
     prevSummaryRef.current = null;
   }, [reset]);
 
+  const handleExport = useCallback(() => {
+    if (messages.length === 0) return;
+    const meta: ChatExportMeta = {
+      exportedAt: new Date(),
+      model: "Sonnet 4.6",
+      totalCost,
+      totalTools,
+    };
+    const stamp = exportTimestamp(meta.exportedAt);
+    triggerDownload({
+      content: buildChatMarkdown(messages, meta),
+      filename: `chat-ia-${stamp}.md`,
+      mimeType: "text/markdown;charset=utf-8;",
+    });
+    triggerDownload({
+      content: buildChatJson(messages, meta),
+      filename: `chat-ia-${stamp}.json`,
+      mimeType: "application/json;charset=utf-8;",
+    });
+  }, [messages, totalCost, totalTools]);
+
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -393,105 +303,15 @@ export function ConversationsChat({
 
   const handleContactClick = useCallback(
     (contact: PanelContact) => {
-      const full = contactById.get(contact.id);
-      const opportunities: PanelOpportunity[] = dataset.opportunities
-        .filter((o) => o.contactId === contact.id)
-        .map((o) => ({
-          id: o.id,
-          name: o.name,
-          pipelineName: o.pipelineName,
-          stage: o.stage,
-          status: o.status,
-          value: o.value,
-          currency: o.currency || undefined,
-        }));
-      const appointments: PanelAppointment[] = dataset.appointments
-        .filter((a) => a.contactId === contact.id)
-        .map((a) => ({
-          id: a.id,
-          title: a.title || undefined,
-          startTime: a.startTime,
-          status: a.status,
-        }));
-      setPanelState((prev) => ({
-        mode: "contact",
-        contact: {
-          ...contact,
-          name: full?.name || contact.name,
-          source: full?.source || contact.source,
-          assignedTo: full?.assignedTo || contact.assignedTo,
-          email: full?.email || undefined,
-          phone: full?.phone || undefined,
-          companyName: full?.companyName || undefined,
-        },
-        opportunities,
-        appointments,
-        tasks: [],
-        notes: [],
-        lastMessage: null,
-        prevSummary: prev.mode === "summary" ? prev : undefined,
-      }));
-
-      // Conversation leads usually have no in-memory opps/appointments — the
-      // real context (last message, tasks, notes) lives in GHL. Fetch it live
-      // and merge it in as it arrives, ignoring results if the user has since
-      // navigated to a different contact.
-      const id = contact.id;
-      if (!id) return;
-      void (async () => {
-        const [msgRes, taskRes, noteRes] = await Promise.allSettled([
-          fetchContactMessages({ contactId: id, limit: 1 }),
-          fetchContactTasks({ contactId: id }),
-          fetchContactNotes({ contactId: id }),
-        ]);
-
-        let lastMessage: PanelLastMessage | null = null;
-        if (msgRes.status === "fulfilled") {
-          const rows = (msgRes.value as { rows?: Record<string, unknown>[] })?.rows;
-          const last = Array.isArray(rows) ? rows[0] : undefined;
-          if (last) {
-            lastMessage = {
-              direction: (last.direction as "inbound" | "outbound") ?? "inbound",
-              source: String(last.source ?? ""),
-              content: last.content ? String(last.content) : undefined,
-              createdAt: String(last.createdAt ?? ""),
-            };
-          }
-        }
-
-        let tasks: PanelTask[] = [];
-        if (taskRes.status === "fulfilled") {
-          const list = (taskRes.value as { tasks?: Record<string, unknown>[] })?.tasks;
-          if (Array.isArray(list)) {
-            tasks = list.map((t) => ({
-              id: String(t.id ?? ""),
-              title: String(t.title ?? ""),
-              status: (t.status as "pending" | "completed") ?? "pending",
-              dueDate: t.dueDate ? String(t.dueDate) : undefined,
-            }));
-          }
-        }
-
-        let notes: PanelNote[] = [];
-        if (noteRes.status === "fulfilled") {
-          const list = (noteRes.value as { notes?: Record<string, unknown>[] })?.notes;
-          if (Array.isArray(list)) {
-            notes = list.map((n) => ({
-              id: String(n.id ?? ""),
-              body: String(n.body ?? ""),
-              userId: n.userId ? String(n.userId) : undefined,
-              dateAdded: String(n.dateAdded ?? ""),
-            }));
-          }
-        }
-
-        setPanelState((prev) => {
-          if (prev.mode !== "contact" || prev.contact.id !== id) return prev;
-          return { ...prev, lastMessage, tasks, notes };
-        });
-      })();
+      setPanelState((prev) =>
+        buildContactState(
+          contact.id,
+          dataset,
+          prev.mode === "summary" ? prev : prevSummaryRef.current ?? undefined,
+        ),
+      );
     },
-    [contactById, dataset.opportunities, dataset.appointments]
+    [dataset],
   );
 
   const handleBack = useCallback(() => {
@@ -501,8 +321,8 @@ export function ConversationsChat({
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-112px)] overflow-hidden">
-      {/* Left: Adaptive context panel */}
+    <div className="flex h-[calc(100dvh-112px)] flex-col overflow-hidden md:h-[calc(100vh-112px)] md:flex-row">
+      {/* Context panel: stacked above the chat on mobile, side rail on desktop */}
       <ConversationsContextPanel
         state={panelState}
         locationId={locationId}
@@ -510,37 +330,51 @@ export function ConversationsChat({
         onBack={handleBack}
       />
 
-      {/* Right: Chat */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Chat */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3 sm:px-5">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
           </div>
-          <div>
-            <p className="text-sm font-semibold">Chat de Conversaciones</p>
-            <p className="text-[10px] text-muted-foreground">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Asistente IA</p>
+            <p className="hidden truncate text-[10px] text-muted-foreground sm:block">
               Pregunta sobre contactos, conversaciones, tareas y notas en vivo.
             </p>
           </div>
-          <div className="ml-auto text-[10px] text-muted-foreground/60 tabular-nums">
-            Sonnet 4.6 · {totalTools}{" "}
-            {totalTools === 1 ? "herramienta" : "herramientas"} · ~$
-            {totalCost.toFixed(4)}
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="text-right text-[10px] text-muted-foreground/60 tabular-nums">
+              Sonnet 4.6 · {totalTools}{" "}
+              {totalTools === 1 ? "herramienta" : "herramientas"} · ~$
+              {totalCost.toFixed(4)}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={busy || messages.length === 0}
+              title="Exporta la conversación (Markdown + JSON) con tus mensajes, las respuestas de la IA y el uso de herramientas."
+              className="h-7 gap-1.5 px-2.5 text-[10px]"
+            >
+              <Download className="h-3 w-3" />
+              <span className="hidden sm:inline">Exportar chat con IA</span>
+            </Button>
           </div>
         </div>
 
         {/* Messages */}
         <div
           ref={scrollRef}
-          className="flex-1 space-y-4 overflow-y-auto px-6 py-5"
+          className="flex-1 space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
         >
           {messages.length === 0 && !busy && (
             <ConvEmptyState onSuggest={(s) => setInput(s)} />
           )}
 
           {messages.map((m, i) => (
-            <ConvMessageBubble key={i} message={m} />
+            <ConvMessageBubble key={i} message={m} onDrill={handleChartDrill} />
           ))}
 
           {busy && status && (
@@ -567,7 +401,7 @@ export function ConversationsChat({
         </div>
 
         {/* Input bar */}
-        <div className="border-t border-border px-5 py-4">
+        <div className="border-t border-border px-4 py-4 sm:px-5">
           <Textarea
             ref={inputRef}
             value={input}
@@ -621,6 +455,19 @@ export function ConversationsChat({
           </div>
         </div>
       </div>
+
+      <ChartDrillDrawer
+        drill={chartDrill}
+        onDrillChange={setChartDrill}
+        contacts={dataset.contacts}
+        tasks={dataset.tasks}
+        calls={dataset.calls}
+        allOpportunities={dataset.opportunities}
+        allPautas={dataset.pautas}
+        appointments={dataset.appointments}
+        messages={dataset.messages}
+        locationId={locationId ?? ""}
+      />
     </div>
   );
 }
@@ -656,13 +503,21 @@ function ConvEmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
   );
 }
 
-function ConvMessageBubble({ message }: { message: UIMessage }) {
+function ConvMessageBubble({
+  message,
+  onDrill,
+}: {
+  message: UIMessage;
+  onDrill?: (title: string, contactIds: string[]) => void;
+}) {
   const textBlocks = message.blocks.filter(
     (b): b is TextBlock => b.type === "text"
   );
   const toolUseBlocks = message.blocks.filter(
     (b): b is ToolUseBlock => b.type === "tool_use"
   );
+  const chartBlocks = toolUseBlocks.filter((b) => b.name === "render_chart");
+  const otherToolBlocks = toolUseBlocks.filter((b) => b.name !== "render_chart");
   const toolResultBlocks = message.blocks.filter(
     (b): b is ToolResultBlock => b.type === "tool_result"
   );
@@ -722,10 +577,19 @@ function ConvMessageBubble({ message }: { message: UIMessage }) {
           )}
         </div>
       ))}
-      {toolUseBlocks.length > 0 && (
+      {chartBlocks.map((b, i) => {
+        const spec = parseChartSpec(b.input);
+        if (!spec) return null;
+        return (
+          <div key={`chart-${i}`} className="w-full">
+            <ChatChart spec={spec} onDrill={onDrill} />
+          </div>
+        );
+      })}
+      {otherToolBlocks.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {Object.entries(
-            toolUseBlocks.reduce<Record<string, number>>((acc, b) => {
+            otherToolBlocks.reduce<Record<string, number>>((acc, b) => {
               acc[b.name] = (acc[b.name] ?? 0) + 1;
               return acc;
             }, {})
