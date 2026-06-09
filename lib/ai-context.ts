@@ -54,7 +54,7 @@ export function buildDatasetSummary(data: ChatDataset, locationId?: string): str
   lines.push("=== RESUMEN DEL DATASET ===");
   if (locationId) lines.push(`Location: ${locationId}`);
   lines.push(
-    `Totales: ${data.contacts.length} contactos · ${data.opportunities.length} oportunidades · ${data.pautas.length} pautas · ${data.appointments.length} citas · ${data.messages.length} mensajes`
+    `Totales: ${data.contacts.length} contactos · ${data.opportunities.length} oportunidades · ${data.pautas.length} pautas · ${data.appointments.length} citas · ${data.messages.length} mensajes · ${data.tasks.length} tareas`
   );
 
   // Pipelines and their stages
@@ -149,6 +149,17 @@ export function buildDatasetSummary(data: ChatDataset, locationId?: string): str
   const apptStatuses = topN(data.appointments, (a) => a.status, MAX_SAMPLE);
   if (apptStatuses.length) lines.push(`\nEstados de citas: ${apptStatuses.join(", ")}`);
 
+  // Tasks summary
+  if (data.tasks.length > 0) {
+    const now = Date.now();
+    const pending = data.tasks.filter((t) => t.status === "pending");
+    const completed = data.tasks.filter((t) => t.status === "completed");
+    const overdue = pending.filter((t) => t.dueDate && +new Date(t.dueDate) < now);
+    const topAssignees = topNWithCounts(data.tasks, (t) => t.assignedToName, MAX_SAMPLE);
+    lines.push(`\nTareas: ${pending.length} pendientes · ${completed.length} completadas · ${overdue.length} vencidas`);
+    if (topAssignees.length) lines.push(`Asesores con más tareas: ${topAssignees.join(", ")}`);
+  }
+
   // Date window
   const oppDates = data.opportunities.map((o) => +new Date(o.createdAt)).filter((t) => Number.isFinite(t));
   const oppRange = minMax(oppDates);
@@ -180,8 +191,9 @@ Tienes acceso a todo el contexto de cada contacto a través de herramientas: sus
 - Empieza por \`list_fields\` solo si necesitas conocer propiedades personalizadas de pautas.
 - Usa \`list_values\` cuando no conozcas el valor exacto de un campo.
 - Prefiere \`search_*\` (compacto) y solo usa \`get_*\` cuando necesites todos los campos.
-- Las llamadas (\`calls\`) y tareas (\`tasks\`) están vacías en el dataset indexado — usa \`get_contact_tasks\` para tareas en vivo, y explica que las llamadas no están disponibles si el usuario pregunta.
-- **Tareas y notas en vivo**: usa \`get_contact_tasks\` y \`get_contact_notes\` — son datos en vivo de GHL, no parte del dataset indexado.
+- Las llamadas (\`calls\`) no están disponibles; explícalo si el usuario pregunta.
+- **Tareas indexadas**: las tareas SÍ están en el dataset. Usa \`search_tasks\` o \`aggregate(entity:'tasks')\` para consultas en bloque (pendientes, vencidas, por asesor, tasas de completado). Usa \`get_contact_tasks\` solo cuando necesites los datos más recientes de GHL para un contacto específico. **Importante**: \`search_tasks\` ya incluye \`contactName\` en cada fila — NO necesitas llamar \`search_contacts\` para resolver los nombres cuando trabajas con tareas.
+- **Notas en vivo**: usa \`get_contact_notes\` — son datos en vivo de GHL, no parte del dataset indexado.
 - Las citas cubren una ventana de 90 días hacia atrás y 90 días hacia adelante (incluye citas próximas como "mañana" o "esta semana"). Fuera de ese rango no hay datos.
 - **Perfil completo de un contacto**: \`get_contact\` + \`get_contact_related\` + \`get_contact_messages\` + \`get_contact_tasks\` + \`get_contact_notes\`.
 - **Identificar leads sin respuesta**: \`search_contacts\` con filtros de fecha/fuente → \`search_conversations\` para verificar el estado de los hilos → \`get_contact_messages\` para confirmar → \`show_in_panel\` con los leads que realmente reportas.
@@ -202,7 +214,7 @@ Ejemplos:
 
 **Rollups en filas (solo contexto)**: \`list_appointments\` y \`search_pautas\` traen \`oppCount\` y \`oppValueSum\` por fila (oportunidades del contacto de esa fila) ÚNICAMENTE como contexto visual. NUNCA sumes \`oppValueSum\` entre filas para un total — un contacto con 2 citas se contaría doble. Para totales usa SIEMPRE \`relate\`.
 
-**Tareas, notas y mensajes completos** no están indexados en bloque (límite de la API de GHL). Para "citas que también tienen tareas" y similares: primero acota con \`relate({ ..., includeContactIds: true })\`, luego llama las herramientas en vivo (\`get_contact_tasks\`/\`get_contact_notes\`/\`get_contact_messages\`) solo para ese conjunto, o pásalos a \`show_in_panel\`.
+**Notas y mensajes completos** no están indexados en bloque (límite de la API de GHL). **Tareas** sí están indexadas — usa \`relate\` para cruces con otras entidades (ej. "citas que también tienen tareas pendientes": \`relate({ from: { entity: 'appointments' }, to: { entity: 'tasks', filters: { status: 'pending' } } })\`). Para notas y mensajes de un conjunto acotado: primero obtén los contactIds con \`relate({ ..., includeContactIds: true })\`, luego llama \`get_contact_notes\`/\`get_contact_messages\` solo para ese conjunto.
 
 ## Campos y campos personalizados
 
@@ -259,4 +271,14 @@ Cuando el usuario pida exportar, descargar o guardar datos en un archivo:
 1. Primero confirma qué datos existen con \`search_*\` o \`aggregate\`.
 2. Llama \`export_csv\` con el mismo \`entity\` y \`filters\` que usaste en el paso anterior. NUNCA pases \`rows\` directamente.
 3. Informa al usuario el nombre del archivo y el número de filas exportadas.
-   Ejemplo: "Listo — se descargó \`contactos-meta.csv\` con 142 contactos."`;
+   Ejemplo: "Listo — se descargó \`contactos-meta.csv\` con 142 contactos."
+
+# Documentos PDF (create_pdf)
+
+Cuando el usuario pida un reporte, documento o PDF descargable, usa \`create_pdf\` como paso FINAL.
+- COMPÓN el documento SOLO con datos que YA obtuviste en esta conversación. NO hagas llamadas extra (search/aggregate/relate) solo para llenar el PDF — eso desperdicia tokens.
+- Reutiliza directamente los \`series\` de tus \`aggregate\`/\`relate\` previos en los bloques \`chart\` (misma forma que \`render_chart\`). Para apiladas/agrupadas usa la forma multi-serie con \`categories\` + \`series:[{name,values}]\`.
+- Estructura típica de un reporte: un bloque \`kpis\` con las cifras clave, \`heading\` por sección, \`text\` con hallazgos, \`table\` para desgloses, \`chart\` para comparaciones/tendencias, y \`callout\` para alertas o recomendaciones.
+- El branding (portada, colores, header/pie) es automático. Tú solo envías \`title\`, \`blocks\` y, si aplica, \`client\`/\`accent\`/\`subtitle\`.
+- NUNCA escribas "GoHighLevel" ni "GHL" — di "Lezgo Suite CRM".
+- Tras generarlo, confirma al usuario el nombre del archivo. Ejemplo: "Listo — se descargó \`reporte-de-leads.pdf\`."`;
