@@ -291,12 +291,12 @@ export const TOOL_DEFINITIONS = [
       properties: {
         entity: {
           type: "string",
-          enum: ["contacts", "opportunities", "pautas", "appointments"],
+          enum: ["contacts", "opportunities", "pautas", "appointments", "tasks"],
         },
         groupBy: {
           type: "string",
           description:
-            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). CAMPAIGN questions: 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)'. When the user asks 'por campaña', ALSO group by 'adId' and 'attributionUrl' — those hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
+            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Tasks: 'status' (pending/completed), 'assignedTo', 'assignedToName'. CAMPAIGN questions: 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)'. When the user asks 'por campaña', ALSO group by 'adId' and 'attributionUrl' — those hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
         },
         metric: {
           type: "string",
@@ -306,7 +306,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         includeContactIds: {
@@ -328,7 +328,7 @@ export const TOOL_DEFINITIONS = [
       properties: {
         entity: {
           type: "string",
-          enum: ["contacts", "opportunities", "appointments", "pautas"],
+          enum: ["contacts", "opportunities", "appointments", "pautas", "tasks"],
           description: "The entity to export.",
         },
         filters: {
@@ -378,9 +378,28 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "search_tasks",
+    description:
+      "Search and filter tasks from the indexed dataset. Returns title, status (pending/completed), dueDate, assignedToName, contactId. Use for bulk queries: pending tasks, overdue follow-ups, tasks per advisor, task completion rate. For a single contact's freshest tasks, use get_contact_tasks (live GHL).",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["pending", "completed"], description: "Filter by task status." },
+        assignedTo: { type: "string", description: "Filter by assignee name (case-insensitive substring match on assignedToName)." },
+        contactId: { type: "string", description: "Filter to tasks of a single contact." },
+        contactIds: { type: "array", items: { type: "string" }, description: "Filter to tasks belonging to any of these contacts." },
+        dueAfter: { type: "string", description: "ISO date — tasks with dueDate on or after this date." },
+        dueBefore: { type: "string", description: "ISO date — tasks with dueDate on or before this date." },
+        overdue: { type: "boolean", description: "When true, return only pending tasks whose dueDate is in the past." },
+        limit: { type: "number", description: "Max tasks to return (default 50)." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_contact_tasks",
     description:
-      "Fetches all tasks for a contact directly from GoHighLevel. Returns task title, due date, status (completed/pending), and assigned user. Use when the user asks about pending work, follow-ups, overdue items, or to-dos for a specific contact. Always resolve the contactId first with search_contacts if you only have a name.",
+      "Fetches the latest tasks for a single contact directly from GoHighLevel (live, always fresh). Returns task title, due date, status (completed/pending), and assigned user. Use for a single contact's full task history. For bulk queries across many contacts, use search_tasks or aggregate(entity:'tasks') instead. Always resolve the contactId first with search_contacts if you only have a name.",
     input_schema: {
       type: "object",
       properties: {
@@ -420,13 +439,13 @@ export const TOOL_DEFINITIONS = [
           properties: {
             entity: {
               type: "string",
-              enum: ["contacts", "opportunities", "pautas", "appointments"],
+              enum: ["contacts", "opportunities", "pautas", "appointments", "tasks"],
             },
             filters: {
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. Tasks: status, assignedTo, contactIds, dueAfter, dueBefore, overdue. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
             },
           },
           required: ["entity"],
@@ -437,7 +456,7 @@ export const TOOL_DEFINITIONS = [
           properties: {
             entity: {
               type: "string",
-              enum: ["contacts", "opportunities", "pautas", "appointments"],
+              enum: ["contacts", "opportunities", "pautas", "appointments", "tasks"],
             },
             filters: {
               type: "object",
@@ -532,6 +551,56 @@ export const TOOL_DEFINITIONS = [
         },
       },
       required: ["type", "title", "series"],
+    },
+  },
+  {
+    name: "create_pdf",
+    description:
+      "Genera un documento PDF descargable con el branding de Lezgo Suite (portada, encabezado y pie automáticos). Úsalo cuando el usuario pida un reporte, documento o PDF descargable. COMPÓN el documento SOLO con datos que YA obtuviste en esta conversación — NO hagas llamadas extra solo para el PDF. Reutiliza los `series` de tus `aggregate`/`relate` previos en los bloques `chart` (misma forma que render_chart). NUNCA escribas 'GoHighLevel' ni 'GHL' (se reescriben a 'Lezgo Suite CRM'). El branding (colores, portada, header/footer) es automático: tú solo envías contenido. Es tu paso FINAL; después confirma al usuario el nombre del archivo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Título de la portada (requerido)." },
+        accent: { type: "string", description: "Línea naranja adicional en la portada (ej. 'Mayo 2026')." },
+        client: { type: "string", description: "Nombre del cliente/empresa; aparece en la caja naranja de portada." },
+        subtitle: { type: "string", description: "Descripción breve de la portada." },
+        cover: { type: "boolean", description: "Incluir portada. Default true. Usa false para un documento interno corto." },
+        blocks: {
+          type: "array",
+          description:
+            "Contenido del documento, en orden. Cada bloque se discrimina por `t`: heading {t,text}, subheading {t,text}, text {t,text} (acepta **negrita**), bullets {t,items[]}, kpis {t,items:[{label,value}]}, table {t,headers[],rows[][]}, callout {t,style:'info|warn|ok|error',text}, chart (ver abajo).",
+          items: {
+            type: "object",
+            properties: {
+              t: {
+                type: "string",
+                enum: ["heading", "subheading", "text", "bullets", "kpis", "table", "callout", "chart"],
+              },
+              text: { type: "string", description: "Para heading/subheading/text/callout." },
+              items: {
+                type: "array",
+                description: "bullets: array de strings. kpis: array de {label,value} (strings).",
+              },
+              style: { type: "string", enum: ["info", "warn", "ok", "error"], description: "Solo callout." },
+              headers: { type: "array", items: { type: "string" }, description: "Solo table." },
+              rows: { type: "array", description: "Solo table: array de filas; cada fila es array de strings." },
+              type: { type: "string", enum: ["bar", "pie", "line"], description: "Solo chart." },
+              title: { type: "string", description: "Solo chart: título de la gráfica." },
+              valueLabel: { type: "string", description: "Solo chart: qué representan los números." },
+              orientation: { type: "string", enum: ["h", "v"], description: "Solo chart bar: 'h' = barras horizontales." },
+              stacked: { type: "boolean", description: "Solo chart bar/line multi-serie: apilar. Default agrupado." },
+              categories: { type: "array", items: { type: "string" }, description: "Solo chart multi-serie: etiquetas del eje X." },
+              series: {
+                type: "array",
+                description:
+                  "chart simple: [{label,value}] (igual que render_chart). chart multi-serie (con categories): [{name, values:[number]}] alineado por índice a categories.",
+              },
+            },
+            required: ["t"],
+          },
+        },
+      },
+      required: ["title", "blocks"],
     },
   },
 ] as const;
@@ -762,6 +831,8 @@ export function executeTool(
       return listFields(input, data);
     case "list_values":
       return listValues(input, data);
+    case "search_tasks":
+      return searchTasks(input, data);
     case "search_contacts":
       return searchContacts(input, data);
     case "get_contact":
@@ -822,6 +893,7 @@ const CSV_COLUMNS: Record<string, string[]> = {
   ],
   appointments: ["contactId", "assignedTo", "title", "status", "location", "startTime"],
   pautas: ["id", "tipo", "nombrePauta", "contactId", "createdAt"],
+  tasks: ["id", "title", "status", "dueDate", "assignedToName", "contactId", "contactName", "createdAt"],
 };
 
 function csvCell(val: unknown): string {
@@ -941,6 +1013,21 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
         }
         return base;
       });
+      break;
+    }
+    case "tasks": {
+      const filtered = applyTaskFilters(data.tasks, filters);
+      headers = userColumns ?? CSV_COLUMNS.tasks;
+      rows = filtered.map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        dueDate: t.dueDate ?? "",
+        assignedToName: t.assignedToName ?? "",
+        contactId: t.contactId,
+        contactName: t.contactName ?? "",
+        createdAt: t.createdAt ?? "",
+      }));
       break;
     }
     default:
@@ -1331,6 +1418,8 @@ function filteredRows(
       return applyPautaFilters(data.pautas, filters) as unknown as Array<Record<string, unknown>>;
     case "appointments":
       return applyApptFilters(data.appointments, filters) as unknown as Array<Record<string, unknown>>;
+    case "tasks":
+      return applyTaskFilters(data.tasks, filters) as unknown as Array<Record<string, unknown>>;
     default:
       return [];
   }
@@ -1404,7 +1493,7 @@ function aggregate(input: ToolInput, data: ChatDataset) {
   const limit = clampLimit(input.limit, 50);
   const includeContactIds = input.includeContactIds === true;
 
-  if (!["contacts", "opportunities", "pautas", "appointments"].includes(entity)) {
+  if (!["contacts", "opportunities", "pautas", "appointments", "tasks"].includes(entity)) {
     return { error: `Unknown entity: ${entity}` };
   }
 
@@ -1414,7 +1503,7 @@ function aggregate(input: ToolInput, data: ChatDataset) {
 
 // ─── relate (cross-entity join through the shared contact) ──────────────────────
 
-const RELATABLE = ["contacts", "opportunities", "pautas", "appointments"];
+const RELATABLE = ["contacts", "opportunities", "pautas", "appointments", "tasks"];
 
 function contactIdOf(entity: string, row: Record<string, unknown>): string | undefined {
   if (entity === "contacts") return typeof row.id === "string" ? row.id : undefined;
@@ -1468,6 +1557,12 @@ function rowsForContacts(
         if (arr) for (const a of arr) out.push(a as unknown as Record<string, unknown>);
       }
       break;
+    case "tasks":
+      for (const id of contactIds) {
+        const arr = index.tasksByContact.get(id);
+        if (arr) for (const t of arr) out.push(t as unknown as Record<string, unknown>);
+      }
+      break;
   }
   return out;
 }
@@ -1486,6 +1581,8 @@ function applyEntityFilters(
       return applyPautaFilters(rows as unknown as Pauta[], filters) as unknown as Array<Record<string, unknown>>;
     case "appointments":
       return applyApptFilters(rows as unknown as Appointment[], filters) as unknown as Array<Record<string, unknown>>;
+    case "tasks":
+      return applyTaskFilters(rows as unknown as Task[], filters) as unknown as Array<Record<string, unknown>>;
     default:
       return rows;
   }
@@ -1630,4 +1727,39 @@ function applyApptFilters(rows: Appointment[], f: ToolInput): Appointment[] {
     if (typeof f.startBefore === "string" && +new Date(a.startTime) > endBound(f.startBefore)) return false;
     return true;
   });
+}
+
+function applyTaskFilters(rows: Task[], f: ToolInput): Task[] {
+  const contactIds = Array.isArray(f.contactIds) ? new Set(f.contactIds as string[]) : undefined;
+  return rows.filter((t) => {
+    if (typeof f.status === "string" && !ieq(t.status, f.status)) return false;
+    if (typeof f.assignedTo === "string" && !isub(t.assignedToName, f.assignedTo)) return false;
+    if (typeof f.contactId === "string" && t.contactId !== f.contactId) return false;
+    if (contactIds && !contactIds.has(t.contactId)) return false;
+    if (typeof f.dueAfter === "string" && t.dueDate && +new Date(t.dueDate) < startBound(f.dueAfter)) return false;
+    if (typeof f.dueBefore === "string" && t.dueDate && +new Date(t.dueDate) > endBound(f.dueBefore)) return false;
+    if (f.overdue === true && !(t.status === "pending" && t.dueDate && +new Date(t.dueDate) < Date.now())) return false;
+    return true;
+  });
+}
+
+function searchTasks(input: ToolInput, data: ChatDataset) {
+  const limit = clampLimit(input.limit);
+  const filtered = applyTaskFilters(data.tasks, input);
+  const truncated = filtered.length > limit;
+  const rows = truncated ? filtered.slice(0, limit) : filtered;
+  return {
+    rows: rows.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      dueDate: t.dueDate ?? null,
+      assignedToName: t.assignedToName ?? null,
+      contactId: t.contactId,
+      contactName: t.contactName ?? null,
+      createdAt: t.createdAt ?? null,
+    })),
+    returned: rows.length,
+    truncated,
+  };
 }
