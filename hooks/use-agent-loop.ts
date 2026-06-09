@@ -13,6 +13,7 @@ import {
   fetchContactNotes,
 } from "@/lib/ghl-fetchers";
 import { triggerDownload } from "@/lib/download";
+import { downloadPdf } from "@/lib/pdf/build-pdf";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -214,6 +215,8 @@ export function useAgentLoop({
                     filename: exportResult.filename,
                     rowCount: exportResult.rowCount,
                   };
+                } else if (tu.name === "create_pdf") {
+                  result = await downloadPdf(tu.input);
                 } else {
                   result = executeTool(tu.name, tu.input, dataset);
                 }
