@@ -21,3 +21,16 @@ export function triggerDownload({
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Variant for binary artifacts (e.g. a generated PDF) where the source is
+// already a Blob rather than a string. Same transient-anchor mechanism.
+export function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
