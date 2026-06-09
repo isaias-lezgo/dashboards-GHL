@@ -61,7 +61,7 @@ export const STYLES: StyleDictionary = {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Full-width horizontal rule. */
-export function hr(color = C.grisBorde, thickness = 0.5): ContentCanvas {
+export function hr(color: string = C.grisBorde, thickness = 0.5): ContentCanvas {
   return {
     canvas: [
       { type: "line", x1: 0, y1: 0, x2: USABLE_WIDTH, y2: 0, lineWidth: thickness, lineColor: color },
