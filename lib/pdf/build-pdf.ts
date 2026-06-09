@@ -1,0 +1,138 @@
+import type { TDocumentDefinitions, Content } from "pdfmake/interfaces";
+import type { PdfSpec, PdfBlock } from "./types";
+import { STYLES, PAGE_MARGINS, buildCover, header, footer, C } from "./branding";
+import { buildBlock } from "./blocks";
+import { triggerBlobDownload } from "@/lib/download";
+
+export interface PdfResult {
+  success: boolean;
+  filename?: string;
+  pages?: number;
+  error?: string;
+}
+
+const VALID_T = new Set([
+  "heading", "subheading", "text", "bullets", "kpis", "table", "callout", "chart",
+]);
+
+/** Validate the raw tool input into a PdfSpec. Returns null if unusable. */
+export function parsePdfSpec(input: unknown): PdfSpec | null {
+  if (!input || typeof input !== "object") return null;
+  const o = input as Record<string, unknown>;
+  const title = typeof o.title === "string" && o.title.trim() ? o.title.trim() : null;
+  if (!title) return null;
+  if (!Array.isArray(o.blocks)) return null;
+
+  const blocks: PdfBlock[] = [];
+  for (const raw of o.blocks) {
+    if (!raw || typeof raw !== "object") continue;
+    const b = raw as Record<string, unknown>;
+    if (typeof b.t !== "string" || !VALID_T.has(b.t)) continue;
+    blocks.push(b as unknown as PdfBlock);
+  }
+  if (blocks.length === 0) return null;
+
+  return {
+    title,
+    accent: typeof o.accent === "string" ? o.accent : undefined,
+    client: typeof o.client === "string" ? o.client : undefined,
+    subtitle: typeof o.subtitle === "string" ? o.subtitle : undefined,
+    cover: o.cover === false ? false : true,
+    blocks,
+  };
+}
+
+function slugify(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "reporte"
+  );
+}
+
+export function buildDocDefinition(spec: PdfSpec): TDocumentDefinitions {
+  const content: Content[] = [];
+  if (spec.cover !== false) {
+    content.push(...buildCover(spec));
+  }
+  for (const block of spec.blocks) {
+    const node = buildBlock(block);
+    if (node) content.push(node);
+  }
+  return {
+    pageSize: "LETTER",
+    pageMargins: PAGE_MARGINS,
+    defaultStyle: { fontSize: 10, color: C.grisMed },
+    styles: STYLES,
+    header: (currentPage: number) => header(currentPage) ?? "",
+    footer: (currentPage: number, pageCount: number) => footer(currentPage, pageCount) ?? "",
+    content,
+  };
+}
+
+type Vfs = Record<string, string>;
+interface PdfMakeStatic {
+  vfs?: Vfs;
+  addVirtualFileSystem?: (vfs: Vfs) => void;
+  createPdf: (d: TDocumentDefinitions) => { getBlob: (cb: (b: Blob) => void) => void };
+}
+
+// Pull a usable vfs font map out of whatever shape pdfmake's vfs_fonts module
+// exports. 0.3.x does `module.exports = vfs` (a flat { "Roboto-Regular.ttf": … }
+// map); older builds nest it under `pdfMake.vfs`. Handle all of them.
+function extractVfs(mod: unknown): Vfs | undefined {
+  const looksLikeVfs = (v: unknown): v is Vfs =>
+    !!v && typeof v === "object" && "Roboto-Regular.ttf" in (v as Record<string, unknown>);
+
+  const m = mod as Record<string, unknown> | undefined;
+  if (!m) return undefined;
+  const candidates: unknown[] = [
+    (m.pdfMake as Record<string, unknown> | undefined)?.vfs,
+    ((m.default as Record<string, unknown> | undefined)?.pdfMake as Record<string, unknown> | undefined)?.vfs,
+    (m.default as Record<string, unknown> | undefined)?.vfs,
+    m.vfs,
+    m.default,
+    m,
+  ];
+  for (const c of candidates) {
+    if (looksLikeVfs(c)) return c;
+  }
+  return undefined;
+}
+
+// Lazy-load pdfmake + fonts only in the browser, on first use, to keep them out
+// of the server bundle and the initial client chunk.
+async function getPdfMake(): Promise<PdfMakeStatic> {
+  const pdfMakeMod = await import("pdfmake/build/pdfmake");
+  const pdfFontsMod = await import("pdfmake/build/vfs_fonts");
+  const pdfMake = ((pdfMakeMod as { default?: unknown }).default ?? pdfMakeMod) as PdfMakeStatic;
+  const vfs = extractVfs(pdfFontsMod);
+  if (vfs) {
+    if (typeof pdfMake.addVirtualFileSystem === "function") pdfMake.addVirtualFileSystem(vfs);
+    else pdfMake.vfs = vfs;
+  }
+  return pdfMake;
+}
+
+/** Build the PDF from a raw tool input and trigger a browser download. */
+export async function downloadPdf(input: unknown): Promise<PdfResult> {
+  const spec = parsePdfSpec(input);
+  if (!spec) return { success: false, error: "Spec inválido o sin bloques." };
+
+  try {
+    const docDef = buildDocDefinition(spec);
+    const pdfMake = await getPdfMake();
+    const filename = `${slugify(spec.title)}.pdf`;
+    const blob = await new Promise<Blob>((resolve) => {
+      pdfMake.createPdf(docDef).getBlob((b: Blob) => resolve(b));
+    });
+    triggerBlobDownload(blob, filename);
+    return { success: true, filename, pages: spec.blocks.length };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
