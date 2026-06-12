@@ -23,29 +23,81 @@ function inline(text: string): Content {
   };
 }
 
-function kpis(items: { label: string; value: string }[]): Content {
+const KPI_GAP = 8;
+const KPI_MAX_PER_ROW = 4;
+
+// Long values ("WhatsApp (100%)") shrink instead of wrapping across the card.
+function kpiFontSize(value: string): number {
+  if (value.length > 14) return 12;
+  if (value.length > 9) return 14;
+  return 18;
+}
+
+// One row of up to `cols` cards as a single flat table: star widths guarantee
+// the row fits USABLE_WIDTH (nested tables inside `columns` could overflow it).
+function kpiRow(items: { label: string; value: string }[], cols: number): Content {
+  const noBorder: [boolean, boolean, boolean, boolean] = [false, false, false, false];
+  const widths: ("*" | number)[] = [];
+  const valueCells: TableCell[] = [];
+  const labelCells: TableCell[] = [];
+  for (let i = 0; i < cols; i++) {
+    if (i > 0) {
+      widths.push(KPI_GAP);
+      valueCells.push({ text: "", border: noBorder });
+      labelCells.push({ text: "", border: noBorder });
+    }
+    widths.push("*");
+    const it = items[i];
+    if (!it) {
+      valueCells.push({ text: "", border: noBorder });
+      labelCells.push({ text: "", border: noBorder });
+      continue;
+    }
+    const value = sanitizeBrand(String(it.value ?? ""));
+    valueCells.push({
+      text: value,
+      style: "kpiValue",
+      fontSize: kpiFontSize(value),
+      alignment: "center",
+      fillColor: C.grisFondo,
+      margin: [4, 8, 4, 0],
+      // orange top accent on the card only (gap cells stay borderless)
+      border: [false, true, false, false],
+    });
+    labelCells.push({
+      text: sanitizeBrand(String(it.label ?? "")),
+      style: "kpiLabel",
+      alignment: "center",
+      fillColor: C.grisFondo,
+      margin: [4, 2, 4, 8],
+      border: noBorder,
+    });
+  }
   return {
-    columns: items.map((it) => ({
-      width: "*",
-      table: {
-        widths: ["*"],
-        body: [
-          [{ text: sanitizeBrand(it.value), style: "kpiValue", alignment: "center", margin: [4, 8, 4, 0] }],
-          [{ text: sanitizeBrand(it.label), style: "kpiLabel", alignment: "center", margin: [4, 0, 4, 8] }],
-        ],
-      },
-      layout: {
-        defaultBorder: false,
-        fillColor: () => C.grisFondo,
-        // orange top accent
-        hLineWidth: (i: number) => (i === 0 ? 2 : 0),
-        hLineColor: () => C.naranja,
-      },
-      margin: [3, 0, 3, 0],
-    })),
-    columnGap: 0,
-    margin: [0, 4, 0, 8],
+    table: { widths, body: [valueCells, labelCells] },
+    layout: {
+      hLineWidth: (i: number) => (i === 0 ? 2 : 0),
+      hLineColor: () => C.naranja,
+      vLineWidth: () => 0,
+      paddingLeft: () => 0,
+      paddingRight: () => 0,
+      paddingTop: () => 0,
+      paddingBottom: () => 0,
+    },
+    margin: [0, 4, 0, 6],
   };
+}
+
+function kpis(items: { label: string; value: string }[]): Content {
+  if (!items.length) return { text: "" };
+  // Balance rows: 6 cards → 3+3 (not 4+2), 7 → 4+3, ≤4 → one row.
+  const rowCount = Math.ceil(items.length / KPI_MAX_PER_ROW);
+  const perRow = Math.ceil(items.length / rowCount);
+  const rows: Content[] = [];
+  for (let i = 0; i < items.length; i += perRow) {
+    rows.push(kpiRow(items.slice(i, i + perRow), perRow));
+  }
+  return { stack: rows, margin: [0, 0, 0, 2] };
 }
 
 function table(headers: string[], rows: string[][]): Content {

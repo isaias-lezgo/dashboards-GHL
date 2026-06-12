@@ -108,8 +108,19 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       ? membersProp.length
       : new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
     const conversionRate = total > 0 ? (won / total) * 100 : 0
-    return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate }
-  }, [opportunities, membersProp])
+    const contactsTotal = contacts.length
+    const oppCountByContact = new Map<string, number>()
+    for (const o of opportunities) {
+      if (o.contactId) oppCountByContact.set(o.contactId, (oppCountByContact.get(o.contactId) ?? 0) + 1)
+    }
+    const contactIdsInList = new Set(contacts.map((c) => c.id))
+    const contactsWithOpportunity = contacts.filter((c) => (oppCountByContact.get(c.id) ?? 0) >= 1).length
+    const contactsWithoutOpportunity = contactsTotal - contactsWithOpportunity
+    const contactsWithMultipleOpportunities = contacts.filter((c) => (oppCountByContact.get(c.id) ?? 0) > 1).length
+    const oppsWithContact = opportunities.filter((o) => o.contactId && contactIdsInList.has(o.contactId))
+    const oppsMultiContact = opportunities.filter((o) => o.contactId && (oppCountByContact.get(o.contactId) ?? 0) > 1)
+    return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate, contactsTotal, contactsWithOpportunity, contactsWithoutOpportunity, contactsWithMultipleOpportunities, oppsWithContact, oppsMultiContact }
+  }, [opportunities, contacts, membersProp])
 
   // ── Embudo: hitos del recorrido del lead (lead → contacto → cita → realizada → ganado) ──
   const funnelData = useMemo(() => {
@@ -469,26 +480,63 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
         <ExportReportButton getInput={buildReport} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-        <KpiCard
-          variant="hero"
-          label="Ingreso ganado"
-          value={kpiMetrics.wonRevenue.toLocaleString("es-MX", {
-            style: "currency",
-            currency: "MXN",
-            maximumFractionDigits: 0,
-          })}
-          sublabel={`${kpiMetrics.won} oportunidades ganadas`}
-          icon={DollarSign}
-          onClick={() =>
-            openDrill(
-              "Oportunidades Ganadas",
-              opportunities.filter((o) => o.status === "won"),
-              "Ingreso ganado total",
-            )
-          }
-        />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
+        {/* Contactos */}
+        <DashboardCard interactive onClick={() => openDrill("Todos los Contactos", kpiMetrics.oppsWithContact)}>
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Contactos
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+                  {kpiMetrics.contactsTotal.toLocaleString("es-MX")}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {kpiMetrics.contactsWithOpportunity > 0 && (
+                    <span
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-75"
+                      style={{ background: "#0284c722", color: "#0284c7" }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDrill("Contactos con oportunidad", kpiMetrics.oppsWithContact)
+                      }}
+                    >
+                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "#0284c7" }} />
+                      {kpiMetrics.contactsWithOpportunity} Con oportunidad
+                    </span>
+                  )}
+                  {kpiMetrics.contactsWithoutOpportunity > 0 && (
+                    <span
+                      className="inline-flex cursor-default items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      style={{ background: "#94a3b822", color: "#94a3b8" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "#94a3b8" }} />
+                      {kpiMetrics.contactsWithoutOpportunity} Sin oportunidad
+                    </span>
+                  )}
+                  {kpiMetrics.contactsWithMultipleOpportunities > 0 && (
+                    <span
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-75"
+                      style={{ background: "#8b5cf622", color: "#8b5cf6" }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDrill("Contactos con más de una oportunidad", kpiMetrics.oppsMultiContact)
+                      }}
+                    >
+                      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "#8b5cf6" }} />
+                      {kpiMetrics.contactsWithMultipleOpportunities} Más de una oportunidad
+                    </span>
+                  )}
+                </div>
+              </div>
+              <Users className="h-5 w-5 shrink-0 text-[#0284c7]" aria-hidden />
+            </div>
+          </CardContent>
+        </DashboardCard>
 
+        {/* Oportunidades */}
         <DashboardCard interactive onClick={() => openDrill("Todas las Oportunidades", opportunities)}>
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -501,10 +549,10 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {([
-                    { key: "open",      label: "Abiertas",   color: "#335577",  count: kpiMetrics.open },
-                    { key: "won",       label: "Ganadas",    color: "#F59B1B",  count: kpiMetrics.won },
-                    { key: "lost",      label: "Perdidas",   color: "#ef4444",  count: kpiMetrics.lost },
-                    { key: "abandoned", label: "Abandonadas",color: "#94a3b8",  count: kpiMetrics.abandoned },
+                    { key: "open",      label: "Abiertas",    color: "#7c3aed", count: kpiMetrics.open },
+                    { key: "won",       label: "Ganadas",     color: "#F59B1B", count: kpiMetrics.won },
+                    { key: "lost",      label: "Perdidas",    color: "#ef4444", count: kpiMetrics.lost },
+                    { key: "abandoned", label: "Abandonadas", color: "#94a3b8", count: kpiMetrics.abandoned },
                   ] as const).filter((s) => s.count > 0).map((s) => (
                     <span
                       key={s.key}
@@ -527,10 +575,31 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   ))}
                 </div>
               </div>
-              <Target className="h-5 w-5 shrink-0 text-[#335577]" aria-hidden />
+              <Target className="h-5 w-5 shrink-0 text-[#7c3aed]" aria-hidden />
             </div>
           </CardContent>
         </DashboardCard>
+
+        {/* Ingreso Ganado */}
+        <KpiCard
+          variant="hero"
+          label="Ingreso ganado"
+          value={kpiMetrics.wonRevenue.toLocaleString("es-MX", {
+            style: "currency",
+            currency: "MXN",
+            maximumFractionDigits: 0,
+          })}
+          sublabel={`${kpiMetrics.won} oportunidades ganadas`}
+          icon={DollarSign}
+          onClick={() =>
+            openDrill(
+              "Oportunidades Ganadas",
+              opportunities.filter((o) => o.status === "won"),
+              "Ingreso ganado total",
+            )
+          }
+        />
+
         <KpiCard
           label="Conversión"
           value={`${kpiMetrics.conversionRate.toFixed(1)}%`}

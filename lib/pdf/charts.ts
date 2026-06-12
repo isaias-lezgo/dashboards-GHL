@@ -11,12 +11,26 @@ function isMulti(block: PdfChartBlock): boolean {
   return Array.isArray(block.categories) && block.categories.length > 0;
 }
 
+// Round up to the next half power of ten (109 → 150, 318 → 350) so the
+// largest bar fills most of the plot instead of stranding at ~60%.
 function niceMax(v: number): number {
   if (v <= 0) return 1;
-  const pow = Math.pow(10, Math.floor(Math.log10(v)));
-  const n = v / pow;
-  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
-  return step * pow;
+  const half = Math.pow(10, Math.floor(Math.log10(v))) / 2;
+  return Math.ceil(v / half) * half;
+}
+
+/** Dashed horizontal gridlines at 25/50/75/100% of the plot height. */
+function gridLines(): CanvasElement[] {
+  return [0.25, 0.5, 0.75, 1].map((f) => ({
+    type: "line" as const,
+    x1: PAD_LEFT,
+    y1: PAD_TOP + PLOT_H * (1 - f),
+    x2: PAD_LEFT + PLOT_W,
+    y2: PAD_TOP + PLOT_H * (1 - f),
+    lineWidth: 0.5,
+    lineColor: C.grisBorde,
+    dash: { length: 2, space: 2 },
+  }));
 }
 
 function legend(names: string[]): Content {
@@ -39,6 +53,7 @@ function barVertical(block: PdfChartBlock): Content {
   const slot = PLOT_W / Math.max(1, pts.length);
   const bw = Math.min(48, slot * 0.6);
   const canvas: CanvasElement[] = [
+    ...gridLines(),
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP, x2: PAD_LEFT, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP + PLOT_H, x2: PAD_LEFT + PLOT_W, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
   ];
@@ -48,15 +63,16 @@ function barVertical(block: PdfChartBlock): Content {
     const y = PAD_TOP + PLOT_H - h;
     canvas.push({ type: "rect", x, y, w: bw, h, color: C.naranja });
   });
-  const labels: Content = {
+  const vals: Content = {
     columns: pts.map((p) => ({
       width: slot,
       text: String(p.value),
-      fontSize: 7,
-      color: C.grisMed,
+      fontSize: 7.5,
+      bold: true,
+      color: C.negroText,
       alignment: "center",
     })),
-    margin: [PAD_LEFT, -16, 0, 0],
+    margin: [PAD_LEFT, 3, 0, 0],
   };
   const cats: Content = {
     columns: pts.map((p) => ({
@@ -66,15 +82,16 @@ function barVertical(block: PdfChartBlock): Content {
       color: C.grisSuave,
       alignment: "center",
     })),
-    margin: [PAD_LEFT, 2, 0, 0],
+    margin: [PAD_LEFT, 1, 0, 0],
   };
   return {
     stack: [
       ...(block.title ? [{ text: sanitizeBrand(block.title), style: "chartTitle" } as Content] : []),
       { canvas },
-      labels,
+      vals,
       cats,
     ],
+    unbreakable: true,
     margin: [0, 4, 0, 10],
   };
 }
@@ -83,34 +100,39 @@ function barVertical(block: PdfChartBlock): Content {
 function barHorizontal(block: PdfChartBlock): Content {
   const pts = block.series as SimpleSeriesPoint[];
   const max = niceMax(Math.max(0, ...pts.map((p) => p.value)));
-  const rowH = 22;
-  const h = pts.length * rowH + 8;
-  const labelW = 110;
-  const trackX = labelW + 6;
-  const trackW = USABLE_WIDTH - trackX - 34;
-  const canvas: CanvasElement[] = [{ type: "rect", x: 0, y: 0, w: 1, h, color: C.blanco }];
-  const rows: Content[] = [];
-  pts.forEach((p, i) => {
-    const y = 4 + i * rowH;
+  const labelW = 120;
+  const valueW = 34;
+  const gap = 8;
+  const barH = 11;
+  const trackW = USABLE_WIDTH - labelW - valueW - gap * 2;
+  // Each row holds its own bar canvas inline, so label / bar / value always
+  // share a baseline and the chart flows normally (no canvas overlay tricks).
+  const rows: Content[] = pts.map((p) => {
     const w = max > 0 ? (p.value / max) * trackW : 0;
-    canvas.push({ type: "rect", x: trackX, y: y + 3, w: Math.max(1, w), h: 12, color: C.naranja });
-  });
-  pts.forEach((p, i) => {
-    rows.push({
+    return {
       columns: [
-        { width: labelW, text: sanitizeBrand(p.label), fontSize: 8, color: C.grisMed },
-        { width: "*", text: String(p.value), fontSize: 8, color: C.grisMed, alignment: "right" },
+        { width: labelW, text: sanitizeBrand(p.label), fontSize: 8, color: C.grisMed, lineHeight: 1.1, margin: [0, 1, 0, 0] },
+        {
+          width: "*",
+          canvas: [
+            { type: "rect", x: 0, y: 0, w: trackW, h: barH, r: 2, color: "#F3F4F6" },
+            { type: "rect", x: 0, y: 0, w: Math.max(2, w), h: barH, r: 2, color: C.naranja },
+          ] as CanvasElement[],
+        },
+        { width: valueW, text: String(p.value), fontSize: 8.5, bold: true, color: C.negroText, alignment: "right", margin: [0, 1, 0, 0] },
       ],
-      margin: [0, i === 0 ? 4 : 8, 0, 0],
-    });
+      columnGap: gap,
+      margin: [0, 3, 0, 3],
+    } as Content;
   });
   return {
     stack: [
       ...(block.title ? [{ text: sanitizeBrand(block.title), style: "chartTitle" } as Content] : []),
-      { canvas },
-      { stack: rows, margin: [0, -h + 4, 0, 0] },
+      ...rows,
     ],
-    margin: [0, 4, 0, 10],
+    // Keep short charts on one page; very long ones may still flow.
+    unbreakable: pts.length <= 20,
+    margin: [0, 4, 0, 12],
   };
 }
 
@@ -128,6 +150,7 @@ function barMulti(block: PdfChartBlock): Content {
   const slot = PLOT_W / Math.max(1, cats.length);
   const groupW = Math.min(60, slot * 0.7);
   const canvas: CanvasElement[] = [
+    ...gridLines(),
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP, x2: PAD_LEFT, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP + PLOT_H, x2: PAD_LEFT + PLOT_W, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
   ];
@@ -162,6 +185,7 @@ function barMulti(block: PdfChartBlock): Content {
       catRow,
       legend(series.map((s) => s.name)),
     ],
+    unbreakable: true,
     margin: [0, 4, 0, 10],
   };
 }
@@ -206,6 +230,7 @@ function pie(block: PdfChartBlock): Content {
         ],
       },
     ],
+    unbreakable: true,
     margin: [0, 4, 0, 10],
   };
 }
@@ -218,10 +243,11 @@ function line(block: PdfChartBlock): Content {
     ? (block.series as MultiSeries[]).map((s) => ({ name: s.name, values: s.values }))
     : [{ name: block.valueLabel ?? "Valor", values: (block.series as SimpleSeriesPoint[]).map((p) => p.value) }];
   const max = niceMax(Math.max(1, ...seriesList.flatMap((s) => s.values)));
-  const n = Math.max(1, cats.length - 1);
-  const xAt = (i: number) => PAD_LEFT + (i / n) * PLOT_W;
+  // Points sit at slot centers so they line up with the centered cat labels.
+  const xAt = (i: number) => PAD_LEFT + ((i + 0.5) / Math.max(1, cats.length)) * PLOT_W;
   const yAt = (v: number) => PAD_TOP + PLOT_H - (max > 0 ? (v / max) * PLOT_H : 0);
   const canvas: CanvasElement[] = [
+    ...gridLines(),
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP, x2: PAD_LEFT, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
     { type: "line", x1: PAD_LEFT, y1: PAD_TOP + PLOT_H, x2: PAD_LEFT + PLOT_W, y2: PAD_TOP + PLOT_H, lineWidth: 0.5, lineColor: C.grisBorde },
   ];
@@ -229,6 +255,9 @@ function line(block: PdfChartBlock): Content {
     const color = SERIES_COLORS[si % SERIES_COLORS.length];
     const points = s.values.map((v, i) => ({ x: xAt(i), y: yAt(v) }));
     canvas.push({ type: "polyline", lineWidth: 1.5, lineColor: color, points });
+    points.forEach((pt) => {
+      canvas.push({ type: "ellipse", x: pt.x, y: pt.y, r1: 2, r2: 2, color });
+    });
   });
   const catRow: Content = {
     columns: cats.map((c) => ({ width: PLOT_W / cats.length, text: sanitizeBrand(c), fontSize: 6.5, color: C.grisSuave, alignment: "center" })),
@@ -241,6 +270,7 @@ function line(block: PdfChartBlock): Content {
       catRow,
       ...(multi ? [legend(seriesList.map((s) => s.name))] : []),
     ],
+    unbreakable: true,
     margin: [0, 4, 0, 10],
   };
 }

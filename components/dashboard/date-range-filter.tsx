@@ -51,7 +51,9 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
     <section
       aria-label="Filtro de fechas"
       className={cn(
-        "sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+        "sticky top-0 z-40 border-b border-border/60",
+        "bg-[hsl(214_30%_92%)]/80 backdrop-blur-md",
+        "dark:bg-[hsl(222_15%_16%)]/75",
         className
       )}
     >
@@ -64,7 +66,7 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
         </div>
 
         <div
-          className="inline-flex items-center rounded-md border border-border bg-muted/40 p-0.5"
+          className="inline-flex items-center rounded-md border border-border/50 bg-white/60 dark:bg-white/[0.06] p-0.5"
           role="group"
           aria-label="Rango de fechas"
         >

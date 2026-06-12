@@ -206,7 +206,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <nav className="border-b border-border bg-background px-6" aria-label="Vistas del panel">
+      <nav className="border-b border-border bg-card px-6" aria-label="Vistas del panel">
         <div className="flex gap-8">
           {(
             [
