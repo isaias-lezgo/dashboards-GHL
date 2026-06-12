@@ -154,10 +154,13 @@ function SummaryPanel({
   const channelTotal = (state.channels ?? []).reduce((s, c) => s + c.count, 0);
   const [showAll, setShowAll] = useState(false);
   const COLLAPSED_COUNT = 10;
+  const uniqueContacts = state.contacts.filter(
+    (c, i, arr) => arr.findIndex((x) => x.id === c.id) === i,
+  );
   const visibleContacts = showAll
-    ? state.contacts
-    : state.contacts.slice(0, COLLAPSED_COUNT);
-  const hiddenCount = state.contacts.length - COLLAPSED_COUNT;
+    ? uniqueContacts
+    : uniqueContacts.slice(0, COLLAPSED_COUNT);
+  const hiddenCount = uniqueContacts.length - COLLAPSED_COUNT;
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="border-b border-border px-4 py-3">

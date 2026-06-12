@@ -19,8 +19,11 @@ import {
   ChartTooltip,
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
-import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Globe, Copy, Check, ExternalLink } from "lucide-react"
+import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check, ExternalLink } from "lucide-react"
+import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel } from "@/lib/source-platform"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import { ExportReportButton } from "./export-report-button"
+import type { ReportInput, ReportSection } from "@/lib/report"
 import { OrigenDeLeadInfo } from "./origen-de-lead-criteria"
 import {
   BRAND_AMBER,
@@ -36,6 +39,7 @@ import {
   ChartHint,
   MarketingSummaryStrip,
   NonZeroTooltipContent,
+  PlatformIcon,
 } from "./dashboard-ui"
 import {
   Table,
@@ -74,6 +78,8 @@ interface MarketingDashboardProps {
   calls?: Call[]
   appointments?: Appointment[]
   locationId?: string
+  /** Label of the active global date filter, shown on the PDF report cover. */
+  periodLabel?: string
 }
 
 // Normalize any createdAt format → "YYYY-MM-DD" (UTC). Handles ISO strings,
@@ -88,67 +94,8 @@ function toUTCDateStr(val: string | number | null | undefined): string {
 
 // CHART_PALETTE imported from dashboard-ui (amber-led)
 
-const PLATFORM_COLORS: Record<string, string> = {
-  "Instagram":  "#E1306C",
-  "Facebook":   "#1877F2",
-  "TikTok":     "#010101",
-  "Google":     "#EA4335",
-  "WhatsApp":   "#25D366",
-  "Otro":       "#6b7280",
-}
-
-const PLATFORM_ORDER = ["Instagram", "Facebook", "TikTok", "Google", "WhatsApp", "Otro"]
-
-function platformLabel(opp: Opportunity): string {
-  const url  = (opp.attributionUrl ?? "").toLowerCase()
-  const src  = (opp.source ?? "").toLowerCase()
-  if (url.includes("instagram.com") || src.includes("instagram")) return "Instagram"
-  if (
-    url.includes("fb.me") || url.includes("facebook.com") || url.includes("fb.com") ||
-    src.includes("facebook") || src.includes("meta") || src === "fb" ||
-    /^\d{10,}$/.test(opp.source ?? "")
-  ) return "Facebook"
-  if (src.includes("tiktok")) return "TikTok"
-  if (src.includes("google") || src.includes("bing") || src.includes("yahoo")) return "Google"
-  const med = (opp.attributionMedium ?? "").toLowerCase()
-  if (med === "whatsapp" || (opp.contact?.tags ?? []).some((t) => t.toLowerCase().includes("inbound whatsapp"))) return "WhatsApp"
-  return "Otro"
-}
-
-// Brand icon for a canonical platform label. lucide ships Facebook/Instagram
-// but not TikTok/WhatsApp/Google, so those use inline brand SVGs. "Otro" and any
-// unknown label fall back to a neutral globe so every row keeps a leading glyph.
-function PlatformIcon({ platform, className = "h-3.5 w-3.5 shrink-0" }: { platform: string; className?: string }) {
-  switch (platform) {
-    case "Facebook":
-      return <Facebook className={`${className} text-[#1877f2]`} />
-    case "Instagram":
-      return <Instagram className={`${className} text-[#e1306c]`} />
-    case "TikTok":
-      return (
-        <svg viewBox="0 0 24 24" className={`${className} text-foreground`} fill="currentColor" aria-hidden="true">
-          <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5 2.6 2.6 0 0 1-2.6-2.6c0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 0 0 4.3 1.38V7.3c-.97 0-1.88-.49-2.43-1.48z" />
-        </svg>
-      )
-    case "WhatsApp":
-      return (
-        <svg viewBox="0 0 24 24" className={className} fill="#25D366" aria-hidden="true">
-          <path d="M17.47 14.38c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.19 1.87.12.57-.09 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.07-.13-.27-.2-.57-.35zM12.04 21.5h-.01a9.5 9.5 0 0 1-4.84-1.33l-.35-.2-3.6.94.96-3.51-.23-.36a9.46 9.46 0 0 1-1.45-5.05c0-5.23 4.26-9.49 9.5-9.49 2.54 0 4.92.99 6.72 2.79a9.43 9.43 0 0 1 2.78 6.71c-.01 5.23-4.27 9.49-9.49 9.49z" />
-        </svg>
-      )
-    case "Google":
-      return (
-        <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
-          <path fill="#FBBC05" d="M5.84 14.09a6.6 6.6 0 0 1 0-4.18V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.84z" />
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-        </svg>
-      )
-    default:
-      return <Globe className={`${className} text-muted-foreground`} />
-  }
-}
+// PLATFORM_COLORS / PLATFORM_ORDER / platformLabel are shared with the Ventas
+// dashboard via lib/source-platform.ts; PlatformIcon lives in dashboard-ui.
 
 const REINGRESO_LABELS = [
   "Primer ingreso",
@@ -326,36 +273,59 @@ function LinkButton({ value }: { value: string }) {
   )
 }
 
-type PaidGroupBy = "url" | "id"
+type PaidGroupBy = "url" | "id" | "platform"
+
+const PAID_GROUP_OPTIONS: { v: PaidGroupBy; label: string }[] = [
+  { v: "url", label: "URL" },
+  { v: "id", label: "ID" },
+  { v: "platform", label: "Origen" },
+]
 
 function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: PaidGroupBy) => void }) {
   return (
     <div className="flex items-center overflow-hidden rounded border border-border/50 text-[10px] font-medium">
-      {(["url", "id"] as PaidGroupBy[]).map((opt, i) => (
+      {PAID_GROUP_OPTIONS.map((opt, i) => (
         <button
-          key={opt}
-          onClick={(e) => { e.stopPropagation(); onChange(opt) }}
+          key={opt.v}
+          onClick={(e) => { e.stopPropagation(); onChange(opt.v) }}
           className={[
             "px-2 py-0.5 transition-colors uppercase tracking-wide",
             i > 0 ? "border-l border-border/50" : "",
-            value === opt
+            value === opt.v
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:text-foreground hover:bg-accent/30",
           ].join(" ")}
         >
-          {opt}
+          {opt.label}
         </button>
       ))}
     </div>
   )
 }
 
+function paidGroupByKey(opp: Opportunity, groupBy: PaidGroupBy): string | null | undefined {
+  if (groupBy === "platform") return platformLabel(opp)
+  if (groupBy === "url") return opp.attributionUrl
+  return opp.adId
+}
+
+function paidGroupByLabel(key: string, groupBy: PaidGroupBy): string {
+  if (groupBy === "url") return paidTrafficUrlLabel(key)
+  return key
+}
+
+function paidGroupByHint(groupBy: PaidGroupBy): string {
+  if (groupBy === "url") return "URL de atribución"
+  if (groupBy === "id") return "ID de anuncio"
+  return "plataforma de origen"
+}
+
 type OriginGroupBy = "platform" | "id" | "url"
 
 const ORIGIN_GROUP_OPTIONS: { value: OriginGroupBy; label: string; column: string }[] = [
-  { value: "platform", label: "Plataforma", column: "Plataforma" },
-  { value: "id",       label: "ID Pauta",   column: "ID de Pauta" },
-  { value: "url",      label: "URL Pauta",  column: "URL de Pauta" },
+  { value: "platform", label: "Origen", column: "Plataforma" },
+  { value: "id",       label: "ID",   column: "ID de Pauta" },
+  { value: "url",      label: "URL",  column: "URL de Pauta" },
 ]
 
 function OriginGroupByToggle({ value, onChange }: { value: OriginGroupBy; onChange: (v: OriginGroupBy) => void }) {
@@ -400,7 +370,7 @@ function TopNSlider({ value, max, onChange }: { value: number; max: number; onCh
   )
 }
 
-export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "" }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", periodLabel }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
@@ -533,7 +503,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
 
     for (const opp of opportunities) {
       if (opp.status === "lost") continue
-      const rawKey = stageGroupBy === "url" ? opp.attributionUrl : opp.adId
+      const rawKey = paidGroupByKey(opp, stageGroupBy)
       if (!rawKey) continue
       const stageMap = perStage.get(opp.stage)
       if (!stageMap) continue
@@ -562,7 +532,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   const pautaByStageConfig = Object.fromEntries(
     pautaByStageKeys.map((k, i) => [
       k,
-      { label: stageGroupBy === "url" ? paidTrafficUrlLabel(k) : k, color: CHART_PALETTE[i % CHART_PALETTE.length] },
+      { label: paidGroupByLabel(k, stageGroupBy), color: stageGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
     ])
   )
 
@@ -577,7 +547,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
 
     for (const opp of opportunities) {
       if (opp.status !== "lost") continue
-      const rawKey = lostGroupBy === "url" ? opp.attributionUrl : opp.adId
+      const rawKey = paidGroupByKey(opp, lostGroupBy)
       if (!rawKey) continue
       const reason = opp.lostReason || "Sin razón"
       if (!perReason.has(reason)) perReason.set(reason, new Map())
@@ -609,7 +579,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
   const lostByReasonConfig = Object.fromEntries(
     lostByReasonKeys.map((k, i) => [
       k,
-      { label: lostGroupBy === "url" ? paidTrafficUrlLabel(k) : k, color: CHART_PALETTE[i % CHART_PALETTE.length] },
+      { label: paidGroupByLabel(k, lostGroupBy), color: lostGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
     ])
   )
 
@@ -761,7 +731,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     for (const o of opportunities) {
       if (!isPaidTraffic(o)) continue
       if (!apptContactIds.has(o.contactId)) continue
-      const rawKey = apptGroupBy === "url" ? o.attributionUrl : o.adId
+      const rawKey = paidGroupByKey(o, apptGroupBy)
       if (!rawKey) continue
       counts.set(rawKey, (counts.get(rawKey) ?? 0) + 1)
     }
@@ -771,7 +741,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return {
       paidTrafficWithAppt: sliced.map(([rawKey, count]) => ({
         rawKey,
-        label: apptGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
+        label: paidGroupByLabel(rawKey, apptGroupBy),
         count,
       })),
       apptKeyCount,
@@ -783,7 +753,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     const counts = new Map<string, { count: number; value: number }>()
     for (const o of opportunities) {
       if (!isPaidTraffic(o) || o.status !== "won") continue
-      const rawKey = wonGroupBy === "url" ? o.attributionUrl : o.adId
+      const rawKey = paidGroupByKey(o, wonGroupBy)
       if (!rawKey) continue
       const prev = counts.get(rawKey) ?? { count: 0, value: 0 }
       counts.set(rawKey, { count: prev.count + 1, value: prev.value + o.value })
@@ -794,7 +764,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return {
       wonPaidTraffic: sliced.map(([rawKey, { count, value }]) => ({
         rawKey,
-        label: wonGroupBy === "url" ? paidTrafficUrlLabel(rawKey) : rawKey,
+        label: paidGroupByLabel(rawKey, wonGroupBy),
         count,
         value,
       })),
@@ -828,8 +798,240 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     [opportunities],
   )
 
+  // PDF report spec from the same memos the charts render. Computed on click
+  // so it always reflects the current toggles (groupBy, topN, etc.).
+  const buildReport = useCallback((): ReportInput => {
+    const mxn = (v: number) =>
+      v.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })
+    const sections: ReportSection[] = []
+
+    if (leadsByCategory.length > 0) {
+      const cats = SOURCE_CATEGORY_ORDER.filter((cat) =>
+        leadsByCategory.some((r) => r.breakdown.some((b) => b.category === cat))
+      )
+      sections.push({
+        id: "fuentes",
+        title: "Oportunidades por fuente",
+        explanation:
+          "Muestra de qué plataforma proviene cada oportunidad (Facebook, Instagram, WhatsApp, etc.), desglosada por la fuente de creación del registro en el CRM. Sirve para ver qué canales generan más leads.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", stacked: true, valueLabel: "Oportunidades",
+          title: `Oportunidades por plataforma de origen (total: ${opportunities.length})`,
+          categories: leadsByCategory.map((r) => r.platform),
+          series: cats.map((cat) => ({
+            name: cat,
+            values: leadsByCategory.map((r) => r.breakdown.find((b) => b.category === cat)?.count ?? 0),
+          })),
+        }],
+      })
+    }
+
+    if (pautasByTipoRows.length > 0) {
+      const plats = pautasByTipoPlatforms.filter((p) =>
+        pautasByTipoRows.some((r) => (r[p] as number) > 0)
+      )
+      sections.push({
+        id: "pautas-canal",
+        title: "Pautas por canal de contacto",
+        explanation:
+          "Cuántos registros de pauta entraron por cada canal (tipo de pauta), apilados por la plataforma de origen del contacto. Indica por dónde están llegando los leads de campañas.",
+        blocks: [{
+          t: "chart", type: "bar", stacked: true, valueLabel: "Pautas",
+          title: `Pautas por canal (total: ${pautasByTipoTotal})`,
+          categories: pautasByTipoRows.map((r) => String(r.tipo)),
+          series: plats.map((p) => ({
+            name: p,
+            values: pautasByTipoRows.map((r) => (r[p] as number) ?? 0),
+          })),
+        }],
+      })
+    }
+
+    if (pautasByMonthRows.length > 0) {
+      sections.push({
+        id: "pautas-mes",
+        title: "Pautas creadas por mes y reingresos",
+        explanation:
+          "Evolución mensual de las pautas creadas, separando el primer ingreso de cada contacto de sus reingresos posteriores. Permite ver la tendencia de volumen y cuánto del tráfico es recurrente.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", stacked: true, valueLabel: "Pautas",
+          title: `Pautas por mes (reingresos: ${reingresoCount})`,
+          categories: pautasByMonthRows.map((r) => String(r.monthLabel)),
+          series: pautasByMonthKeys.map((k) => ({
+            name: k,
+            values: pautasByMonthRows.map((r) => (r[k] as number) ?? 0),
+          })),
+        }],
+      })
+    }
+
+    if (pautaByStageRows.length > 0) {
+      sections.push({
+        id: "pauta-etapa",
+        title: "Oportunidades de pauta por etapa del pipeline",
+        explanation:
+          "Dónde están hoy las oportunidades que vienen de pauta dentro del pipeline de ventas (sin contar las perdidas). Muestra qué tan profundo avanza el tráfico pagado en el embudo.",
+        blocks: [{
+          t: "chart", type: "bar", valueLabel: "Oportunidades",
+          title: `Oportunidades activas de pauta por etapa (total: ${pautaByStageTotal})`,
+          series: pautaByStageRows.map((r) => ({
+            label: String(r.stage),
+            value: pautaByStageKeys.reduce((s, k) => s + ((r[k] as number) || 0), 0),
+          })),
+        }],
+      })
+    }
+
+    if (lostByReasonRows.length > 0) {
+      sections.push({
+        id: "perdidas",
+        title: "Oportunidades perdidas por razón de pérdida",
+        explanation:
+          "Las razones registradas al marcar como perdida una oportunidad de pauta. Identifica los motivos principales por los que se cae el tráfico pagado.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
+          title: `Perdidas por razón (total: ${lostByReasonTotal})`,
+          series: lostByReasonRows
+            .map((r) => ({
+              label: String(r.reason),
+              value: lostByReasonKeys.reduce((s, k) => s + ((r[k] as number) || 0), 0),
+            }))
+            .sort((a, b) => b.value - a.value),
+        }],
+      })
+    }
+
+    if (originRows.length > 0) {
+      sections.push({
+        id: "rendimiento",
+        title: "Rendimiento por origen",
+        explanation:
+          "Tabla comparativa por origen del lead: cuántos leads generó, cuántos se ganaron, el porcentaje de cierre, el valor ganado y el ticket promedio. Es la vista de retorno por canal.",
+        ai: true,
+        blocks: [{
+          t: "table",
+          headers: ["Origen", "Leads", "Ganados", "% Cierre", "Valor ganado", "Ticket prom."],
+          rows: originRows.slice(0, 12).map((r) => [
+            r.label,
+            String(r.total),
+            String(r.wonCount),
+            `${r.closeRate.toFixed(1)}%`,
+            r.wonValue > 0 ? mxn(r.wonValue) : "—",
+            r.avgTicket > 0 ? mxn(r.avgTicket) : "—",
+          ]),
+        }],
+      })
+    }
+
+    if (leadsByAdId.length > 0) {
+      sections.push({
+        id: "anuncios",
+        title: "Oportunidades por ID de anuncio",
+        explanation:
+          "Los anuncios específicos (por su ID) que más oportunidades generaron. Útil para identificar los creativos ganadores de las campañas.",
+        blocks: [{
+          t: "table",
+          headers: ["ID de anuncio", "Oportunidades"],
+          rows: leadsByAdId.slice(0, 10).map((r) => [r.adId, String(r.count)]),
+        }],
+      })
+    }
+
+    if (leadsByPlatformUrl.fb.length > 0 || leadsByPlatformUrl.ig.length > 0) {
+      sections.push({
+        id: "urls",
+        title: "Oportunidades por URL (Facebook / Instagram)",
+        explanation:
+          "Las URLs de atribución de Facebook e Instagram que más oportunidades trajeron — cada URL corresponde a una publicación o anuncio concreto.",
+        blocks: [{
+          t: "table",
+          headers: ["Plataforma", "URL", "Oportunidades"],
+          rows: [
+            ...leadsByPlatformUrl.fb.slice(0, 8).map((r) => ["Facebook", paidTrafficUrlLabel(r.url), String(r.count)]),
+            ...leadsByPlatformUrl.ig.slice(0, 8).map((r) => ["Instagram", paidTrafficUrlLabel(r.url), String(r.count)]),
+          ],
+        }],
+      })
+    }
+
+    if (paidTrafficWithAppt.length > 0) {
+      sections.push({
+        id: "citas-pauta",
+        title: "Citas por pauta",
+        explanation:
+          "Leads de tráfico pagado que llegaron a agendar al menos una cita, agrupados por pauta. Mide qué campañas generan leads que avanzan a una reunión real.",
+        blocks: [{
+          t: "chart", type: "bar", orientation: "h", valueLabel: "Leads con cita",
+          series: paidTrafficWithAppt.slice(0, 12).map((r) => ({ label: r.label, value: r.count })),
+        }],
+      })
+    }
+
+    if (wonPaidTraffic.length > 0) {
+      sections.push({
+        id: "ganadas-pauta",
+        title: "Oportunidades ganadas por pauta",
+        explanation:
+          "Ventas cerradas que se originaron en tráfico pagado, con su valor monetario, agrupadas por pauta. Es el cierre del ciclo: qué campañas terminan en ingresos.",
+        blocks: [{
+          t: "table",
+          headers: ["Pauta", "Ganadas", "Valor"],
+          rows: wonPaidTraffic.slice(0, 12).map((r) => [r.label, String(r.count), mxn(r.value)]),
+        }],
+      })
+    }
+
+    const wonRows = wonBySource
+      .map((r) => ({
+        label: String(r.platform),
+        value: SOURCE_CATEGORY_ORDER.reduce((s, c) => s + ((r[c] as number) || 0), 0),
+      }))
+      .filter((r) => r.value > 0)
+    if (wonRows.length > 0) {
+      sections.push({
+        id: "ganadas-fuente",
+        title: "Oportunidades ganadas por fuente",
+        explanation:
+          "Ventas cerradas según la plataforma de origen del lead. Muestra qué canales no solo traen volumen sino que convierten en clientes.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", valueLabel: "Ganadas",
+          title: `Ganadas por plataforma (total: ${wonTotal})`,
+          series: wonRows,
+        }],
+      })
+    }
+
+    return {
+      reportType: "marketing",
+      title: "Reporte de Marketing",
+      periodLabel,
+      kpis: [
+        { label: "Oportunidades", value: String(opportunities.length) },
+        { label: "Por pauta (paid social)", value: String(paidSocialLeadCount) },
+        { label: "Pautas", value: String(pautas.length) },
+        { label: "Leads únicos", value: String(pautas.length - reingresoCount) },
+        { label: "Reingresos", value: String(reingresoCount) },
+      ],
+      sections,
+    }
+  }, [
+    leadsByCategory, pautasByTipoRows, pautasByTipoPlatforms, pautasByTipoTotal,
+    pautasByMonthRows, pautasByMonthKeys, pautaByStageRows, pautaByStageKeys, pautaByStageTotal,
+    lostByReasonRows, lostByReasonKeys, lostByReasonTotal, originRows, leadsByAdId,
+    leadsByPlatformUrl, paidTrafficWithAppt, wonPaidTraffic, wonBySource, wonTotal,
+    opportunities.length, paidSocialLeadCount, pautas.length, reingresoCount, periodLabel,
+  ])
+
   return (
     <DashboardShell>
+      <div className="flex justify-end">
+        <ExportReportButton getInput={buildReport} />
+      </div>
+
       <MarketingSummaryStrip
         opportunities={opportunities.length}
         pautas={pautas.length}
@@ -1209,7 +1411,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                           style={{ color: "#374151", marginRight: 4 }}
                           title={value}
                         >
-                          {stageGroupBy === "url" ? paidTrafficUrlLabel(value) : value.slice(0, 20)}
+                          {paidGroupByLabel(value, stageGroupBy).slice(0, 20)}
                         </span>
                       )}
                     />
@@ -1218,7 +1420,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                        fill={stageGroupBy === "platform" ? (PLATFORM_COLORS[key] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length]}
                         radius={i === pautaByStageKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={56}
                         cursor="pointer"
@@ -1228,10 +1430,9 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                           const stage = data.stage as string
                           const items = opportunities.filter((o) => {
                             if (o.stage !== stage) return false
-                            const rawKey = stageGroupBy === "url" ? o.attributionUrl : o.adId
-                            return rawKey === key
+                            return paidGroupByKey(o, stageGroupBy) === key
                           })
-                          const label = stageGroupBy === "url" ? paidTrafficUrlLabel(key) : key
+                          const label = paidGroupByLabel(key, stageGroupBy)
                           openDrill(
                             `${label} · ${stage}`,
                             items,
@@ -1244,7 +1445,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                {`Apilado por ${stageGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · ${stageTopN >= pautaByStageKeyCount ? "todo" : `top ${stageTopN}`} · haz clic en un segmento para ver las oportunidades`}
+                {`Apilado por ${paidGroupByHint(stageGroupBy)} · ${stageTopN >= pautaByStageKeyCount ? "todo" : `top ${stageTopN}`} · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}
@@ -1289,7 +1490,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                       iconSize={8}
                       formatter={(value: string) => (
                         <span style={{ color: "#374151", marginRight: 4 }} title={value}>
-                          {lostGroupBy === "url" ? paidTrafficUrlLabel(value) : value.slice(0, 20)}
+                          {paidGroupByLabel(value, lostGroupBy).slice(0, 20)}
                         </span>
                       )}
                     />
@@ -1298,7 +1499,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                         key={key}
                         dataKey={key}
                         stackId="a"
-                        fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                        fill={lostGroupBy === "platform" ? (PLATFORM_COLORS[key] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length]}
                         radius={i === lostByReasonKeys.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                         maxBarSize={56}
                         cursor="pointer"
@@ -1309,10 +1510,9 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                           const items = opportunities.filter((o) => {
                             if (o.status !== "lost") return false
                             if ((o.lostReason || "Sin razón") !== reason) return false
-                            const rawKey = lostGroupBy === "url" ? o.attributionUrl : o.adId
-                            return rawKey === key
+                            return paidGroupByKey(o, lostGroupBy) === key
                           })
-                          const label = lostGroupBy === "url" ? paidTrafficUrlLabel(key) : key
+                          const label = paidGroupByLabel(key, lostGroupBy)
                           openDrill(
                             `${label} · ${reason}`,
                             items,
@@ -1325,7 +1525,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                {`Apilado por ${lostGroupBy === "url" ? "URL de atribución" : "ID de anuncio"} · ${lostTopN >= lostByReasonKeyCount ? "todo" : `top ${lostTopN}`} · haz clic en un segmento para ver las oportunidades`}
+                {`Apilado por ${paidGroupByHint(lostGroupBy)} · ${lostTopN >= lostByReasonKeyCount ? "todo" : `top ${lostTopN}`} · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}
@@ -1572,9 +1772,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                             `Tráfico pagado con cita: ${data.label}`,
                             opportunities.filter((o) => {
                               if (!isPaidTraffic(o) || !apptContactIds.has(o.contactId)) return false
-                              return apptGroupBy === "url"
-                                ? o.attributionUrl === rawKey
-                                : o.adId === rawKey
+                              return paidGroupByKey(o, apptGroupBy) === rawKey
                             })
                           )
                         }}
@@ -1660,9 +1858,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                             `Ganados de tráfico pagado: ${data.label}`,
                             opportunities.filter((o) => {
                               if (!isPaidTraffic(o) || o.status !== "won") return false
-                              return wonGroupBy === "url"
-                                ? o.attributionUrl === rawKey
-                                : o.adId === rawKey
+                              return paidGroupByKey(o, wonGroupBy) === rawKey
                             })
                           )
                         }}
@@ -1773,48 +1969,64 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {originRows.map((row) => (
-                      <TableRow
-                        key={row.key}
-                        className="cursor-pointer"
-                        onClick={() => openDrill(`Leads · ${row.label}`, row.opps)}
-                      >
-                        <TableCell className="text-xs font-medium text-foreground">
-                          <span className="inline-flex items-center gap-1.5 max-w-[280px]">
-                            {originGroupBy === "platform" && (
-                              <PlatformIcon platform={row.key} className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="truncate">{row.label}</span>
-                            {originGroupBy !== "platform" && <CopyButton value={row.key} />}
-                            {originGroupBy === "url" && <LinkButton value={row.key} />}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">{row.total}</TableCell>
-                        <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">{row.wonCount}</TableCell>
-                        <TableCell
-                          className={`text-right text-xs font-semibold tabular-nums ${
-                            row.closeRate >= 20 ? "text-emerald-600" : row.closeRate >= 10 ? "text-amber-600" : "text-muted-foreground"
-                          }`}
-                        >
-                          {row.closeRate.toFixed(1)}%
-                        </TableCell>
-                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                          {row.wonValue > 0 ? `$${row.wonValue.toLocaleString("es-MX")}` : "—"}
-                        </TableCell>
-                        <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                          {row.avgTicket > 0
-                            ? `$${row.avgTicket.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`
-                            : "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {originRows.map((row) => {
+                      const wonOpps = row.opps.filter((o) => o.status === "won")
+                      return (
+                        <TableRow key={row.key} className="cursor-pointer">
+                          <TableCell className="text-xs font-medium text-foreground">
+                            <span className="inline-flex items-center gap-1.5 max-w-[280px]">
+                              {originGroupBy === "platform" && (
+                                <PlatformIcon platform={row.key} className="h-3.5 w-3.5 shrink-0" />
+                              )}
+                              <span className="truncate">{row.label}</span>
+                              {originGroupBy !== "platform" && <CopyButton value={row.key} />}
+                              {originGroupBy === "url" && <LinkButton value={row.key} />}
+                            </span>
+                          </TableCell>
+                          <TableCell
+                            className="text-right text-sm tabular-nums text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                            onClick={() => openDrill(`Leads · ${row.label}`, row.opps)}
+                          >
+                            {row.total}
+                          </TableCell>
+                          <TableCell
+                            className="text-right text-sm font-semibold tabular-nums text-foreground hover:bg-muted/40 transition-colors"
+                            onClick={() => openDrill(`Ganados · ${row.label}`, wonOpps)}
+                          >
+                            {row.wonCount}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right text-xs font-semibold tabular-nums hover:bg-muted/40 transition-colors ${
+                              row.closeRate >= 20 ? "text-emerald-600" : row.closeRate >= 10 ? "text-amber-600" : "text-muted-foreground"
+                            }`}
+                            onClick={() => openDrill(`Ganados · ${row.label}`, wonOpps)}
+                          >
+                            {row.closeRate.toFixed(1)}%
+                          </TableCell>
+                          <TableCell
+                            className="text-right text-xs tabular-nums text-muted-foreground hover:bg-muted/40 transition-colors"
+                            onClick={() => openDrill(`Ganados · ${row.label}`, wonOpps)}
+                          >
+                            {row.wonValue > 0 ? `$${row.wonValue.toLocaleString("es-MX")}` : "—"}
+                          </TableCell>
+                          <TableCell
+                            className="text-right text-xs tabular-nums text-muted-foreground hover:bg-muted/40 transition-colors"
+                            onClick={() => openDrill(`Ganados · ${row.label}`, wonOpps)}
+                          >
+                            {row.avgTicket > 0
+                              ? `$${row.avgTicket.toLocaleString("es-MX", { maximumFractionDigits: 0 })}`
+                              : "—"}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
               <ChartHint>
                 {originGroupBy === "platform"
-                  ? "Todas las oportunidades clasificadas por plataforma de origen · haz clic en una fila para ver sus leads"
-                  : "Solo oportunidades con pauta · haz clic en una fila para ver sus leads"}
+                  ? "Todas las oportunidades clasificadas por plataforma de origen · Leads abre todos los leads · Ganados / % Cierre / Valor abre solo los ganados"
+                  : "Solo oportunidades con pauta · Leads abre todos los leads · Ganados / % Cierre / Valor abre solo los ganados"}
               </ChartHint>
             </>
           )}

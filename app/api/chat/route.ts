@@ -110,12 +110,17 @@ export async function POST(req: Request) {
       system: [
         {
           type: "text",
-          text: `Hoy es ${today}.\n\n${ASSISTANT_SYSTEM_PROMPT}`,
+          text: ASSISTANT_SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
         },
         {
           type: "text",
           text: body.datasetSummary,
           cache_control: { type: "ephemeral" },
+        },
+        {
+          type: "text",
+          text: `Hoy es ${today}.`,
         },
       ],
       tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],

@@ -1,4 +1,4 @@
-import { getContactTasks } from "@/lib/ghl-client";
+import { getContactTasks, type GHLContactTask } from "@/lib/ghl-client";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   try {
     const data = await getContactTasks(contactId);
     return NextResponse.json({
-      tasks: (data.tasks ?? []).map((t) => ({
+      tasks: (data.tasks ?? []).map((t: GHLContactTask) => ({
         id: t.id,
         title: t.title,
         body: t.body,

@@ -75,10 +75,27 @@ export function buildDocDefinition(spec: PdfSpec): TDocumentDefinitions {
 }
 
 type Vfs = Record<string, string>;
+// pdfmake 0.3.x: createPdf(...).getBlob() is an async method returning a
+// Promise<Blob> (older 0.2.x took a callback). We use the promise form.
+interface PdfDoc {
+  getBlob: (() => Promise<Blob>) | ((cb: (b: Blob) => void) => void);
+}
 interface PdfMakeStatic {
   vfs?: Vfs;
   addVirtualFileSystem?: (vfs: Vfs) => void;
-  createPdf: (d: TDocumentDefinitions) => { getBlob: (cb: (b: Blob) => void) => void };
+  createPdf: (d: TDocumentDefinitions) => PdfDoc;
+}
+
+// Resolve a Blob from either the promise-based (0.3.x) or callback-based (0.2.x)
+// getBlob, so the code survives a pdfmake major bump in either direction.
+function getBlob(doc: PdfDoc): Promise<Blob> {
+  const ret = (doc.getBlob as (cb?: (b: Blob) => void) => unknown)();
+  if (ret && typeof (ret as Promise<Blob>).then === "function") {
+    return ret as Promise<Blob>;
+  }
+  return new Promise<Blob>((resolve) => {
+    (doc.getBlob as (cb: (b: Blob) => void) => void)((b) => resolve(b));
+  });
 }
 
 // Pull a usable vfs font map out of whatever shape pdfmake's vfs_fonts module
@@ -127,9 +144,7 @@ export async function downloadPdf(input: unknown): Promise<PdfResult> {
     const docDef = buildDocDefinition(spec);
     const pdfMake = await getPdfMake();
     const filename = `${slugify(spec.title)}.pdf`;
-    const blob = await new Promise<Blob>((resolve) => {
-      pdfMake.createPdf(docDef).getBlob((b: Blob) => resolve(b));
-    });
+    const blob = await getBlob(pdfMake.createPdf(docDef));
     triggerBlobDownload(blob, filename);
     return { success: true, filename, pages: spec.blocks.length };
   } catch (err) {

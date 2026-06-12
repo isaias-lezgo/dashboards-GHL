@@ -3,28 +3,31 @@
 import { useState, useCallback, useMemo } from "react"
 import {
   Bar,
-  BarChart,
+  ComposedChart,
+  Line,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Sector,
   XAxis,
   YAxis,
   CartesianGrid,
   Legend,
-  LabelList,
   Cell,
 } from "recharts"
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
 import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Call, Message, Task, Appointment, Pauta } from "@/lib/types"
-import { Users, TrendingUp, Target, DollarSign, Info } from "lucide-react"
+import type { Opportunity, Contact, Call, Message, Task, Appointment, Pauta, Pipeline } from "@/lib/types"
+import { Users, TrendingUp, Target, DollarSign, CalendarDays } from "lucide-react"
+import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel } from "@/lib/source-platform"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
   STRUCTURAL_NAVY,
-  CHART_PALETTE,
   CHART_GRID_STROKE,
-  CHART_TICK,
   chartPaletteColor,
   DashboardShell,
   DashboardCard,
@@ -34,20 +37,16 @@ import {
   ChartHint,
   KpiCard,
   SectionHeader,
-  TotalBadge,
   NonZeroTooltipContent,
+  PlatformIcon,
 } from "./dashboard-ui"
 import {
   AppointmentDrillDrawer,
   APPT_DRILL_CLOSED,
   type ApptDrillState,
 } from "./appointment-drill-drawer"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { ExportReportButton } from "./export-report-button"
+import type { ReportInput, ReportSection } from "@/lib/report"
 
 interface SalesDashboardProps {
   opportunities: Opportunity[]
@@ -56,35 +55,17 @@ interface SalesDashboardProps {
   messages: Message[]
   messagesLoading?: boolean
   appointments: Appointment[]
+  pipelines?: Pipeline[]
   tasks?: Task[]
   pautas?: Pauta[]
   members?: string[]
   locationId?: string
+  /** Label of the active global date filter, shown on the PDF report cover. */
+  periodLabel?: string
 }
 
-// Vertical breathing room under the plot so angled X-axis (column) labels
-// don't collide with the legend swatches sitting directly below them.
-const LEGEND_WRAPPER_STYLE = { paddingTop: 28 }
-
-const STAGE_COLORS: Record<string, string> = {
-  Discovery:    "#335577",
-  Proposal:     "#5a8ab5",
-  Negotiation:  "#F59B1B",
-  "Closed Won": "#F59B1B",
-  "Closed Lost":"#ef4444",
-}
-
-// CHART_PALETTE from dashboard-ui (amber-led)
-
-const WIN_LOSS_CONFIG = {
-  won:       { label: "Ganado",           color: "#F59B1B" },
-  open:      { label: "Abierto",          color: "#335577" },
-  lost:      { label: "Perdido",          color: "#ef4444" },
-  abandoned: { label: "Abandonado",       color: "#94a3b8" },
-  winRate:   { label: "Tasa de Ganancia", color: "transparent" },
-} as const
-
-const PIPELINE_STAGE_ORDER = ["Discovery", "Proposal", "Negotiation"]
+// Funnel milestone palette — entry blue → progress teal/green → won amber.
+const FUNNEL_STAGE_COLORS = ["#3b82f6", "#8b5cf6", "#14b8a6", "#22c55e", BRAND_AMBER]
 
 const APPT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   showed:    { label: "Asistió",    color: "#10b981" },
@@ -106,87 +87,15 @@ function apptStatusVisual(status: string, fallbackIndex: number): { label: strin
   }
 }
 
-function stageColor(stage: string, index: number): string {
-  return STAGE_COLORS[stage] ?? chartPaletteColor(index)
-}
-
-function isBusinessHoursStr(isoStr: string): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Mexico_City",
-    weekday: "short",
-    hour: "numeric",
-    hour12: false,
-  }).formatToParts(new Date(isoStr))
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? ""
-  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10)
-  return !["Sat", "Sun"].includes(weekday) && hour >= 9 && hour < 19
-}
-
-function nextBusinessOpenMs(isoStr: string): number {
-  const d = new Date(isoStr)
-  let candidate = new Date(d)
-  candidate.setUTCMinutes(0, 0, 0)
-  candidate.setUTCMilliseconds(0)
-  if (candidate.getTime() <= d.getTime()) {
-    candidate = new Date(candidate.getTime() + 3_600_000)
-  }
-  for (let h = 0; h < 168; h++) {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Mexico_City",
-      weekday: "short",
-      hour: "numeric",
-      hour12: false,
-    }).formatToParts(candidate)
-    const weekday = parts.find((p) => p.type === "weekday")?.value ?? ""
-    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10)
-    if (!["Sat", "Sun"].includes(weekday) && hour === 9) return candidate.getTime()
-    candidate = new Date(candidate.getTime() + 3_600_000)
-  }
-  return d.getTime()
-}
-
-function responseColor(minutes: number): string {
-  if (minutes < 30) return "#10b981"
-  if (minutes <= 60) return "#F59B1B"
-  return "#ef4444"
-}
-
-function formatMinutes(minutes: number): string {
-  if (minutes < 60) return `${Math.round(minutes)} min`
-  const h = Math.floor(minutes / 60)
-  const m = Math.round(minutes % 60)
-  return m > 0 ? `${h}h ${m}min` : `${h}h`
-}
-
-function InfoTooltip({ content }: { content: string }) {
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="cursor-help shrink-0 inline-flex ml-1">
-            <Info size={14} className="text-muted-foreground" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-[260px] text-xs leading-relaxed">
-          {content}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], messagesLoading = false, appointments = [], tasks = [], pautas = [], members: membersProp = [], locationId = "" }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", periodLabel }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
+  const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
+  const [hoveredOrigin, setHoveredOrigin] = useState<number | undefined>(undefined)
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
   }, [])
-
-  const openDrillContacts = useCallback((title: string, contactIds: string[]) => {
-    const idSet = new Set(contactIds)
-    openDrill(title, opportunities.filter((o) => idSet.has(o.contactId)))
-  }, [opportunities, openDrill])
 
   const kpiMetrics = useMemo(() => {
     const total = opportunities.length
@@ -200,311 +109,127 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       : new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
     const conversionRate = total > 0 ? (won / total) * 100 : 0
     return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate }
-  }, [opportunities])
+  }, [opportunities, membersProp])
 
-  const allStages = useMemo(
-    () => [...new Set(opportunities.map((o) => o.stage))],
-    [opportunities]
-  )
+  // ── Embudo: hitos del recorrido del lead (lead → contacto → cita → realizada → ganado) ──
+  const funnelData = useMemo(() => {
+    const contactedIds = new Set<string>()
+    for (const m of messages) if (m.contactId) contactedIds.add(m.contactId)
+    for (const c of calls) if (c.contactId) contactedIds.add(c.contactId)
+    const apptIds = new Set(appointments.map((a) => a.contactId))
+    const showedIds = new Set(
+      appointments.filter((a) => a.status === "showed").map((a) => a.contactId)
+    )
 
-  const members = useMemo(
-    () =>
-      [
-        ...new Set(
-          opportunities
-            .map((o) => o.assignedTo)
-            .filter((m): m is string => Boolean(m))
-        ),
-      ],
-    [opportunities]
-  )
+    const conCita = opportunities.filter((o) => apptIds.has(o.contactId))
+    const contactados = opportunities.filter((o) => contactedIds.has(o.contactId))
+    const realizadas = opportunities.filter((o) => showedIds.has(o.contactId))
+    const ganados = opportunities.filter((o) => o.status === "won")
 
-  const winLossData = useMemo(
-    () =>
-      members.map((member) => {
-        const opps = opportunities.filter((o) => o.assignedTo === member)
-        const won = opps.filter((o) => o.status === "won").length
-        return {
-          member,
-          won,
-          open:      opps.filter((o) => o.status === "open").length,
-          lost:      opps.filter((o) => o.status === "lost").length,
-          abandoned: opps.filter((o) => o.status === "abandoned").length,
-          winRate:   opps.length > 0 ? (won / opps.length) * 100 : 0,
-          _total:    opps.length,
-        }
-      }).sort((a, b) => b._total - a._total),
-    [members, opportunities]
-  )
-
-  const revenueData = useMemo(
-    () =>
-      members
-        .map((member) => ({
-          member,
-          revenue: opportunities
-            .filter((o) => o.assignedTo === member && o.status === "won")
-            .reduce((sum, o) => sum + o.value, 0),
-        }))
-        .filter((d) => d.revenue > 0)
-        .sort((a, b) => b.revenue - a.revenue),
-    [members, opportunities]
-  )
-
-  const pipelineValueData = useMemo(() => {
-    const openOpps = opportunities.filter((o) => o.status === "open")
-    const stages = [...new Set(openOpps.map((o) => o.stage))]
-    return stages
-      .sort((a, b) => {
-        const ai = PIPELINE_STAGE_ORDER.indexOf(a)
-        const bi = PIPELINE_STAGE_ORDER.indexOf(b)
-        if (ai === -1 && bi === -1) return a.localeCompare(b)
-        if (ai === -1) return 1
-        if (bi === -1) return -1
-        return ai - bi
-      })
-      .map((stage) => ({
-        stage,
-        value: openOpps
-          .filter((o) => o.stage === stage)
-          .reduce((sum, o) => sum + o.value, 0),
-      }))
-  }, [opportunities])
-
-  const trendData = useMemo(() => {
-    if (opportunities.length === 0) return []
-    const timestamps = opportunities
-      .map((o) => new Date(o.createdAt).getTime())
-      .filter((t) => !Number.isNaN(t))
-    if (timestamps.length === 0) return []
-    const spanDays =
-      (Math.max(...timestamps) - Math.min(...timestamps)) / (1000 * 60 * 60 * 24)
-    const useMonths = spanDays > 60
-
-    const buckets = new Map<string, number>()
-    const oppsByBucket = new Map<string, Opportunity[]>()
-    for (const opp of opportunities) {
-      const raw = opp.createdAt
-      const d = raw.length === 10
-        ? new Date(`${raw}T00:00:00`)
-        : new Date(raw)
-      if (Number.isNaN(d.getTime())) continue
-      let key: string
-      if (useMonths) {
-        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-      } else {
-        const tmp = new Date(d.getTime())
-        tmp.setHours(0, 0, 0, 0)
-        tmp.setDate(tmp.getDate() + 3 - ((tmp.getDay() + 6) % 7))
-        const week1 = new Date(tmp.getFullYear(), 0, 4)
-        const isoWeek = 1 + Math.round(((tmp.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
-        key = `${tmp.getFullYear()}-W${String(isoWeek).padStart(2, "0")}`
-      }
-      buckets.set(key, (buckets.get(key) ?? 0) + 1)
-      if (!oppsByBucket.has(key)) oppsByBucket.set(key, [])
-      oppsByBucket.get(key)!.push(opp)
-    }
-
-    return [...buckets.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, count]) => ({
-        period: useMonths
-          ? (() => {
-              const [y, m] = key.split("-").map(Number)
-              return new Date(y, m - 1).toLocaleDateString("es-MX", {
-                month: "short",
-                year: "numeric",
-              })
-            })()
-          : `Sem ${key.split("-W")[1]}`,
-        count,
-        opps: oppsByBucket.get(key) ?? [],
-      }))
-  }, [opportunities])
-
-  const lostReasonsData = useMemo(() => {
-    const lostOpps = opportunities.filter((o) => o.status === "lost")
-    const lostMembers = [
-      ...new Set(
-        lostOpps
-          .map((o) => o.assignedTo)
-          .filter((m): m is string => Boolean(m))
-      ),
+    // Core milestones come from robust data (creation, appointments, status).
+    // The optional ones (conversations coverage, "showed" status hygiene) often
+    // undercount in GHL; include them only when they keep the funnel descending,
+    // otherwise the step conversions read as nonsense (>100%).
+    const stages: Array<{ key: string; label: string; opps: Opportunity[] }> = [
+      { key: "leads", label: "Leads recibidos", opps: opportunities },
+      ...(contactedIds.size > 0 && contactados.length >= conCita.length
+        ? [{ key: "contacted", label: "Contactados", opps: contactados }]
+        : []),
+      { key: "appt", label: "Con cita agendada", opps: conCita },
+      ...(realizadas.length >= ganados.length && realizadas.length <= conCita.length
+        ? [{ key: "showed", label: "Cita realizada", opps: realizadas }]
+        : []),
+      { key: "won", label: "Ganados", opps: ganados },
     ]
-    const reasons = [
-      ...new Set(lostOpps.map((o) => o.lostReason ?? "Sin razón")),
-    ]
-    const data = lostMembers.map((member) => {
-      const row: Record<string, string | number> = { member }
-      for (const reason of reasons) {
-        row[reason] = lostOpps.filter(
-          (o) =>
-            o.assignedTo === member &&
-            (o.lostReason ?? "Sin razón") === reason
-        ).length
+    return stages.map((s, i) => ({
+      ...s,
+      count: s.opps.length,
+      color: s.key === "won" ? BRAND_AMBER : FUNNEL_STAGE_COLORS[i % FUNNEL_STAGE_COLORS.length],
+    }))
+  }, [opportunities, messages, calls, appointments])
+
+  // ── Histórico mensual (cohorte: sigue a los leads creados en cada mes) ──
+  const monthlyFunnel = useMemo(() => {
+    const apptContactIds = new Set(appointments.map((a) => a.contactId))
+    const byMonth = new Map<string, { leads: Opportunity[]; appts: Appointment[] }>()
+    const ensure = (key: string) => {
+      if (!byMonth.has(key)) byMonth.set(key, { leads: [], appts: [] })
+      return byMonth.get(key)!
+    }
+    for (const o of opportunities) {
+      const key = (o.createdAt ?? "").slice(0, 7)
+      if (!/^\d{4}-\d{2}$/.test(key)) continue
+      ensure(key).leads.push(o)
+    }
+    for (const a of appointments) {
+      const key = (a.startTime ?? "").slice(0, 7)
+      if (!/^\d{4}-\d{2}$/.test(key)) continue
+      ensure(key).appts.push(a)
+    }
+    // Months that only have appointments (e.g. future citas) would render as
+    // all-zero lead columns — keep only months where leads were created.
+    const keys = [...byMonth.keys()]
+      .filter((k) => (byMonth.get(k)?.leads.length ?? 0) > 0)
+      .sort()
+      .slice(-6)
+    const months = keys.map((key) => {
+      const [y, m] = key.split("-").map(Number)
+      const e = byMonth.get(key)!
+      const conCita = e.leads.filter((o) => apptContactIds.has(o.contactId))
+      const ganados = e.leads.filter((o) => o.status === "won")
+      return {
+        key,
+        label: new Date(y, m - 1, 1).toLocaleDateString("es-MX", { month: "short", year: "2-digit" }),
+        leads: e.leads,
+        appts: e.appts,
+        conCita,
+        ganados,
+        citaRate: e.leads.length > 0 ? (conCita.length / e.leads.length) * 100 : 0,
+        cierreRate: e.leads.length > 0 ? (ganados.length / e.leads.length) * 100 : 0,
       }
-      return row
-    }).sort((a, b) => {
-      const totalA = reasons.reduce((s, r) => s + ((a[r] as number) || 0), 0)
-      const totalB = reasons.reduce((s, r) => s + ((b[r] as number) || 0), 0)
-      return totalB - totalA
     })
-    return { data, reasons }
-  }, [opportunities])
+    const chartData = months.map((m) => ({
+      key: m.key,
+      label: m.label,
+      leads: m.leads.length,
+      rate: Math.round(m.citaRate * 10) / 10,
+    }))
+    return { months, chartData }
+  }, [opportunities, appointments])
 
-  const lostReasonsConfig = useMemo(
-    () =>
-      Object.fromEntries(
-        lostReasonsData.reasons.map((reason, i) => [
-          reason,
-          { label: reason, color: CHART_PALETTE[i % CHART_PALETTE.length] },
-        ])
-      ),
-    [lostReasonsData.reasons]
-  )
-
-  const dailyConvData = useMemo(() => {
-    if (messages.length === 0) return []
-    const dailyConvMap = new Map<string, Set<string>>()
-    const dailyContactMap = new Map<string, Set<string>>()
-    for (const msg of messages) {
-      if (!msg.conversationId) continue
-      const date = msg.createdAt.slice(0, 10)
-      if (!dailyConvMap.has(date)) dailyConvMap.set(date, new Set())
-      dailyConvMap.get(date)!.add(msg.conversationId)
-      if (!dailyContactMap.has(date)) dailyContactMap.set(date, new Set())
-      dailyContactMap.get(date)!.add(msg.contactId)
+  // ── Origen de leads (plataforma normalizada) con conversión a cita ──
+  const origenData = useMemo(() => {
+    const apptIds = new Set(appointments.map((a) => a.contactId))
+    const byPlatform = new Map<string, Opportunity[]>()
+    for (const o of opportunities) {
+      const p = platformLabel(o)
+      if (!byPlatform.has(p)) byPlatform.set(p, [])
+      byPlatform.get(p)!.push(o)
     }
-    return [...dailyConvMap.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30)
-      .map(([date, convSet]) => ({
-        date,
-        label: new Date(date + "T12:00:00").toLocaleDateString("es-MX", {
-          day: "2-digit",
-          month: "short",
-        }),
-        count: convSet.size,
-        contactIds: [...(dailyContactMap.get(date) ?? new Set<string>())],
-      }))
-  }, [messages])
-
-  const convByAdvisorMonthData = useMemo(() => {
-    const threads = new Map<string, typeof messages>()
-    for (const msg of messages) {
-      if (!msg.conversationId) continue
-      if (!threads.has(msg.conversationId)) threads.set(msg.conversationId, [])
-      threads.get(msg.conversationId)!.push(msg)
-    }
-    for (const thread of threads.values()) {
-      thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    }
-
-    // Pivot: month (YYYY-MM) → advisor → unique conv count
-    const advisorSet = new Set<string>()
-    const monthMap = new Map<string, Map<string, number>>()
-    const contactIdMap = new Map<string, Map<string, string[]>>()
-    let totalConvs = 0
-    for (const [, thread] of threads.entries()) {
-      const advisor =
-        thread.find((m) => m.direction === "outbound" && m.kind !== "activity")?.assignedTo
-        ?? thread[0]?.assignedTo
-      if (!advisor || thread.length === 0) continue
-      const month = thread[0].createdAt.slice(0, 7) // "YYYY-MM"
-      const contactId = thread[0].contactId
-      advisorSet.add(advisor)
-      if (!monthMap.has(month)) monthMap.set(month, new Map())
-      const row = monthMap.get(month)!
-      row.set(advisor, (row.get(advisor) ?? 0) + 1)
-      if (contactId) {
-        if (!contactIdMap.has(month)) contactIdMap.set(month, new Map())
-        const monthContacts = contactIdMap.get(month)!
-        if (!monthContacts.has(advisor)) monthContacts.set(advisor, [])
-        monthContacts.get(advisor)!.push(contactId)
+    const total = opportunities.length
+    return PLATFORM_ORDER.filter((p) => byPlatform.has(p)).map((platform) => {
+      const opps = byPlatform.get(platform)!
+      const citas = opps.filter((o) => apptIds.has(o.contactId))
+      return {
+        platform,
+        opps,
+        citas,
+        count: opps.length,
+        pct: total > 0 ? (opps.length / total) * 100 : 0,
+        citaRate: opps.length > 0 ? (citas.length / opps.length) * 100 : 0,
+        color: PLATFORM_COLORS[platform] ?? "#6b7280",
       }
-      totalConvs++
+    }).sort((a, b) => b.count - a.count)
+  }, [opportunities, appointments])
+
+  // ── Resultado de las citas (barra segmentada por estatus) ──
+  const apptOutcomeData = useMemo(() => {
+    const byStatus = new Map<string, Appointment[]>()
+    for (const a of appointments) {
+      if (!byStatus.has(a.status)) byStatus.set(a.status, [])
+      byStatus.get(a.status)!.push(a)
     }
-
-    const advisors = [...advisorSet].sort()
-    const months = [...monthMap.keys()].sort()
-    const data = months.map((month) => {
-      const [y, m] = month.split("-").map(Number)
-      const label = new Date(y, m - 1, 1).toLocaleDateString("es-MX", {
-        month: "short",
-        year: "numeric",
-      })
-      const row: Record<string, string | number> = { month, label }
-      for (const advisor of advisors) {
-        row[advisor] = monthMap.get(month)!.get(advisor) ?? 0
-      }
-      return row
-    })
-    return { data, advisors, totalConvs, contactIdMap }
-  }, [messages])
-
-  const responseTimeData = useMemo(() => {
-    const threads = new Map<string, typeof messages>()
-    for (const msg of messages) {
-      if (!msg.conversationId) continue
-      if (!threads.has(msg.conversationId)) threads.set(msg.conversationId, [])
-      threads.get(msg.conversationId)!.push(msg)
-    }
-    for (const thread of threads.values()) {
-      thread.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    }
-
-    const advisorDeltas = new Map<string, number[]>()
-    for (const thread of threads.values()) {
-      for (let i = 0; i < thread.length; i++) {
-        const msg = thread[i]
-        if (msg.direction !== "inbound" || msg.kind === "activity") continue
-        const reply = thread.slice(i + 1).find(
-          (m) => m.direction === "outbound" && m.kind !== "activity"
-        )
-        if (!reply) continue
-        const advisor = reply.assignedTo
-        if (!advisor) continue
-        const clockStart = isBusinessHoursStr(msg.createdAt)
-          ? new Date(msg.createdAt).getTime()
-          : nextBusinessOpenMs(msg.createdAt)
-        const delta = new Date(reply.createdAt).getTime() - clockStart
-        if (delta <= 0) continue
-        if (!advisorDeltas.has(advisor)) advisorDeltas.set(advisor, [])
-        advisorDeltas.get(advisor)!.push(delta)
-      }
-    }
-
-    return [...advisorDeltas.entries()]
-      .map(([member, deltas]) => ({
-        member,
-        avgMinutes: deltas.reduce((s, d) => s + d, 0) / deltas.length / 60_000,
-      }))
-      .sort((a, b) => a.avgMinutes - b.avgMinutes)
-  }, [messages])
-
-  const apptByMonthByAdvisor = useMemo(() => {
-    const monthMap = new Map<string, Map<string, Map<string, number>>>()
-    const advisorSet = new Set<string>()
-    const statusSet = new Set<string>()
-    let total = 0
-
-    for (const appt of appointments) {
-      if (!appt.assignedTo) continue
-      const month = appt.startTime.slice(0, 7)
-      const advisor = appt.assignedTo
-      const status = appt.status
-      advisorSet.add(advisor)
-      statusSet.add(status)
-      total++
-      if (!monthMap.has(month)) monthMap.set(month, new Map())
-      const advisorMap = monthMap.get(month)!
-      if (!advisorMap.has(advisor)) advisorMap.set(advisor, new Map())
-      const statusMap = advisorMap.get(advisor)!
-      statusMap.set(status, (statusMap.get(status) ?? 0) + 1)
-    }
-
-    const advisors = [...advisorSet].sort()
-    const statuses = [...statusSet].sort((a, b) => {
+    const statuses = [...byStatus.keys()].sort((a, b) => {
       const ai = KNOWN_APPT_STATUS_ORDER.indexOf(a)
       const bi = KNOWN_APPT_STATUS_ORDER.indexOf(b)
       if (ai === -1 && bi === -1) return a.localeCompare(b)
@@ -512,200 +237,238 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       if (bi === -1) return -1
       return ai - bi
     })
-
-    const months = [...monthMap.keys()].sort()
-    const data = months.map((month) => {
-      const [y, m] = month.split("-").map(Number)
-      const label = new Date(y, m - 1, 1).toLocaleDateString("es-MX", {
-        month: "short",
-        year: "numeric",
-      })
-      const row: Record<string, string | number> = { month, label }
-      for (const advisor of advisors) {
-        for (const status of statuses) {
-          row[`${advisor}_${status}`] =
-            monthMap.get(month)?.get(advisor)?.get(status) ?? 0
-        }
+    return statuses.map((status, i) => {
+      const appts = byStatus.get(status)!
+      return {
+        status,
+        appts,
+        count: appts.length,
+        pct: appointments.length > 0 ? (appts.length / appointments.length) * 100 : 0,
+        ...apptStatusVisual(status, i),
       }
-      return row
     })
-
-    return { data, advisors, statuses, total }
   }, [appointments])
 
-  const emptyFieldsData = useMemo(() => {
-    const STANDARD_FIELDS = ["value", "source", "notes", "tags", "priority"] as const
-
-    function isStandardEmpty(opp: Opportunity, field: typeof STANDARD_FIELDS[number]): boolean {
-      switch (field) {
-        case "value":
-          return !opp.value || opp.value === 0
-        case "tags":
-          return !opp.tags || opp.tags.length === 0
-        case "source":
-        case "notes":
-        case "priority": {
-          const v = opp[field]
-          return v == null || (typeof v === "string" && v.trim() === "")
-        }
-      }
+  // ── Razones de pérdida agrupadas (top 5 + resto) ──
+  const lossGroupsData = useMemo(() => {
+    const lost = opportunities.filter((o) => o.status === "lost")
+    const byReason = new Map<string, Opportunity[]>()
+    for (const o of lost) {
+      const reason = o.lostReason ?? "Sin razón"
+      if (!byReason.has(reason)) byReason.set(reason, [])
+      byReason.get(reason)!.push(o)
     }
-
-    const universeCustomKeys = new Set<string>()
-    for (const opp of opportunities) {
-      if (opp.customFieldsResolved) {
-        for (const k of Object.keys(opp.customFieldsResolved)) {
-          universeCustomKeys.add(k)
-        }
-      }
+    const sorted = [...byReason.entries()].sort((a, b) => b[1].length - a[1].length)
+    const top = sorted.slice(0, 5)
+    const rest = sorted.slice(5)
+    const groups = top.map(([reason, opps], i) => ({
+      reason,
+      opps,
+      count: opps.length,
+      pct: lost.length > 0 ? (opps.length / lost.length) * 100 : 0,
+      color: chartPaletteColor(i),
+    }))
+    if (rest.length > 0) {
+      const opps = rest.flatMap(([, o]) => o)
+      groups.push({
+        reason: `Otras ${rest.length} razones`,
+        opps,
+        count: opps.length,
+        pct: lost.length > 0 ? (opps.length / lost.length) * 100 : 0,
+        color: "#6b7280",
+      })
     }
-    const customKeys = [...universeCustomKeys]
-
-    function countEmpty(opp: Opportunity): { standard: number; custom: number; total: number } {
-      let standard = 0
-      for (const f of STANDARD_FIELDS) {
-        if (isStandardEmpty(opp, f)) standard++
-      }
-      let custom = 0
-      const cf = opp.customFieldsResolved ?? {}
-      for (const k of customKeys) {
-        const v = cf[k]
-        if (v == null || (typeof v === "string" && v.trim() === "")) custom++
-      }
-      return { standard, custom, total: standard + custom }
-    }
-
-    const byAdvisor = new Map<string, { opps: Opportunity[]; perOpp: Map<string, number>; totalStandard: number; totalCustom: number }>()
-    for (const opp of opportunities) {
-      if (!opp.assignedTo) continue
-      const counts = countEmpty(opp)
-      if (!byAdvisor.has(opp.assignedTo)) {
-        byAdvisor.set(opp.assignedTo, { opps: [], perOpp: new Map(), totalStandard: 0, totalCustom: 0 })
-      }
-      const entry = byAdvisor.get(opp.assignedTo)!
-      entry.opps.push(opp)
-      entry.perOpp.set(opp.id, counts.total)
-      entry.totalStandard += counts.standard
-      entry.totalCustom += counts.custom
-    }
-
-    const rows = [...byAdvisor.entries()].map(([member, entry]) => {
-      const n = entry.opps.length
-      const avgStandard = n > 0 ? entry.totalStandard / n : 0
-      const avgCustom = n > 0 ? entry.totalCustom / n : 0
-      return {
-        member,
-        avgStandard,
-        avgCustom,
-        avgTotal: avgStandard + avgCustom,
-        totalOpps: n,
-        totalStandard: entry.totalStandard,
-        totalCustom: entry.totalCustom,
-        opps: entry.opps,
-        perOpp: entry.perOpp,
-      }
-    })
-
-    rows.sort((a, b) => b.avgTotal - a.avgTotal)
-
-    return { rows, customKeysCount: customKeys.length, standardKeysCount: STANDARD_FIELDS.length }
+    return { groups, totalLost: lost.length }
   }, [opportunities])
 
-  const callsByAdvisorData = useMemo(() => {
-    const byAdvisor = new Map<
-      string,
-      { completed: number; missed: number; noAnswer: number; total: number; contactIds: { completed: string[]; missed: string[]; noAnswer: string[] } }
-    >()
-    for (const c of calls) {
-      if (!c.assignedTo) continue
-      if (!byAdvisor.has(c.assignedTo)) {
-        byAdvisor.set(c.assignedTo, {
-          completed: 0,
-          missed: 0,
-          noAnswer: 0,
-          total: 0,
-          contactIds: { completed: [], missed: [], noAnswer: [] },
-        })
-      }
-      const entry = byAdvisor.get(c.assignedTo)!
-      entry.total++
-      if (c.status === "completed") {
-        entry.completed++
-        entry.contactIds.completed.push(c.contactId)
-      } else if (c.status === "missed") {
-        entry.missed++
-        entry.contactIds.missed.push(c.contactId)
-      } else if (c.status === "no-answer") {
-        entry.noAnswer++
-        entry.contactIds.noAnswer.push(c.contactId)
-      }
-    }
-    const rows = [...byAdvisor.entries()]
-      .map(([member, v]) => ({ member, ...v }))
-      .sort((a, b) => b.total - a.total)
-    const totalCalls = rows.reduce((s, r) => s + r.total, 0)
-    return { rows, totalCalls }
-  }, [calls])
-
-  const visitFulfillmentData = useMemo(() => {
-    const byAdvisor = new Map<string, { agendadas: number; realizadas: number }>()
-    for (const a of appointments) {
-      if (!a.assignedTo) continue
-      if (!byAdvisor.has(a.assignedTo)) byAdvisor.set(a.assignedTo, { agendadas: 0, realizadas: 0 })
-      const entry = byAdvisor.get(a.assignedTo)!
-      entry.agendadas++
-      if (a.status === "showed") entry.realizadas++
-    }
-    const rows = [...byAdvisor.entries()]
-      .filter(([, v]) => v.agendadas > 0)
-      .map(([member, v]) => ({
-        member,
-        agendadas: v.agendadas,
-        realizadas: v.realizadas,
-        rate: v.agendadas > 0 ? (v.realizadas / v.agendadas) * 100 : 0,
-      }))
-      .sort((a, b) => b.rate - a.rate)
-    const totalAgendadas = rows.reduce((s, r) => s + r.agendadas, 0)
-    return { rows, totalAgendadas }
-  }, [appointments])
-
-  const apptChartConfig = useMemo(
-    () =>
-      Object.fromEntries(
-        apptByMonthByAdvisor.advisors.flatMap((advisor) =>
-          apptByMonthByAdvisor.statuses.map((status, si) => [
-            `${advisor}_${status}`,
-            {
-              label: `${advisor} · ${apptStatusVisual(status, si).label}`,
-              color: apptStatusVisual(status, si).color,
-            },
-          ])
-        )
-      ),
-    [apptByMonthByAdvisor.advisors, apptByMonthByAdvisor.statuses]
-  )
-
-  const chartData = useMemo(() => {
-    return members.map((member) => {
-      const row: Record<string, string | number> = { member }
-      for (const stage of allStages) {
-        row[stage] = opportunities.filter((o) => o.assignedTo === member && o.stage === stage).length
-      }
-      return row
-    }).sort((a, b) => {
-      const totalA = allStages.reduce((s, stage) => s + ((a[stage] as number) || 0), 0)
-      const totalB = allStages.reduce((s, stage) => s + ((b[stage] as number) || 0), 0)
-      return totalB - totalA
+  // ── Matriz etapa × (asesor | origen) con intensidad por volumen ──
+  const pipelineMatrix = useMemo(() => {
+    if (opportunities.length === 0) return null
+    const stageOrder: string[] = []
+    for (const p of pipelines) for (const s of p.stages) if (!stageOrder.includes(s)) stageOrder.push(s)
+    const openOpps = opportunities.filter((o) => o.status === "open")
+    const openStages = [...new Set(openOpps.map((o) => o.stage))].sort((a, b) => {
+      const ai = stageOrder.indexOf(a)
+      const bi = stageOrder.indexOf(b)
+      if (ai === -1 && bi === -1) return a.localeCompare(b)
+      if (ai === -1) return 1
+      if (bi === -1) return -1
+      return ai - bi
     })
-  }, [members, allStages, opportunities])
+    type MatrixRow = { label: string; dot: string; kind: "open" | "won" | "abandoned" | "lost"; opps: Opportunity[] }
+    const rows: MatrixRow[] = openStages.map((s) => ({
+      label: s,
+      dot: "#3b82f6",
+      kind: "open" as const,
+      opps: openOpps.filter((o) => o.stage === s),
+    }))
+    const statusRows: Array<[Opportunity["status"], string, string, MatrixRow["kind"]]> = [
+      ["won", "Ganado", BRAND_AMBER, "won"],
+      ["abandoned", "Abandonado", "#94a3b8", "abandoned"],
+      ["lost", "Perdido", "#ef4444", "lost"],
+    ]
+    for (const [status, label, dot, kind] of statusRows) {
+      const opps = opportunities.filter((o) => o.status === status)
+      if (opps.length > 0) rows.push({ label, dot, kind, opps })
+    }
+    const colOf = matrixBy === "origen"
+      ? platformLabel
+      : (o: Opportunity) => o.assignedTo || "Sin asesor"
+    const colTotals = new Map<string, number>()
+    for (const o of opportunities) colTotals.set(colOf(o), (colTotals.get(colOf(o)) ?? 0) + 1)
+    const cols = matrixBy === "origen"
+      ? PLATFORM_ORDER.filter((p) => colTotals.has(p))
+      : [...colTotals.keys()].sort((a, b) => (colTotals.get(b) ?? 0) - (colTotals.get(a) ?? 0))
+    const cells = rows.map((r) => cols.map((c) => r.opps.filter((o) => colOf(o) === c)))
+    let liveMax = 1
+    let lostMax = 1
+    rows.forEach((r, i) => {
+      for (const cellOpps of cells[i]) {
+        if (r.kind === "lost") lostMax = Math.max(lostMax, cellOpps.length)
+        else liveMax = Math.max(liveMax, cellOpps.length)
+      }
+    })
+    return { rows, cols, cells, colTotals, liveMax, lostMax, total: opportunities.length }
+  }, [opportunities, pipelines, matrixBy])
 
-  const chartConfig = useMemo(
-    () => Object.fromEntries(allStages.map((stage, i) => [stage, { label: stage, color: stageColor(stage, i) }])),
-    [allStages]
-  )
+  // PDF report spec from the same memos the charts render (computed on click).
+  const buildReport = useCallback((): ReportInput => {
+    const mxn = (v: number) =>
+      v.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })
+    const sections: ReportSection[] = []
+
+    if (funnelData.length > 0) {
+      sections.push({
+        id: "funnel",
+        title: "Recorrido del lead",
+        explanation:
+          "El embudo de ventas por hitos: leads recibidos, contactados, con cita agendada y ganados. Cada paso muestra cuántos leads sobreviven a esa etapa del recorrido.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", orientation: "h", valueLabel: "Leads",
+          title: `Embudo (total: ${kpiMetrics.total})`,
+          series: funnelData.map((s) => ({ label: s.label, value: s.count })),
+        }],
+      })
+    }
+
+    if (monthlyFunnel.months.length > 0) {
+      sections.push({
+        id: "historico",
+        title: "Histórico de leads y conversión a cita",
+        explanation:
+          "Cohorte mensual: cuántos leads se crearon cada mes y qué porcentaje de ellos llegó a agendar cita y a cerrarse. Permite ver si el volumen y la calidad mejoran o empeoran con el tiempo.",
+        ai: true,
+        blocks: [
+          {
+            t: "chart", type: "line", valueLabel: "Leads",
+            title: "Leads creados por mes",
+            series: monthlyFunnel.chartData.map((m) => ({ label: m.label, value: m.leads })),
+          },
+          {
+            t: "table",
+            headers: ["Mes", "Leads", "Con cita", "% a cita", "Ganados", "% cierre"],
+            rows: monthlyFunnel.months.map((m) => [
+              m.label,
+              String(m.leads.length),
+              String(m.conCita.length),
+              `${m.citaRate.toFixed(1)}%`,
+              String(m.ganados.length),
+              `${m.cierreRate.toFixed(1)}%`,
+            ]),
+          },
+        ],
+      })
+    }
+
+    if (origenData.length > 0) {
+      sections.push({
+        id: "origen",
+        title: "Origen de leads y conversión a cita",
+        explanation:
+          "De qué plataforma proviene cada lead y qué porcentaje de cada origen llega a agendar una cita. Compara el volumen contra la calidad de cada canal.",
+        ai: true,
+        blocks: [{
+          t: "table",
+          headers: ["Plataforma", "Leads", "% del total", "% a cita"],
+          rows: origenData.map((o) => [
+            o.platform,
+            String(o.count),
+            `${o.pct.toFixed(1)}%`,
+            `${o.citaRate.toFixed(1)}%`,
+          ]),
+        }],
+      })
+    }
+
+    if (pipelineMatrix && pipelineMatrix.rows.length > 0) {
+      sections.push({
+        id: "etapas",
+        title: "Estado actual del embudo por etapa",
+        explanation:
+          "Cuántas oportunidades hay hoy en cada etapa del pipeline (las abiertas) y cuántas terminaron ganadas, abandonadas o perdidas. Es la fotografía actual de la cartera.",
+        blocks: [{
+          t: "table",
+          headers: ["Etapa / Estado", "Oportunidades"],
+          rows: pipelineMatrix.rows.map((r) => [r.label, String(r.opps.length)]),
+        }],
+      })
+    }
+
+    if (apptOutcomeData.length > 0) {
+      sections.push({
+        id: "citas",
+        title: "Resultado de las citas",
+        explanation:
+          "Distribución de las citas agendadas según su estatus final: asistió, confirmada, pendiente, no asistió o cancelada. Mide la efectividad del agendamiento.",
+        blocks: [{
+          t: "chart", type: "pie", valueLabel: "Citas",
+          title: `Citas (total: ${appointments.length})`,
+          series: apptOutcomeData.map((s) => ({ label: s.label, value: s.count })),
+        }],
+      })
+    }
+
+    if (lossGroupsData.groups.length > 0) {
+      sections.push({
+        id: "perdidas",
+        title: "Principales razones de pérdida",
+        explanation:
+          "Las razones más frecuentes por las que se pierden oportunidades. Concentra los esfuerzos de mejora donde más ventas se están cayendo.",
+        ai: true,
+        blocks: [{
+          t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
+          title: `Perdidas (total: ${lossGroupsData.totalLost})`,
+          series: lossGroupsData.groups.map((g) => ({ label: g.reason, value: g.count })),
+        }],
+      })
+    }
+
+    return {
+      reportType: "ventas",
+      title: "Reporte de Ventas",
+      periodLabel,
+      kpis: [
+        { label: "Ingreso ganado", value: mxn(kpiMetrics.wonRevenue) },
+        { label: "Oportunidades", value: String(kpiMetrics.total) },
+        { label: "Ganadas", value: String(kpiMetrics.won) },
+        { label: "Conversión", value: `${kpiMetrics.conversionRate.toFixed(1)}%` },
+        { label: "Citas", value: String(appointments.length) },
+        { label: "Miembros activos", value: String(kpiMetrics.activeMembers) },
+      ],
+      sections,
+    }
+  }, [
+    funnelData, monthlyFunnel, origenData, pipelineMatrix, apptOutcomeData,
+    lossGroupsData, kpiMetrics, appointments.length, periodLabel,
+  ])
 
   return (
     <DashboardShell>
+      <div className="flex justify-end">
+        <ExportReportButton getInput={buildReport} />
+      </div>
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
         <KpiCard
           variant="hero"
@@ -725,7 +488,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             )
           }
         />
-        
+
         <DashboardCard interactive onClick={() => openDrill("Todas las Oportunidades", opportunities)}>
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -792,827 +555,545 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             })
           }
         />
+        <KpiCard
+          label="Citas"
+          value={String(appointments.length)}
+          sublabel={`${appointments.filter((a) => a.status === "showed").length} realizadas`}
+          icon={CalendarDays}
+          onClick={() =>
+            setApptDrill({ open: true, title: "Todas las citas", appointments })
+          }
+        />
       </div>
 
-      <DashboardCard>
-        <ChartCardHeader
-          title="Leads por Miembro por Etapa del Pipeline"
-          total={opportunities.length}
-        />
-        <ChartCardContent>
-          {opportunities.length === 0 ? (
-            <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
-          ) : (
-            <>
-              <ChartContainer config={chartConfig} style={{ height: 280 }} className="w-full">
-                <BarChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 64 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis dataKey="member" type="category" tick={{ fontSize: 11 }} interval={0} angle={-40} textAnchor="end" />
-                  <YAxis type="number" tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                  {allStages.map((stage, i) => (
-                    <Bar
-                      key={stage}
-                      dataKey={stage}
-                      stackId="a"
-                      fill={stageColor(stage, i)}
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const member = data.member as string
-                        openDrill(
-                          `${member} · ${stage}`,
-                          opportunities.filter((o) => o.assignedTo === member && o.stage === stage)
-                        )
-                      }}
-                    />
-                  ))}
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-
-      {/* ── Rendimiento Individual ─────────────────── */}
-      <SectionHeader title="Rendimiento Individual" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Chart A: Win/Loss por Asesor */}
+      {/* ── Embudo de Ventas ───────────────────────── */}
+      <SectionHeader title="Embudo de Ventas" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DashboardCard>
-          <ChartCardHeader title="Win/Loss por Asesor" total={opportunities.length} />
+          <ChartCardHeader title="Recorrido del lead" total={opportunities.length} />
           <ChartCardContent>
-            {winLossData.length === 0 ? (
+            {opportunities.length === 0 ? (
               <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
             ) : (
               <>
-              <ChartContainer
-                config={WIN_LOSS_CONFIG}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={winLossData}
-                  margin={{ left: 8, right: 8, top: 24, bottom: 64 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="member"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                  />
-                  <YAxis type="number" tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                  <Bar dataKey="won" stackId="a" fill={WIN_LOSS_CONFIG.won.color} cursor="pointer"
-                    onClick={(data: any) => openDrill(`${data.member} · Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
-                  />
-                  <Bar dataKey="open" stackId="a" fill={WIN_LOSS_CONFIG.open.color} cursor="pointer"
-                    onClick={(data: any) => openDrill(`${data.member} · Abierto`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "open"))}
-                  />
-                  <Bar dataKey="lost" stackId="a" fill={WIN_LOSS_CONFIG.lost.color} cursor="pointer"
-                    onClick={(data: any) => openDrill(`${data.member} · Perdido`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "lost"))}
-                  />
-                  <Bar dataKey="abandoned" stackId="a" fill={WIN_LOSS_CONFIG.abandoned.color} cursor="pointer"
-                    onClick={(data: any) => openDrill(`${data.member} · Abandonado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "abandoned"))}
-                  >
-                    <LabelList
-                      dataKey="winRate"
-                      position="top"
-                      formatter={(v: unknown) =>
-                        typeof v === "number" ? `${v.toFixed(1)}%` : ""
-                      }
-                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
+                <div className="flex flex-col">
+                  {funnelData.map((s, i) => {
+                    const max = funnelData[0]?.count || 1
+                    const prev = i > 0 ? funnelData[i - 1].count : 0
+                    const conv = i > 0 && prev > 0 ? (s.count / prev) * 100 : null
+                    return (
+                      <div key={s.key}>
+                        {i > 0 && conv !== null && conv <= 100 && (
+                          <div className="flex items-center gap-1.5 py-1.5 pl-6 text-[11px] text-muted-foreground">
+                            <span className="font-bold text-primary">↓</span>
+                            <span className="font-semibold text-foreground/70 tabular-nums">{conv.toFixed(1)}%</span>
+                            del paso anterior
+                            {prev > s.count && (
+                              <>
+                                <span className="opacity-50">·</span>
+                                <span className="tabular-nums">−{(prev - s.count).toLocaleString("es-MX")} no avanzaron</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          className="group grid w-full grid-cols-[1fr_96px] items-center gap-3 text-left"
+                          onClick={() => openDrill(s.label, s.opps)}
+                        >
+                          <div
+                            className="flex h-11 items-center rounded-lg border px-3.5 transition-[filter] group-hover:brightness-110"
+                            style={{
+                              width: `${Math.max((s.count / max) * 100, 24)}%`,
+                              minWidth: 170,
+                              background: `${s.color}1f`,
+                              borderColor: `${s.color}55`,
+                              borderLeft: `4px solid ${s.color}`,
+                            }}
+                          >
+                            <span
+                              className="text-lg font-bold tabular-nums tracking-tight"
+                              style={s.count === 0 ? { color: "#ef4444" } : undefined}
+                            >
+                              {s.count.toLocaleString("es-MX")}
+                            </span>
+                            <span className="ml-2.5 truncate text-xs font-medium text-foreground">{s.label}</span>
+                          </div>
+                          <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                            {((s.count / max) * 100).toFixed(1)}% del total
+                          </span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+                <ChartHint>
+                  {funnelData.some((s) => s.key === "contacted") && "Contactados = leads con al menos un mensaje o llamada · "}
+                  Citas = el contacto del lead tiene una cita · Haz clic en una etapa para ver los leads
+                </ChartHint>
               </>
             )}
           </ChartCardContent>
         </DashboardCard>
 
         <DashboardCard>
-          <ChartCardHeader title="Ingreso Ganado por Asesor" />
+          <ChartCardHeader
+            title="Histórico de leads y conversión a cita"
+            total={`${monthlyFunnel.months.length} meses`}
+          />
           <ChartCardContent>
-            {revenueData.length === 0 ? (
-              <ChartEmpty message="Sin ingresos ganados" height={192} />
+            {monthlyFunnel.chartData.length === 0 ? (
+              <ChartEmpty message="Sin datos históricos" height={192} />
             ) : (
               <>
-              <ChartContainer
-                config={{ revenue: { label: "Ingreso Ganado", color: "#F59B1B" } }}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={revenueData}
-                  margin={{ left: 8, right: 8, top: 8, bottom: 64 }}
+                <ChartContainer
+                  config={{
+                    leads: { label: "Leads creados", color: STRUCTURAL_NAVY },
+                    rate: { label: "Tasa Lead → Cita (%)", color: BRAND_AMBER },
+                  }}
+                  style={{ height: 280 }}
+                  className="w-full"
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="member"
-                    type="category"
-                    tick={{ fontSize: 11 }}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                  />
-                  <YAxis type="number" tick={{ fontSize: 11 }} />
-                  <ChartTooltip
-                    content={
-                      <NonZeroTooltipContent
-                        formatter={(value) =>
-                          typeof value === "number"
-                            ? value.toLocaleString("es-MX", {
-                                style: "currency",
-                                currency: "MXN",
-                                maximumFractionDigits: 0,
-                              })
-                            : String(value)
-                        }
-                      />
-                    }
-                  />
-                  <Bar dataKey="revenue" fill="#F59B1B" radius={[4, 4, 0, 0]} cursor="pointer"
-                    onClick={(data: any) => openDrill(`${data.member} · Ingreso Ganado`, opportunities.filter((o) => o.assignedTo === data.member && o.status === "won"))}
-                  />
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
+                  <ComposedChart
+                    data={monthlyFunnel.chartData}
+                    margin={{ left: 8, right: 8, top: 16, bottom: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <ChartTooltip content={<NonZeroTooltipContent />} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="leads"
+                      name="Leads creados"
+                      fill={STRUCTURAL_NAVY}
+                      radius={[3, 3, 0, 0]}
+                      cursor="pointer"
+                      onClick={(data: any) => {
+                        const month = monthlyFunnel.months.find((m) => m.key === data.key)
+                        if (month) openDrill(`Leads de ${month.label}`, month.leads)
+                      }}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="rate"
+                      name="Tasa Lead → Cita (%)"
+                      stroke={BRAND_AMBER}
+                      strokeWidth={2.5}
+                      dot={{ r: 4, fill: BRAND_AMBER }}
+                    />
+                  </ComposedChart>
+                </ChartContainer>
+                <ChartHint>
+                  Barras: leads creados por mes · Línea: % de esos leads que llegaron a cita · Haz clic en una barra para ver los leads
+                </ChartHint>
               </>
             )}
           </ChartCardContent>
         </DashboardCard>
       </div>
 
-      {responseTimeData.length > 0 && (
-        <DashboardCard>
-          <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-            <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-              Tiempo promedio de respuesta del asesor
-              <InfoTooltip content="Tiempo promedio que tarda un asesor en responder un mensaje entrante, calculado solo en horario laboral (lun–vie 9am–6pm). Considera únicamente la primera respuesta saliente por hilo de conversación." />
-            </CardTitle>
-            <TotalBadge value={`${responseTimeData.length} asesores`} />
-          </CardHeader>
-          <ChartCardContent>
-            <ChartContainer
-              config={{ avgMinutes: { label: "Tiempo de respuesta", color: "#F59B1B" } }}
-              style={{ height: 280 }}
-              className="w-full"
-            >
-              <BarChart
-                data={responseTimeData}
-                margin={{ left: 8, right: 8, top: 24, bottom: 64 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                <XAxis
-                  dataKey="member"
-                  type="category"
-                  tick={{ fontSize: 11 }}
-                  interval={0}
-                  angle={-40}
-                  textAnchor="end"
-                />
-                <YAxis
-                  type="number"
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `${Math.round(v as number)}m`}
-                />
-                <ChartTooltip
-                  content={
-                    <NonZeroTooltipContent
-                      formatter={(value) =>
-                        typeof value === "number" ? formatMinutes(value) : String(value)
-                      }
-                    />
-                  }
-                />
-                <Bar dataKey="avgMinutes" radius={[3, 3, 0, 0]}>
-                  {responseTimeData.map((entry) => (
-                    <Cell key={entry.member} fill={responseColor(entry.avgMinutes)} />
-                  ))}
-                  <LabelList
-                    dataKey="avgMinutes"
-                    position="top"
-                    formatter={(v: unknown) =>
-                      typeof v === "number" ? formatMinutes(v) : ""
-                    }
-                    style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                  />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </ChartCardContent>
-        </DashboardCard>
-      )}
+      <DashboardCard>
+        <ChartCardHeader title="Volumen y conversión por mes" />
+        <ChartCardContent>
+          {monthlyFunnel.months.length === 0 ? (
+            <ChartEmpty message="Sin datos históricos" height={120} />
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Etapa
+                      </th>
+                      {monthlyFunnel.months.map((m, i) => (
+                        <th
+                          key={m.key}
+                          className={`px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground ${
+                            i === monthlyFunnel.months.length - 1 ? "bg-primary/10 rounded-t" : ""
+                          }`}
+                        >
+                          {m.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {([
+                      { label: "Leads creados", get: (m: (typeof monthlyFunnel.months)[number]) => m.leads },
+                      { label: "Llegaron a cita", get: (m: (typeof monthlyFunnel.months)[number]) => m.conCita },
+                      { label: "Ganados", get: (m: (typeof monthlyFunnel.months)[number]) => m.ganados },
+                    ] as const).map((row) => (
+                      <tr key={row.label} className="border-b border-border">
+                        <td className="px-3 py-2 font-medium text-foreground">{row.label}</td>
+                        {monthlyFunnel.months.map((m, i) => {
+                          const opps = row.get(m)
+                          return (
+                            <td
+                              key={m.key}
+                              className={`px-3 py-2 text-center ${i === monthlyFunnel.months.length - 1 ? "bg-primary/10 font-bold" : "font-semibold"}`}
+                            >
+                              <button
+                                type="button"
+                                className="tabular-nums hover:underline disabled:no-underline"
+                                disabled={opps.length === 0}
+                                onClick={() => openDrill(`${row.label} · ${m.label}`, opps)}
+                              >
+                                {opps.length.toLocaleString("es-MX")}
+                              </button>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                    {([
+                      { label: "Tasa Lead → Cita", get: (m: (typeof monthlyFunnel.months)[number]) => m.citaRate },
+                      { label: "Tasa Lead → Ganado", get: (m: (typeof monthlyFunnel.months)[number]) => m.cierreRate },
+                    ] as const).map((row, ri) => (
+                      <tr key={row.label} className={ri === 0 ? "border-t-2 border-border" : ""}>
+                        <td className="px-3 py-2 text-muted-foreground">{row.label}</td>
+                        {monthlyFunnel.months.map((m, i) => (
+                          <td
+                            key={m.key}
+                            className={`px-3 py-2 text-center italic tabular-nums text-muted-foreground ${
+                              i === monthlyFunnel.months.length - 1 ? "bg-primary/10 font-bold rounded-b" : ""
+                            }`}
+                          >
+                            {`${row.get(m).toFixed(1)}%`}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <ChartHint>
+                Cohorte mensual: cada columna sigue a los leads creados ese mes · Columna resaltada = mes más reciente · Haz clic en un número para ver los leads
+              </ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
+
+      {/* ── Origen de Leads ────────────────────────── */}
+      <SectionHeader title="Origen de Leads" />
+      <DashboardCard>
+        <ChartCardHeader title="Origen de leads y conversión a cita" total={opportunities.length} />
+        <ChartCardContent>
+          {origenData.length === 0 ? (
+            <ChartEmpty message="Sin datos de origen" height={192} />
+          ) : (
+            <>
+              <div className="flex items-center gap-6">
+                <div style={{ width: 180, height: 220, flexShrink: 0, position: "relative" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={origenData.map((o) => ({ name: o.platform, value: o.count }))}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={56}
+                        outerRadius={80}
+                        dataKey="value"
+                        nameKey="name"
+                        startAngle={90}
+                        endAngle={-270}
+                        stroke="none"
+                        paddingAngle={2}
+                        activeIndex={hoveredOrigin}
+                        activeShape={(props: any) => (
+                          <Sector
+                            cx={props.cx}
+                            cy={props.cy}
+                            innerRadius={props.innerRadius}
+                            outerRadius={props.outerRadius + 5}
+                            startAngle={props.startAngle}
+                            endAngle={props.endAngle}
+                            fill={props.fill}
+                            stroke="none"
+                          />
+                        )}
+                      >
+                        {origenData.map((o) => (
+                          <Cell key={o.platform} fill={o.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      textAlign: "center",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <div style={{ color: "hsl(var(--foreground))", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
+                      {opportunities.length.toLocaleString("es-MX")}
+                    </div>
+                    <div style={{ color: "hsl(var(--muted-foreground))", fontSize: 9, marginTop: 2 }}>LEADS</div>
+                  </div>
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="grid grid-cols-[minmax(110px,160px)_1fr_90px_88px] gap-3 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span>Origen</span>
+                    <span />
+                    <span className="text-right">Leads</span>
+                    <span className="text-right">→ Citas</span>
+                  </div>
+                  {origenData.map((o, i) => {
+                    const maxCount = origenData[0]?.count || 1
+                    return (
+                      <button
+                        key={o.platform}
+                        type="button"
+                        className="grid w-full grid-cols-[minmax(110px,160px)_1fr_90px_88px] items-center gap-3 border-b border-border py-2.5 text-left transition-colors last:border-b-0 hover:bg-accent/20"
+                        onClick={() => openDrill(`Origen: ${o.platform}`, o.opps)}
+                        onMouseEnter={() => setHoveredOrigin(i)}
+                        onMouseLeave={() => setHoveredOrigin(undefined)}
+                      >
+                        <span className="flex min-w-0 items-center gap-2 text-xs font-medium text-foreground">
+                          <PlatformIcon platform={o.platform} />
+                          <span className="truncate">{o.platform}</span>
+                        </span>
+                        <span className="h-2 overflow-hidden rounded bg-muted">
+                          <span
+                            className="block h-full rounded"
+                            style={{ width: `${(o.count / maxCount) * 100}%`, background: o.color }}
+                          />
+                        </span>
+                        <span className="text-right text-xs font-bold tabular-nums">
+                          {o.count.toLocaleString("es-MX")}
+                          <span className="ml-1 font-normal text-muted-foreground">· {o.pct.toFixed(1)}%</span>
+                        </span>
+                        <span
+                          className="text-right text-xs font-bold tabular-nums"
+                          style={{ color: o.citas.length > 0 ? o.color : undefined }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (o.citas.length > 0) openDrill(`${o.platform} · Con cita`, o.citas)
+                          }}
+                        >
+                          {o.citas.length > 0 ? (
+                            <>
+                              → {o.citas.length}
+                              <span className="ml-1 font-normal text-muted-foreground">({o.citaRate.toFixed(0)}%)</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <ChartHint>
+                → Citas = leads de cada origen cuyo contacto tiene al menos una cita · Haz clic en una fila para ver los leads
+              </ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
 
       {/* ── Salud del Pipeline ─────────────────────── */}
       <SectionHeader title="Salud del Pipeline" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Chart C: Valor en Pipeline por Etapa */}
-        <DashboardCard>
-          <ChartCardHeader title="Valor en Pipeline por Etapa" />
-          <ChartCardContent>
-            {pipelineValueData.length === 0 ? (
-              <ChartEmpty message="Sin oportunidades abiertas" height={192} />
-            ) : (
-              <>
-              <ChartContainer
-                config={{ value: { label: "Valor en Pipeline", color: STRUCTURAL_NAVY } }}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={pipelineValueData}
-                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="stage"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                    tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 16) + "…" : v}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    tickFormatter={(v: number) =>
-                      v >= 1_000_000
-                        ? `$${(v / 1_000_000).toFixed(1)}M`
-                        : v >= 1_000
-                        ? `$${(v / 1_000).toFixed(0)}k`
-                        : `$${v}`
-                    }
-                  />
-                  <ChartTooltip
-                    content={
-                      <NonZeroTooltipContent
-                        formatter={(value) =>
-                          typeof value === "number"
-                            ? value.toLocaleString("es-MX", {
-                                style: "currency",
-                                currency: "MXN",
-                                maximumFractionDigits: 0,
-                              })
-                            : String(value)
-                        }
-                      />
-                    }
-                  />
-                  <Bar dataKey="value" fill={STRUCTURAL_NAVY} radius={[4, 4, 0, 0]} cursor="pointer"
-                    onClick={(data: any) => openDrill(`Pipeline: ${data.stage}`, opportunities.filter((o) => o.status === "open" && o.stage === data.stage))}
-                  />
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
-              </>
-            )}
-          </ChartCardContent>
-        </DashboardCard>
-
-        <DashboardCard>
-          <ChartCardHeader title="Nuevas Oportunidades por Período" total={opportunities.length} />
-          <ChartCardContent>
-            {trendData.length === 0 ? (
-              <ChartEmpty message="Sin datos de tendencia" height={192} />
-            ) : (
-              <>
-              <ChartContainer
-                config={{ count: { label: "Nuevas Oportunidades", color: BRAND_AMBER } }}
-                style={{ height: 220 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={trendData}
-                  margin={{ left: 8, right: 8, top: 8, bottom: 48 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="period"
-                    tick={{ fontSize: 11 }}
-                    angle={-35}
-                    textAnchor="end"
-                    interval={0}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Bar dataKey="count" fill={BRAND_AMBER} radius={[3, 3, 0, 0]} cursor="pointer"
-                    onClick={(data: any) => openDrill(`Período: ${data.period}`, data.opps ?? [])}
-                  />
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver los leads</ChartHint>
-              </>
-            )}
-          </ChartCardContent>
-        </DashboardCard>
-      </div>
-
-      <SectionHeader title="Actividad de Conversaciones" />
       <DashboardCard>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-            Conversaciones únicas por día
-            <InfoTooltip content="Cuenta hilos de conversación distintos que tuvieron al menos un mensaje ese día, sin importar el canal ni la hora." />
-          </CardTitle>
-          {messagesLoading && messages.length === 0 ? (
-            <span className="text-xs text-muted-foreground">Cargando conversaciones…</span>
-          ) : (
-            <TotalBadge value={new Set(messages.map((m) => m.conversationId).filter(Boolean)).size} />
-          )}
-        </CardHeader>
-        <ChartCardContent>
-          {dailyConvData.length === 0 ? (
-            <ChartEmpty message="Sin datos de conversaciones" height={192} />
-          ) : (
-            <>
-              <ChartContainer
-                config={{ count: { label: "Conversaciones", color: STRUCTURAL_NAVY } }}
-                style={{ height: 220 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={dailyConvData}
-                  margin={{ left: 8, right: 8, top: 8, bottom: dailyConvData.length > 10 ? 48 : 24 }}
+        <ChartCardHeader
+          title="Estado actual del embudo por etapa"
+          total={pipelineMatrix?.total ?? 0}
+          actions={
+            <div className="flex rounded-lg border border-border bg-muted p-0.5">
+              {([
+                { key: "asesor" as const, label: "Por asesor" },
+                { key: "origen" as const, label: "Por origen" },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    matrixBy === opt.key
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setMatrixBy(opt.key)}
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 11 }}
-                    angle={dailyConvData.length > 10 ? -35 : 0}
-                    textAnchor={dailyConvData.length > 10 ? "end" : "middle"}
-                    interval={0}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Bar
-                    dataKey="count"
-                    fill={STRUCTURAL_NAVY}
-                    radius={[3, 3, 0, 0]}
-                    cursor="pointer"
-                    onClick={(data: any) =>
-                      openDrillContacts(`Conversaciones del ${data.label}`, data.contactIds ?? [])
-                    }
-                  />
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver los contactos</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-      <DashboardCard>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-            Conversaciones únicas por asesor
-            <InfoTooltip content="Número de conversaciones únicas atendidas por cada asesor, agrupadas por el mes del primer mensaje del hilo." />
-          </CardTitle>
-          <TotalBadge value={convByAdvisorMonthData.totalConvs} />
-        </CardHeader>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
         <ChartCardContent>
-          {convByAdvisorMonthData.data.length === 0 ? (
-            <ChartEmpty message="Sin datos de conversaciones" height={192} />
-          ) : (
-            <>
-              <ChartContainer
-                config={Object.fromEntries(
-                  convByAdvisorMonthData.advisors.map((advisor, i) => [
-                    advisor,
-                    { label: advisor, color: CHART_PALETTE[i % CHART_PALETTE.length] },
-                  ])
-                )}
-                style={{ height: 320 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={convByAdvisorMonthData.data}
-                  margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 28 }} />
-                  {convByAdvisorMonthData.advisors.map((advisor, i) => (
-                    <Bar
-                      key={advisor}
-                      dataKey={advisor}
-                      stackId="conv"
-                      fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                      radius={
-                        i === convByAdvisorMonthData.advisors.length - 1
-                          ? [3, 3, 0, 0]
-                          : [0, 0, 0, 0]
-                      }
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const ids = convByAdvisorMonthData.contactIdMap.get(data.month as string)?.get(advisor) ?? []
-                        openDrillContacts(`${advisor} · ${data.label}`, ids)
-                      }}
-                    />
-                  ))}
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver los contactos</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-      <SectionHeader title="Citas" />
-      <DashboardCard>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-            Citas por mes por asesor
-            <InfoTooltip content="Citas (calendar events) agrupadas por mes. Cada mes muestra una barra por asesor, desglosada por estatus. Ventana fija: últimos 90 días." />
-          </CardTitle>
-          <TotalBadge value={apptByMonthByAdvisor.total} />
-        </CardHeader>
-        <ChartCardContent>
-          {apptByMonthByAdvisor.data.length === 0 ? (
-            <ChartEmpty message="Sin citas para mostrar" height={192} />
-          ) : (
-            <>
-              <ChartContainer
-                config={apptChartConfig}
-                style={{ height: 320 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={apptByMonthByAdvisor.data}
-                  margin={{ left: 8, right: 8, top: 16, bottom: 32 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend
-                    content={() => (
-                      <div className="flex flex-wrap gap-3 justify-center pt-7">
-                        {apptByMonthByAdvisor.statuses.map((status, i) => {
-                          const { label, color } = apptStatusVisual(status, i)
-                          return (
-                            <span key={status} className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
-                              {label}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                  />
-                  {apptByMonthByAdvisor.advisors.flatMap((advisor) =>
-                    apptByMonthByAdvisor.statuses.map((status, si) => (
-                      <Bar
-                        key={`${advisor}_${status}`}
-                        dataKey={`${advisor}_${status}`}
-                        stackId={advisor}
-                        fill={apptStatusVisual(status, si).color}
-                        name={`${advisor} · ${apptStatusVisual(status, si).label}`}
-                        legendType="none"
-                        cursor="pointer"
-                        radius={
-                          si === apptByMonthByAdvisor.statuses.length - 1
-                            ? [3, 3, 0, 0]
-                            : [0, 0, 0, 0]
-                        }
-                        onClick={(data: any) => {
-                          const matched = appointments.filter(
-                            (a) =>
-                              a.assignedTo === advisor &&
-                              a.startTime.slice(0, 7) === (data.month as string) &&
-                              a.status === status
-                          )
-                          setApptDrill({
-                            open: true,
-                            title: `${advisor} · ${apptStatusVisual(status, si).label} · ${data.label as string}`,
-                            appointments: matched,
-                          })
-                        }}
-                      />
-                    ))
-                  )}
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver las citas</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
-      <SectionHeader title="Responsabilidad del Asesor" />
-
-      <DashboardCard>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-            Campos vacíos por asesor
-            <InfoTooltip content="Promedio de campos vacíos por oportunidad. Mide qué tan completamente cada asesor llena los datos de sus oportunidades. Considera campos estándar (valor, fuente, notas, tags, prioridad) y todos los custom fields presentes en el dataset." />
-          </CardTitle>
-          <TotalBadge value={emptyFieldsData.rows.reduce((s, r) => s + r.totalOpps, 0)} />
-        </CardHeader>
-        <ChartCardContent>
-          {emptyFieldsData.rows.length === 0 ? (
+          {!pipelineMatrix ? (
             <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
           ) : (
             <>
-              <ChartContainer
-                config={{
-                  avgStandard: { label: "Estándar vacíos", color: STRUCTURAL_NAVY },
-                  avgCustom: { label: "Custom vacíos", color: BRAND_AMBER },
-                }}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={emptyFieldsData.rows}
-                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="member"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <ChartTooltip
-                    content={
-                      <NonZeroTooltipContent
-                        formatter={(value) =>
-                          typeof value === "number" ? value.toFixed(1) : String(value)
-                        }
-                      />
-                    }
-                  />
-                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                  <Bar
-                    dataKey="avgStandard"
-                    stackId="empty"
-                    fill={STRUCTURAL_NAVY}
-                    cursor="pointer"
-                    onClick={(data: any) => {
-                      const row = emptyFieldsData.rows.find((r) => r.member === data.member)
-                      if (!row) return
-                      const sorted = [...row.opps].sort(
-                        (a, b) => (row.perOpp.get(b.id) ?? 0) - (row.perOpp.get(a.id) ?? 0)
-                      )
-                      openDrill(`${row.member} · Oportunidades con campos vacíos`, sorted)
-                    }}
-                  />
-                  <Bar
-                    dataKey="avgCustom"
-                    stackId="empty"
-                    fill={BRAND_AMBER}
-                    cursor="pointer"
-                    onClick={(data: any) => {
-                      const row = emptyFieldsData.rows.find((r) => r.member === data.member)
-                      if (!row) return
-                      const sorted = [...row.opps].sort(
-                        (a, b) => (row.perOpp.get(b.id) ?? 0) - (row.perOpp.get(a.id) ?? 0)
-                      )
-                      openDrill(`${row.member} · Oportunidades con campos vacíos`, sorted)
-                    }}
-                  >
-                    <LabelList
-                      dataKey="avgTotal"
-                      position="top"
-                      formatter={(v: unknown) =>
-                        typeof v === "number" ? `${v.toFixed(1)}` : ""
-                      }
-                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver las oportunidades</ChartHint>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Etapa del pipeline
+                      </th>
+                      {pipelineMatrix.cols.map((c) => (
+                        <th
+                          key={c}
+                          title={c}
+                          className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                        >
+                          {c.length > 12 ? c.slice(0, 12) + "…" : c}
+                        </th>
+                      ))}
+                      <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pipelineMatrix.rows.map((row, ri) => (
+                      <tr key={row.label} className="border-b border-border">
+                        <td className="max-w-[220px] truncate px-3 py-1.5 font-medium text-foreground" title={row.label}>
+                          <span
+                            className="mr-2 inline-block h-1.5 w-1.5 rounded-sm align-middle"
+                            style={{ background: row.dot }}
+                          />
+                          {row.label}
+                        </td>
+                        {pipelineMatrix.cells[ri].map((cellOpps, ci) => {
+                          const v = cellOpps.length
+                          const rgb =
+                            row.kind === "lost" ? "239,68,68"
+                            : row.kind === "won" ? "245,155,27"
+                            : row.kind === "abandoned" ? "148,163,184"
+                            : "59,130,246"
+                          const max = row.kind === "lost" ? pipelineMatrix.lostMax : pipelineMatrix.liveMax
+                          return (
+                            <td key={ci} className="px-2 py-1 text-center">
+                              {v === 0 ? (
+                                <span className="text-muted-foreground/40">·</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="inline-block min-w-[30px] rounded-md px-2 py-0.5 font-semibold tabular-nums transition-[filter] hover:brightness-110"
+                                  style={{ background: `rgba(${rgb},${(0.1 + Math.min(v / max, 1) * 0.4).toFixed(2)})` }}
+                                  onClick={() =>
+                                    openDrill(`${row.label} · ${pipelineMatrix.cols[ci]}`, cellOpps)
+                                  }
+                                >
+                                  {v}
+                                </button>
+                              )}
+                            </td>
+                          )
+                        })}
+                        <td className="px-3 py-1.5 text-center font-bold tabular-nums">{row.opps.length}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="px-3 pt-2 text-left font-bold">Total general</td>
+                      {pipelineMatrix.cols.map((c) => (
+                        <td key={c} className="px-2 pt-2 text-center font-bold tabular-nums">
+                          {(pipelineMatrix.colTotals.get(c) ?? 0).toLocaleString("es-MX")}
+                        </td>
+                      ))}
+                      <td className="px-3 pt-2 text-center font-bold tabular-nums">
+                        {pipelineMatrix.total.toLocaleString("es-MX")}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <ChartHint>
+                Intensidad = volumen de leads · azul = pipeline abierto · ámbar = ganado · rojo = perdido · Haz clic en una celda para ver los leads
+              </ChartHint>
             </>
           )}
         </ChartCardContent>
       </DashboardCard>
 
+      {/* ── Citas ──────────────────────────────────── */}
+      <SectionHeader title="Citas" />
       <DashboardCard>
-        <ChartCardHeader title="Llamadas por asesor" total={callsByAdvisorData.totalCalls} />
+        <ChartCardHeader title="Resultado de las citas" total={appointments.length} />
         <ChartCardContent>
-          {callsByAdvisorData.rows.length === 0 ? (
-            <ChartEmpty message="Sin llamadas registradas" height={192} />
+          {apptOutcomeData.length === 0 ? (
+            <ChartEmpty message="Sin citas para mostrar" height={96} />
           ) : (
             <>
-              <ChartContainer
-                config={{
-                  completed: { label: "Completadas", color: "#10b981" },
-                  missed: { label: "Perdidas", color: "#ef4444" },
-                  noAnswer: { label: "Sin respuesta", color: "#94a3b8" },
-                }}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={callsByAdvisorData.rows}
-                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="member"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                  <Bar
-                    dataKey="completed"
-                    stackId="calls"
-                    fill="#10b981"
-                    cursor="pointer"
-                    onClick={(data: any) =>
-                      openDrillContacts(`${data.member} · Completadas`, data.contactIds?.completed ?? [])
-                    }
-                  />
-                  <Bar
-                    dataKey="missed"
-                    stackId="calls"
-                    fill="#ef4444"
-                    cursor="pointer"
-                    onClick={(data: any) =>
-                      openDrillContacts(`${data.member} · Perdidas`, data.contactIds?.missed ?? [])
-                    }
-                  />
-                  <Bar
-                    dataKey="noAnswer"
-                    stackId="calls"
-                    fill="#94a3b8"
-                    cursor="pointer"
-                    onClick={(data: any) =>
-                      openDrillContacts(`${data.member} · Sin respuesta`, data.contactIds?.noAnswer ?? [])
+              <div className="flex h-14 w-full gap-0.5 overflow-hidden rounded-lg">
+                {apptOutcomeData.map((seg) => (
+                  <button
+                    key={seg.status}
+                    type="button"
+                    className="flex min-w-[84px] flex-col justify-center px-3 text-left text-white transition-[filter] hover:brightness-110"
+                    style={{ flexGrow: seg.count, flexBasis: 0, background: seg.color }}
+                    onClick={() =>
+                      setApptDrill({
+                        open: true,
+                        title: `Citas · ${seg.label}`,
+                        appointments: seg.appts,
+                      })
                     }
                   >
-                    <LabelList
-                      dataKey="total"
-                      position="top"
-                      formatter={(v: unknown) => (typeof v === "number" ? String(v) : "")}
-                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver los contactos</ChartHint>
+                    <span className="text-base font-bold leading-none tabular-nums">{seg.count}</span>
+                    <span className="mt-1 truncate text-[10px] font-medium opacity-90">
+                      {seg.label} · {seg.pct.toFixed(0)}%
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <ChartHint>Ancho proporcional al volumen · Haz clic en un segmento para ver las citas</ChartHint>
             </>
           )}
         </ChartCardContent>
       </DashboardCard>
 
-      <DashboardCard>
-        <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-          <CardTitle className="text-sm font-semibold leading-snug tracking-tight flex items-center">
-            Visitas agendadas vs realizadas
-            <InfoTooltip content="Compara visitas agendadas (todas las citas, sin importar estatus) contra realizadas (estatus = 'showed'). La etiqueta muestra la tasa de cumplimiento del asesor." />
-          </CardTitle>
-          <TotalBadge value={visitFulfillmentData.totalAgendadas} />
-        </CardHeader>
-        <ChartCardContent>
-          {visitFulfillmentData.rows.length === 0 ? (
-            <ChartEmpty message="Sin visitas para mostrar" height={192} />
-          ) : (
-            <>
-              <ChartContainer
-                config={{
-                  agendadas: { label: "Agendadas", color: STRUCTURAL_NAVY },
-                  realizadas: { label: "Realizadas", color: BRAND_AMBER },
-                }}
-                style={{ height: 280 }}
-                className="w-full"
-              >
-                <BarChart
-                  data={visitFulfillmentData.rows}
-                  margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="member"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    angle={-40}
-                    textAnchor="end"
-                    tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
-                  />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                  <ChartTooltip content={<NonZeroTooltipContent />} />
-                  <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                  <Bar
-                    dataKey="agendadas"
-                    fill={STRUCTURAL_NAVY}
-                    cursor="pointer"
-                    onClick={(data: any) => {
-                      const matched = appointments.filter((a) => a.assignedTo === data.member)
-                      setApptDrill({
-                        open: true,
-                        title: `${data.member} · Visitas agendadas`,
-                        appointments: matched,
-                      })
-                    }}
-                  />
-                  <Bar
-                    dataKey="realizadas"
-                    fill={BRAND_AMBER}
-                    cursor="pointer"
-                    onClick={(data: any) => {
-                      const matched = appointments.filter(
-                        (a) => a.assignedTo === data.member && a.status === "showed"
-                      )
-                      setApptDrill({
-                        open: true,
-                        title: `${data.member} · Visitas realizadas`,
-                        appointments: matched,
-                      })
-                    }}
-                  >
-                    <LabelList
-                      dataKey="rate"
-                      position="top"
-                      formatter={(v: unknown) =>
-                        typeof v === "number" ? `${v.toFixed(0)}%` : ""
-                      }
-                      style={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-              <ChartHint>Haz clic en una barra para ver las citas</ChartHint>
-            </>
-          )}
-        </ChartCardContent>
-      </DashboardCard>
-
+      {/* ── Análisis de Pérdidas ───────────────────── */}
       <SectionHeader title="Análisis de Pérdidas" />
       <DashboardCard>
-        <ChartCardHeader
-          title="Razones de Pérdida por Asesor"
-          total={opportunities.filter((o) => o.status === "lost").length}
-        />
+        <ChartCardHeader title="Principales razones de pérdida" total={lossGroupsData.totalLost} />
         <ChartCardContent>
-          {lostReasonsData.data.length === 0 ? (
-            <ChartEmpty message="Sin oportunidades perdidas" height={192} />
+          {lossGroupsData.groups.length === 0 ? (
+            <ChartEmpty message="Sin oportunidades perdidas" height={120} />
           ) : (
             <>
-            <ChartContainer
-              config={lostReasonsConfig}
-              style={{ height: 280 }}
-              className="w-full"
-            >
-              <BarChart
-                data={lostReasonsData.data}
-                margin={{ left: 8, right: 16, top: 8, bottom: 64 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
-                <XAxis
-                  dataKey="member"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={0}
-                  angle={-40}
-                  textAnchor="end"
-                  tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v}
-                />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip content={<NonZeroTooltipContent />} />
-                <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-                {lostReasonsData.reasons.map((reason, i) => (
-                  <Bar
-                    key={reason}
-                    dataKey={reason}
-                    stackId="a"
-                    fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                    cursor="pointer"
-                    onClick={(data: any) => openDrill(
-                      `${data.member} · ${reason}`,
-                      opportunities.filter((o) => o.assignedTo === data.member && o.status === "lost" && (o.lostReason ?? "Sin razón") === reason)
-                    )}
-                  />
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                {lossGroupsData.groups.map((g) => (
+                  <button
+                    key={g.reason}
+                    type="button"
+                    className="relative overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/35"
+                    onClick={() => openDrill(`Perdidos · ${g.reason}`, g.opps)}
+                  >
+                    <span className="absolute inset-x-0 top-0 h-0.5" style={{ background: g.color }} />
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold tabular-nums tracking-tight" style={{ color: g.color }}>
+                        {g.count.toLocaleString("es-MX")}
+                      </span>
+                      <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                        {g.pct.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-xs font-medium leading-snug text-foreground">{g.reason}</div>
+                  </button>
                 ))}
-              </BarChart>
-            </ChartContainer>
-              <ChartHint>Haz clic en un segmento para ver los leads</ChartHint>
+              </div>
+              <ChartHint>% sobre el total de perdidos · Haz clic en una tarjeta para ver los leads</ChartHint>
             </>
           )}
         </ChartCardContent>

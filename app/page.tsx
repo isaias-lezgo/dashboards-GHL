@@ -1,10 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
 import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
+import { DateRangeFilter } from "@/components/dashboard/date-range-filter"
+import { filterByDateRange, resolveDateRange, type DateFilter } from "@/lib/date-range"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
@@ -39,10 +43,51 @@ export default function DashboardPage() {
   const { data, isLoading, isError, progress, locationName, refresh } = useDashboardData({})
   const { messages, isLoading: messagesLoading } = useConversationsData()
 
-  const contacts = data?.contacts ?? []
-  const opportunities = data?.opportunities ?? []
-  const calls = data?.calls ?? []
-  const appointments = data?.appointments ?? []
+  const [dateFilter, setDateFilter] = useState<DateFilter>({ preset: "all" })
+  const dateRange = useMemo(() => resolveDateRange(dateFilter), [dateFilter])
+
+  // Human label of the active date filter, for the PDF report cover.
+  const periodLabel = useMemo(() => {
+    switch (dateFilter.preset) {
+      case "week": return "Últimos 7 días"
+      case "month": return "Últimos 30 días"
+      case "3m": return "Últimos 3 meses"
+      case "6m": return "Últimos 6 meses"
+      case "custom":
+        if (!dateRange) return "Todo el historial"
+        return `${format(dateRange.from, "d MMM yyyy", { locale: es })} – ${format(dateRange.to, "d MMM yyyy", { locale: es })}`
+      default: return "Todo el historial"
+    }
+  }, [dateFilter.preset, dateRange])
+
+  const contacts = useMemo(
+    () => filterByDateRange(data?.contacts ?? [], (c) => c.createdAt, dateRange),
+    [data?.contacts, dateRange]
+  )
+  const opportunities = useMemo(
+    () => filterByDateRange(data?.opportunities ?? [], (o) => o.createdAt, dateRange),
+    [data?.opportunities, dateRange]
+  )
+  const calls = useMemo(
+    () => filterByDateRange(data?.calls ?? [], (c) => c.createdAt, dateRange),
+    [data?.calls, dateRange]
+  )
+  const appointments = useMemo(
+    () => filterByDateRange(data?.appointments ?? [], (a) => a.startTime, dateRange),
+    [data?.appointments, dateRange]
+  )
+  const tasks = useMemo(
+    () => filterByDateRange(data?.tasks ?? [], (t) => t.createdAt ?? t.dueDate, dateRange),
+    [data?.tasks, dateRange]
+  )
+  const pautas = useMemo(
+    () => filterByDateRange(data?.pautas ?? [], (p) => p.createdAt, dateRange),
+    [data?.pautas, dateRange]
+  )
+  const filteredMessages = useMemo(
+    () => filterByDateRange(messages, (m) => m.createdAt, dateRange),
+    [messages, dateRange]
+  )
   const availableMembers = data?.members ?? []
   const availableTags = data?.tags ?? []
 
@@ -192,18 +237,23 @@ export default function DashboardPage() {
         </div>
       </nav>
 
+      {activeTab !== "conversations" && (
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+      )}
+
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
         {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}
             contacts={contacts}
-            pautas={data?.pautas ?? []}
+            pautas={pautas}
             pipelines={data?.pipelines ?? []}
-            tasks={data?.tasks ?? []}
+            tasks={tasks}
             calls={calls}
             appointments={appointments}
             locationId={data?.locationId ?? ""}
+            periodLabel={periodLabel}
           />
         )}
         {activeTab === "sales" && (
@@ -211,27 +261,31 @@ export default function DashboardPage() {
             opportunities={opportunities}
             contacts={contacts}
             calls={calls}
-            messages={messages}
+            messages={filteredMessages}
             messagesLoading={messagesLoading}
             appointments={appointments}
-            tasks={data?.tasks ?? []}
-            pautas={data?.pautas ?? []}
+            pipelines={data?.pipelines ?? []}
+            tasks={tasks}
+            pautas={pautas}
             members={availableMembers}
             locationId={data?.locationId ?? ""}
+            periodLabel={periodLabel}
           />
         )}
         {/* Kept permanently mounted (hidden when inactive) so the AI chat
             history survives switching to the Marketing/Ventas tabs. */}
+        {/* The AI assistant always sees the full (unfiltered) dataset — the
+            date filter bar is hidden on this tab. */}
         <div className={cn(activeTab !== "conversations" && "hidden")}>
           <ConversationsChat
             dataset={{
-              contacts,
-              opportunities,
+              contacts: data?.contacts ?? [],
+              opportunities: data?.opportunities ?? [],
               pautas: data?.pautas ?? [],
-              appointments,
+              appointments: data?.appointments ?? [],
               messages,
               tasks: data?.tasks ?? [],
-              calls,
+              calls: data?.calls ?? [],
             }}
             locationId={data?.locationId}
           />

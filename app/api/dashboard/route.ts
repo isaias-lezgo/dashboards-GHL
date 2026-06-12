@@ -9,9 +9,11 @@ import {
   getCalendarEvents,
   getCalendars,
   getLocation,
+  searchLocationTasks,
   type GHLContact,
   type GHLOpportunity,
   type GHLCalendarEvent,
+  type GHLTask,
 } from "@/lib/ghl-client";
 import type {
   Contact,
@@ -140,6 +142,27 @@ function transformOpportunity(
   };
 }
 
+
+function transformTask(ghl: GHLTask): Task {
+  const assignedFirst = ghl.assignedToUserDetails?.firstName ?? "";
+  const assignedLast = ghl.assignedToUserDetails?.lastName ?? "";
+  const assignedToName = [assignedFirst, assignedLast].filter(Boolean).join(" ") || undefined;
+  const contactFirst = ghl.contactDetails?.firstName ?? "";
+  const contactLast = ghl.contactDetails?.lastName ?? "";
+  const contactName = [contactFirst, contactLast].filter(Boolean).join(" ") || undefined;
+  return {
+    id: ghl._id,
+    title: ghl.title,
+    body: ghl.body,
+    status: ghl.completed ? "completed" : "pending",
+    dueDate: ghl.dueDate,
+    contactId: ghl.contactId,
+    contactName,
+    assignedTo: ghl.assignedTo,
+    assignedToName,
+    createdAt: ghl.createdAt ?? ghl.dateAdded,
+  };
+}
 
 function enc(obj: unknown): string {
   return JSON.stringify(obj) + "\n";
@@ -458,7 +481,14 @@ export async function GET() {
         }
 
         const calls: Call[] = [];
-        const tasks: Task[] = [];
+
+        let tasks: Task[] = [];
+        try {
+          const tasksRaw = await searchLocationTasks();
+          tasks = tasksRaw.map(transformTask);
+        } catch (err) {
+          console.error("[GHL] Tasks fetch failed:", err);
+        }
 
         // Extract unique tags, campaigns, sources
         const tagSet = new Set<string>();

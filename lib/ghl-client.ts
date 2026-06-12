@@ -718,6 +718,30 @@ export async function getCalendars(): Promise<GHLCalendarsResponse> {
 // ============ TASKS ============
 
 export interface GHLTask {
+  _id: string;
+  locationId?: string;
+  deleted?: boolean;
+  searchAfter?: [number, string];
+  dateAdded?: string;
+  createdAt?: string;
+  dateUpdated?: string;
+  updatedAt?: string;
+  assignedTo?: string;
+  contactDetails?: { firstName?: string; lastName?: string };
+  assignedToUserDetails?: { id: string; firstName?: string; lastName?: string; profilePhoto?: string };
+  body?: string;
+  completed: boolean;
+  dueDate?: string;
+  title: string;
+  contactId: string;
+}
+
+export interface GHLTaskSearchResponse {
+  tasks: GHLTask[];
+  traceId?: string;
+}
+
+export interface GHLContactTask {
   id: string;
   title: string;
   body?: string;
@@ -728,12 +752,66 @@ export interface GHLTask {
   dateAdded: string;
 }
 
-export interface GHLTasksResponse {
-  tasks: GHLTask[];
+export interface GHLContactTasksResponse {
+  tasks: GHLContactTask[];
 }
 
-export async function getContactTasks(contactId: string): Promise<GHLTasksResponse> {
-  return ghlFetch<GHLTasksResponse>(`/contacts/${contactId}/tasks`);
+export async function getContactTasks(contactId: string): Promise<GHLContactTasksResponse> {
+  return ghlFetch<GHLContactTasksResponse>(`/contacts/${contactId}/tasks`);
+}
+
+async function fetchTaskPage(filters: {
+  contactId?: string[];
+  completed: boolean;
+  assignedTo?: string[];
+  query?: string;
+}, skip: number, limit: number): Promise<GHLTaskSearchResponse> {
+  return ghlFetch<GHLTaskSearchResponse>("/locations/:locationId/tasks/search", {
+    method: "POST",
+    body: { ...filters, limit, skip },
+    noBodyLocationId: true,
+  });
+}
+
+async function paginateTasks(filters: {
+  contactId?: string[];
+  completed: boolean;
+  assignedTo?: string[];
+  query?: string;
+}, cap: number): Promise<GHLTask[]> {
+  const limit = 100;
+  const all: GHLTask[] = [];
+  let skip = 0;
+  while (true) {
+    const res = await fetchTaskPage(filters, skip, limit);
+    all.push(...res.tasks);
+    if (res.tasks.length < limit) break;
+    skip += limit;
+    if (all.length >= cap) break;
+  }
+  return all;
+}
+
+// GHL's task search endpoint requires `completed` to be explicitly set —
+// omitting it returns an empty list. Fetch pending and completed separately.
+export async function searchLocationTasks(filters: {
+  contactId?: string[];
+  completed?: boolean;
+  assignedTo?: string[];
+  query?: string;
+} = {}): Promise<GHLTask[]> {
+  const CAP = 500;
+
+  if (filters.completed !== undefined) {
+    return paginateTasks({ ...filters, completed: filters.completed }, CAP);
+  }
+
+  const { completed: _ignored, ...rest } = filters;
+  const [pending, done] = await Promise.all([
+    paginateTasks({ ...rest, completed: false }, CAP),
+    paginateTasks({ ...rest, completed: true }, CAP),
+  ]);
+  return [...pending, ...done];
 }
 
 // ============ NOTES ============

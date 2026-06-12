@@ -124,12 +124,14 @@ export interface Task {
   id: string
   title: string
   body?: string
-  type: "call" | "email" | "followup" | "other"
   status: "pending" | "completed"
   dueDate?: string
   contactId: string
+  contactName?: string
   opportunityId?: string
   assignedTo?: string
+  assignedToName?: string
+  createdAt?: string
 }
 
 export interface Appointment {

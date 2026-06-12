@@ -8,6 +8,7 @@ import type {
   Opportunity,
   Pauta,
   Appointment,
+  Task,
 } from "@/lib/types";
 import type { ChatDataset } from "@/lib/ai-tools";
 
@@ -16,6 +17,7 @@ export interface ChatIndex {
   oppsByContact: Map<string, Opportunity[]>;
   pautasByContact: Map<string, Pauta[]>;
   apptsByContact: Map<string, Appointment[]>;
+  tasksByContact: Map<string, Task[]>;
 }
 
 function pushTo<T>(map: Map<string, T[]>, key: string | undefined, val: T): void {
@@ -38,7 +40,10 @@ export function buildChatIndex(data: ChatDataset): ChatIndex {
   const apptsByContact = new Map<string, Appointment[]>();
   for (const a of data.appointments) pushTo(apptsByContact, a.contactId, a);
 
-  return { contactById, oppsByContact, pautasByContact, apptsByContact };
+  const tasksByContact = new Map<string, Task[]>();
+  for (const t of data.tasks) pushTo(tasksByContact, t.contactId, t);
+
+  return { contactById, oppsByContact, pautasByContact, apptsByContact, tasksByContact };
 }
 
 // Cache keyed on the contacts array reference (stable within a single agent run),
@@ -53,6 +58,7 @@ interface CacheEntry {
   opportunities: Opportunity[];
   pautas: Pauta[];
   appointments: Appointment[];
+  tasks: Task[];
 }
 
 const cache = new WeakMap<Contact[], CacheEntry>();
@@ -63,7 +69,8 @@ export function getChatIndex(data: ChatDataset): ChatIndex {
     existing &&
     existing.opportunities === data.opportunities &&
     existing.pautas === data.pautas &&
-    existing.appointments === data.appointments
+    existing.appointments === data.appointments &&
+    existing.tasks === data.tasks
   ) {
     return existing.index;
   }
@@ -73,6 +80,7 @@ export function getChatIndex(data: ChatDataset): ChatIndex {
     opportunities: data.opportunities,
     pautas: data.pautas,
     appointments: data.appointments,
+    tasks: data.tasks,
   });
   return index;
 }
