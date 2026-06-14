@@ -84,6 +84,7 @@ function cfString(v: string | string[] | undefined): string | undefined {
 // Spread all GHL fields through; add computed fields on top.
 function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>): Contact {
   const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
+  const attr = firstAttr(ghl.attributions);
   return {
     ...ghl,
     name:
@@ -96,15 +97,12 @@ function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>):
     phone: ghl.phone ?? "",
     tags: ghl.tags ?? [],
     createdAt: ghl.dateAdded,
-    source: firstAttr(ghl.attributions)?.utmSource || firstAttr(ghl.attributions)?.adSource || ghl.source || "direct",
-    campaign: buildCampaignLabel(
-      firstAttr(ghl.attributions)?.utmContent,
-      firstAttr(ghl.attributions)?.utmCampaign
-    ),
-    adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
-    adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
-    attributionUrl: firstAttr(ghl.attributions)?.url || ghl.attributionSource?.url || undefined,
-    attributionMedium: firstAttr(ghl.attributions)?.medium || firstAttr(ghl.attributions)?.utmSessionSource || undefined,
+    source: attr?.utmSource || attr?.adSource || ghl.source || "direct",
+    campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+    adType: attr?.utmMedium || attr?.utmSessionSource,
+    adId: attr?.utmAdId || undefined,
+    attributionUrl: attr?.url || ghl.attributionSource?.url || undefined,
+    attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
     ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
 }
@@ -117,6 +115,7 @@ function transformOpportunity(
   const pipeline = pipelines.get(ghl.pipelineId);
   const stageName = pipeline?.stages.get(ghl.pipelineStageId) || "Unknown";
   const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
+  const attr = firstAttr(ghl.attributions);
 
   return {
     ...ghl,
@@ -125,15 +124,12 @@ function transformOpportunity(
     stage: stageName,
     pipelineName: pipeline?.name || "Unknown",
     tags: ghl.tags ?? ghl.contact?.tags ?? [],
-    source: firstAttr(ghl.attributions)?.utmSource || firstAttr(ghl.attributions)?.adSource || ghl.source,
-    campaign: buildCampaignLabel(
-      firstAttr(ghl.attributions)?.utmContent,
-      firstAttr(ghl.attributions)?.utmCampaign
-    ),
-    adType: firstAttr(ghl.attributions)?.utmMedium || firstAttr(ghl.attributions)?.utmSessionSource,
-    adId: firstAttr(ghl.attributions)?.utmAdId || undefined,
-    attributionUrl: firstAttr(ghl.attributions)?.url || undefined,
-    attributionMedium: firstAttr(ghl.attributions)?.medium || firstAttr(ghl.attributions)?.utmSessionSource || undefined,
+    source: attr?.utmSource || attr?.adSource || ghl.source,
+    campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+    adType: attr?.utmMedium || attr?.utmSessionSource,
+    adId: attr?.utmAdId || undefined,
+    attributionUrl: attr?.url || undefined,
+    attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
     lostReason:
       ghl.status === "lost"
         ? cfString(customFieldsResolved["Motivo de Perdido"])
@@ -176,7 +172,7 @@ function resolveContactIdFromRelations(
   return contactRelation?.recordId ?? undefined;
 }
 
-async function fetchAllPautas(): Promise<Pauta[]> {
+async function fetchAllPautas(onProgress?: (count: number) => void): Promise<Pauta[]> {
   try {
     // List all custom objects to find the Pautas schema key
     const schemasResp = await getCustomObjects();
@@ -190,7 +186,7 @@ async function fetchAllPautas(): Promise<Pauta[]> {
       return [];
     }
 
-    const records = await getAllCustomObjectRecords(stub.key);
+    const records = await getAllCustomObjectRecords(stub.key, onProgress);
 
     const SKIP_PROPERTY_KEYS = new Set(["tipo", "nombre_pauta", "id"]);
 
@@ -218,6 +214,72 @@ async function fetchAllPautas(): Promise<Pauta[]> {
   }
 }
 
+// Fetch + transform appointments across all calendars over a ±90-day window.
+// /calendars/events requires one of (calendarId, userId, groupId); empirically
+// GHL doesn't index it on assignedUserId, so userId-based queries return empty.
+// Fan out across calendars instead and use each event's assignedUserId for asesor
+// attribution. Per-calendar failures are swallowed so one bad calendar doesn't
+// blank the chart. Self-contained so it can run concurrently with the other
+// top-level fetches; the global limiter in ghl-client paces the combined load.
+async function fetchAppointments(userMap: Map<string, string>): Promise<Appointment[]> {
+  const appointments: Appointment[] = [];
+  try {
+    const calsResp = await getCalendars().catch((err: unknown) => {
+      console.error("[GHL] Calendars list fetch failed:", err);
+      return { calendars: [] };
+    });
+    const calendarIds = calsResp.calendars.map((c) => c.id);
+    if (calendarIds.length === 0) return appointments;
+
+    // /calendars/events expects startTime/endTime as epoch ms strings; ISO
+    // strings silently return empty. Window spans 90 days back AND forward:
+    // appointments are inherently future-facing, so an end of `now` would
+    // silently drop every upcoming appointment.
+    const now = Date.now();
+    const apptStartTime = String(now - 90 * 86_400_000);
+    const apptEndTime = String(now + 90 * 86_400_000);
+
+    // Fan out one request per calendar; ghlFetch's semaphore bounds in-flight
+    // count, so we no longer need a hand-rolled worker-pool cursor here.
+    const apptBatches = await Promise.all(
+      calendarIds.map((calendarId) =>
+        getCalendarEvents({ calendarId, startTime: apptStartTime, endTime: apptEndTime })
+          .then((resp) => resp.events ?? [])
+          .catch((err: unknown) => {
+            console.error(`[GHL] Calendar events fetch failed for calendar ${calendarId}:`, err);
+            return [] as GHLCalendarEvent[];
+          })
+      )
+    );
+
+    // Dedupe by event id (one event could appear under multiple calendars in
+    // theory), then transform.
+    const seen = new Set<string>();
+    for (const batch of apptBatches) {
+      for (const ev of batch) {
+        if (seen.has(ev.id)) continue;
+        seen.add(ev.id);
+        const advisorId = ev.assignedUserId;
+        const advisorName = advisorId && userMap.has(advisorId) ? userMap.get(advisorId) : advisorId;
+        appointments.push({
+          id: ev.id,
+          contactId: ev.contactId,
+          assignedTo: advisorName,
+          title: ev.title,
+          startTime: ev.startTime,
+          endTime: ev.endTime,
+          status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
+          notes: ev.notes,
+          location: ev.address ?? ev.location,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[GHL] Appointments fetch failed:", err);
+  }
+  return appointments;
+}
+
 export async function GET() {
   const encoder = new TextEncoder();
 
@@ -226,9 +288,19 @@ export async function GET() {
       const send = (obj: unknown) => {
         controller.enqueue(encoder.encode(enc(obj)));
       };
+      // Structured per-dataset progress. The client renders one live row per
+      // step (status + running count), so the user watches every stream advance
+      // in parallel instead of staring at a single flickering line. `progress`
+      // text frames are still sent as a human-readable fallback.
+      const sendStep = (
+        key: string,
+        status: "loading" | "done",
+        count?: number
+      ) => send({ type: "step", key, status, ...(count !== undefined ? { count } : {}) });
 
       try {
         send({ type: "progress", message: "Iniciando sincronización…" });
+        sendStep("config", "loading");
 
         // Resolve the sub-account name first so the loading screen can show which
         // location is being opened. Cheap single call — don't block the rest on it.
@@ -290,28 +362,55 @@ export async function GET() {
           userMap.set(u.id, name);
           members.push(name);
         }
+        sendStep("config", "done");
 
-        // Fetch contacts with progress
-        send({ type: "progress", message: "Cargando contactos…" });
-        const contactsRaw = await getAllContacts((count) => {
-          send({ type: "progress", message: `Cargando contactos… ${count.toLocaleString("es-MX")}` });
-        }).catch((err: unknown) => {
-          console.error("[GHL] Contacts fetch failed:", err);
-          return [] as import("@/lib/ghl-client").GHLContact[];
-        });
+        // Contacts, opportunities, pautas, appointments and tasks are all
+        // independent of one another — only the transforms afterward depend on
+        // the lookup maps built above. Fetch them concurrently and let the
+        // process-wide semaphore + token bucket in ghl-client pace the combined
+        // GHL load (the old "fetch pautas last to avoid rate-limiting" ordering
+        // is now handled centrally). Progress messages from contacts/opps
+        // interleave — the intended tradeoff for the latency win.
+        send({ type: "progress", message: "Cargando datos de GoHighLevel…" });
+        for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks"]) {
+          sendStep(k, "loading", 0);
+        }
 
-        // Fetch opportunities with progress
-        send({ type: "progress", message: "Cargando oportunidades…" });
-        const opportunitiesRaw = await getAllOpportunities((count) => {
-          send({ type: "progress", message: `Cargando oportunidades… ${count.toLocaleString("es-MX")}` });
-        }).catch((err: unknown) => {
-          console.error("[GHL] Opportunities fetch failed:", err);
-          return [] as import("@/lib/ghl-client").GHLOpportunity[];
-        });
-
-        // Fetch pautas after contacts+opps to avoid rate-limiting (29+ concurrent pages)
-        send({ type: "progress", message: "Cargando pautas…" });
-        const pautas = await fetchAllPautas();
+        const [contactsRaw, opportunitiesRaw, pautas, appointments, tasks] =
+          await Promise.all([
+            getAllContacts((count) => {
+              send({ type: "progress", message: `Cargando contactos… ${count.toLocaleString("es-MX")}` });
+              sendStep("contacts", "loading", count);
+            })
+              .then((r) => { sendStep("contacts", "done", r.length); return r; })
+              .catch((err: unknown) => {
+                console.error("[GHL] Contacts fetch failed:", err);
+                sendStep("contacts", "done", 0);
+                return [] as import("@/lib/ghl-client").GHLContact[];
+              }),
+            getAllOpportunities((count) => {
+              send({ type: "progress", message: `Cargando oportunidades… ${count.toLocaleString("es-MX")}` });
+              sendStep("opportunities", "loading", count);
+            })
+              .then((r) => { sendStep("opportunities", "done", r.length); return r; })
+              .catch((err: unknown) => {
+                console.error("[GHL] Opportunities fetch failed:", err);
+                sendStep("opportunities", "done", 0);
+                return [] as import("@/lib/ghl-client").GHLOpportunity[];
+              }),
+            fetchAllPautas((count) => sendStep("pautas", "loading", count))
+              .then((r) => { sendStep("pautas", "done", r.length); return r; }),
+            fetchAppointments(userMap)
+              .then((r) => { sendStep("appointments", "done", r.length); return r; }),
+            searchLocationTasks()
+              .then((raw) => raw.map(transformTask))
+              .then((r) => { sendStep("tasks", "done", r.length); return r; })
+              .catch((err: unknown) => {
+                console.error("[GHL] Tasks fetch failed:", err);
+                sendStep("tasks", "done", 0);
+                return [] as Task[];
+              }),
+          ]);
 
         send({ type: "progress", message: "Procesando datos…" });
 
@@ -402,93 +501,10 @@ export async function GET() {
         // Conversations/messages are fetched separately by /api/dashboard-messages
         // (background load) so the expensive per-user message fan-out stays off
         // the critical path of the initial dashboard render.
-
-        // Fetch appointments per calendar over the last 90 days.
-        // /calendars/events requires one of (calendarId, userId, groupId);
-        // empirically GHL doesn't index it on assignedUserId, so userId-based
-        // queries return empty. Fan out across calendars instead and use each
-        // event's assignedUserId for asesor attribution. Per-calendar failures
-        // are swallowed so one bad calendar doesn't blank the chart.
-        send({ type: "progress", message: "Cargando citas…" });
-        const appointments: Appointment[] = [];
-        try {
-          const calsResp = await getCalendars().catch((err: unknown) => {
-            console.error("[GHL] Calendars list fetch failed:", err);
-            return { calendars: [] };
-          });
-          const calendarIds = calsResp.calendars.map((c) => c.id);
-
-          if (calendarIds.length > 0) {
-            // /calendars/events expects startTime/endTime as epoch ms strings;
-            // ISO strings silently return empty.
-            // Window spans 90 days back AND 90 days forward: appointments are
-            // inherently future-facing, so an end of `now` would silently drop
-            // every upcoming appointment (e.g. "citas de mañana" → 0). Widening
-            // the range adds no extra requests — GHL returns all events in it.
-            const now = Date.now();
-            const apptStartTime = String(now - 90 * 86_400_000);
-            const apptEndTime = String(now + 90 * 86_400_000);
-
-            // Concurrency 3: appointments piggy-back on the same rate-limit
-            // budget as the in-flight conversation fan-out (CONCURRENCY=6).
-            const CONCURRENCY_APPT = 3;
-            let apptCursor = 0;
-            const apptBatches: GHLCalendarEvent[][] = new Array(calendarIds.length);
-            await Promise.all(
-              Array.from({ length: Math.min(CONCURRENCY_APPT, calendarIds.length) }, async () => {
-                while (apptCursor < calendarIds.length) {
-                  const idx = apptCursor++;
-                  const calendarId = calendarIds[idx];
-                  try {
-                    const resp = await getCalendarEvents({ calendarId, startTime: apptStartTime, endTime: apptEndTime });
-                    apptBatches[idx] = resp.events ?? [];
-                  } catch (err) {
-                    console.error(`[GHL] Calendar events fetch failed for calendar ${calendarId}:`, err);
-                    apptBatches[idx] = [];
-                  }
-                }
-              })
-            );
-
-            // Dedupe by event id (one event could appear under multiple
-            // calendars in theory), then transform.
-            const seen = new Set<string>();
-            for (const batch of apptBatches) {
-              if (!batch) continue;
-              for (const ev of batch) {
-                if (seen.has(ev.id)) continue;
-                seen.add(ev.id);
-                const advisorId = ev.assignedUserId;
-                const advisorName = advisorId && userMap.has(advisorId)
-                  ? userMap.get(advisorId)
-                  : advisorId;
-                appointments.push({
-                  id: ev.id,
-                  contactId: ev.contactId,
-                  assignedTo: advisorName,
-                  title: ev.title,
-                  startTime: ev.startTime,
-                  endTime: ev.endTime,
-                  status: (ev.appointmentStatus ?? "").toLowerCase() || "sin estado",
-                  notes: ev.notes,
-                  location: ev.address ?? ev.location,
-                });
-              }
-            }
-          }
-        } catch (err) {
-          console.error("[GHL] Appointments fetch failed:", err);
-        }
-
+        //
+        // Appointments and tasks were already fetched concurrently above (see the
+        // Promise.all). GHL exposes no public calls endpoint in the standard API.
         const calls: Call[] = [];
-
-        let tasks: Task[] = [];
-        try {
-          const tasksRaw = await searchLocationTasks();
-          tasks = tasksRaw.map(transformTask);
-        } catch (err) {
-          console.error("[GHL] Tasks fetch failed:", err);
-        }
 
         // Extract unique tags, campaigns, sources
         const tagSet = new Set<string>();
@@ -503,12 +519,6 @@ export async function GET() {
           if (o.campaign) campaignSet.add(o.campaign);
           if (o.source) sourceSet.add(o.source);
         }
-
-        // Debug: expose raw attributionSource from first few contacts so we can verify field names
-        const debugAttribution = contactsRaw.slice(0, 5).map((c) => ({
-          id: c.id,
-          attributionSource: c.attributionSource ?? null,
-        }));
 
         // Ensure the sub-account name is settled before the final payload.
         await locationPromise;
@@ -532,7 +542,6 @@ export async function GET() {
             totalContacts: contacts.length,
             totalOpportunities: opportunities.length,
             fetchedAt: new Date().toISOString(),
-            debugAttribution,
           },
         });
       } catch (error) {

@@ -40,8 +40,8 @@ export default function DashboardPage() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  const { data, isLoading, isError, progress, locationName, refresh } = useDashboardData({})
-  const { messages, isLoading: messagesLoading } = useConversationsData()
+  const { data, isLoading, isError, progress, locationName, steps, refresh } = useDashboardData({})
+  const { messages } = useConversationsData()
 
   const [dateFilter, setDateFilter] = useState<DateFilter>({ preset: "all" })
   const dateRange = useMemo(() => resolveDateRange(dateFilter), [dateFilter])
@@ -96,7 +96,7 @@ export default function DashboardPage() {
   return (
     <>
     <AnimatePresence>
-      {isInitialLoad && <LoadingScreen key="loader" progress={progress} locationName={locationName} />}
+      {isInitialLoad && <LoadingScreen key="loader" progress={progress} locationName={locationName} steps={steps} />}
     </AnimatePresence>
     <div className="flex min-h-screen flex-col bg-background">
       {/* Header */}
@@ -206,8 +206,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <nav className="border-b border-border bg-card px-6" aria-label="Vistas del panel">
-        <div className="flex gap-8">
+      <nav className="border-b border-border bg-card px-4 sm:px-6" aria-label="Vistas del panel">
+        <div className="flex gap-6 sm:gap-8">
           {(
             [
               { id: "marketing" as const, label: "Marketing", icon: TrendingUp },
@@ -262,7 +262,6 @@ export default function DashboardPage() {
             contacts={contacts}
             calls={calls}
             messages={filteredMessages}
-            messagesLoading={messagesLoading}
             appointments={appointments}
             pipelines={data?.pipelines ?? []}
             tasks={tasks}

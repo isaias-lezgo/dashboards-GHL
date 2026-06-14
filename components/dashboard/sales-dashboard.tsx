@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from "react"
 import {
   Bar,
+  BarChart,
   ComposedChart,
   Line,
   Pie,
@@ -53,7 +54,6 @@ interface SalesDashboardProps {
   contacts: Contact[]
   calls: Call[]
   messages: Message[]
-  messagesLoading?: boolean
   appointments: Appointment[]
   pipelines?: Pipeline[]
   tasks?: Task[]
@@ -87,14 +87,37 @@ function apptStatusVisual(status: string, fallbackIndex: number): { label: strin
   }
 }
 
+// Timeline (Línea de tiempo) — amber for contactos, emerald for oportunidades.
+type TimelineGran = "day" | "week" | "month"
+const TIMELINE_CONTACTS_COLOR = "#f59e0b"
+const TIMELINE_OPPS_COLOR = "#10b981"
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+// Monday-anchored start of week (local time).
+function startOfWeek(input: Date): Date {
+  const d = new Date(input)
+  d.setHours(0, 0, 0, 0)
+  const offset = (d.getDay() + 6) % 7 // Mon=0 … Sun=6
+  d.setDate(d.getDate() - offset)
+  return d
+}
+
 export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", periodLabel }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
   const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
   const [hoveredOrigin, setHoveredOrigin] = useState<number | undefined>(undefined)
+  const [timelineGran, setTimelineGran] = useState<TimelineGran>("month")
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
+  }, [])
+
+  const openContactsDrill = useCallback((title: string, items: Contact[], subtitle?: string) => {
+    setDrill({ open: true, title, subtitle, opportunities: [], contactItems: items })
   }, [])
 
   const kpiMetrics = useMemo(() => {
@@ -117,9 +140,10 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     const contactsWithOpportunity = contacts.filter((c) => (oppCountByContact.get(c.id) ?? 0) >= 1).length
     const contactsWithoutOpportunity = contactsTotal - contactsWithOpportunity
     const contactsWithMultipleOpportunities = contacts.filter((c) => (oppCountByContact.get(c.id) ?? 0) > 1).length
+    const contactsWithoutOpp = contacts.filter((c) => (oppCountByContact.get(c.id) ?? 0) === 0)
     const oppsWithContact = opportunities.filter((o) => o.contactId && contactIdsInList.has(o.contactId))
     const oppsMultiContact = opportunities.filter((o) => o.contactId && (oppCountByContact.get(o.contactId) ?? 0) > 1)
-    return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate, contactsTotal, contactsWithOpportunity, contactsWithoutOpportunity, contactsWithMultipleOpportunities, oppsWithContact, oppsMultiContact }
+    return { total, won, open, lost, abandoned, wonRevenue, activeMembers, conversionRate, contactsTotal, contactsWithOpportunity, contactsWithoutOpportunity, contactsWithMultipleOpportunities, contactsWithoutOpp, oppsWithContact, oppsMultiContact }
   }, [opportunities, contacts, membersProp])
 
   // ── Embudo: hitos del recorrido del lead (lead → contacto → cita → realizada → ganado) ──
@@ -207,6 +231,55 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     }))
     return { months, chartData }
   }, [opportunities, appointments])
+
+  // ── Línea de tiempo: contactos y oportunidades creados (X = día/semana/mes) ──
+  // Granularity only changes the X-axis bucketing; the top filter governs the dataset.
+  const timelineData = useMemo(() => {
+    type Bucket = { key: string; label: string; sort: number; contacts: Contact[]; opps: Opportunity[] }
+    const buckets = new Map<string, Bucket>()
+    const ensure = (d: Date): Bucket => {
+      let anchor: Date
+      let key: string
+      let label: string
+      if (timelineGran === "day") {
+        anchor = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+        key = ymd(anchor)
+        label = anchor.toLocaleDateString("es-MX", { day: "numeric", month: "short" })
+      } else if (timelineGran === "week") {
+        anchor = startOfWeek(d)
+        key = ymd(anchor)
+        label = anchor.toLocaleDateString("es-MX", { day: "numeric", month: "short" })
+      } else {
+        anchor = new Date(d.getFullYear(), d.getMonth(), 1)
+        key = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`
+        label = anchor.toLocaleDateString("es-MX", { month: "short", year: "2-digit" })
+      }
+      let b = buckets.get(key)
+      if (!b) {
+        b = { key, label, sort: anchor.getTime(), contacts: [], opps: [] }
+        buckets.set(key, b)
+      }
+      return b
+    }
+    for (const c of contacts) {
+      const d = new Date(c.createdAt)
+      if (isNaN(d.getTime())) continue
+      ensure(d).contacts.push(c)
+    }
+    for (const o of opportunities) {
+      const d = new Date(o.createdAt)
+      if (isNaN(d.getTime())) continue
+      ensure(d).opps.push(o)
+    }
+    const sorted = [...buckets.values()].sort((a, b) => a.sort - b.sort)
+    const chartData = sorted.map((b) => ({
+      key: b.key,
+      label: b.label,
+      contacts: b.contacts.length,
+      opps: b.opps.length,
+    }))
+    return { buckets: sorted, chartData }
+  }, [contacts, opportunities, timelineGran])
 
   // ── Origen de leads (plataforma normalizada) con conversión a cita ──
   const origenData = useMemo(() => {
@@ -508,9 +581,12 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   )}
                   {kpiMetrics.contactsWithoutOpportunity > 0 && (
                     <span
-                      className="inline-flex cursor-default items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-75"
                       style={{ background: "#94a3b822", color: "#94a3b8" }}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openContactsDrill("Contactos sin oportunidad", kpiMetrics.contactsWithoutOpp)
+                      }}
                     >
                       <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: "#94a3b8" }} />
                       {kpiMetrics.contactsWithoutOpportunity} Sin oportunidad
@@ -634,6 +710,93 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
           }
         />
       </div>
+
+      <DashboardCard>
+        <ChartCardHeader
+          title="Línea de tiempo de contactos y oportunidades"
+          total={`${contacts.length.toLocaleString("es-MX")} contactos · ${opportunities.length.toLocaleString("es-MX")} oportunidades`}
+          actions={
+            <div className="flex rounded-lg border border-border bg-muted p-0.5">
+              {([
+                { key: "day" as const, label: "Diario" },
+                { key: "week" as const, label: "Semanal" },
+                { key: "month" as const, label: "Mensual" },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    timelineGran === opt.key
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setTimelineGran(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <ChartCardContent>
+          {timelineData.chartData.length === 0 ? (
+            <ChartEmpty message="Sin datos para la línea de tiempo" height={192} />
+          ) : (
+            <>
+              <ChartContainer
+                config={{
+                  contacts: { label: "Contactos", color: TIMELINE_CONTACTS_COLOR },
+                  opps: { label: "Oportunidades", color: TIMELINE_OPPS_COLOR },
+                }}
+                style={{ height: 300 }}
+                className="w-full"
+              >
+                <BarChart
+                  data={timelineData.chartData}
+                  margin={{ left: 8, right: 8, top: 16, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_GRID_STROKE} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11 }}
+                    interval="preserveStartEnd"
+                    minTickGap={16}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <ChartTooltip content={<NonZeroTooltipContent />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                  <Bar
+                    stackId="timeline"
+                    dataKey="contacts"
+                    name="Contactos"
+                    fill={TIMELINE_CONTACTS_COLOR}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const b = timelineData.buckets.find((x) => x.key === data.key)
+                      if (b && b.contacts.length > 0) openContactsDrill(`Contactos · ${b.label}`, b.contacts)
+                    }}
+                  />
+                  <Bar
+                    stackId="timeline"
+                    dataKey="opps"
+                    name="Oportunidades"
+                    fill={TIMELINE_OPPS_COLOR}
+                    radius={[3, 3, 0, 0]}
+                    cursor="pointer"
+                    onClick={(data: any) => {
+                      const b = timelineData.buckets.find((x) => x.key === data.key)
+                      if (b && b.opps.length > 0) openDrill(`Oportunidades · ${b.label}`, b.opps)
+                    }}
+                  />
+                </BarChart>
+              </ChartContainer>
+              <ChartHint>
+                Barras apiladas: contactos y oportunidades creados por periodo · El selector solo cambia el eje X, no filtra · Haz clic en un segmento para ver los registros
+              </ChartHint>
+            </>
+          )}
+        </ChartCardContent>
+      </DashboardCard>
 
       {/* ── Embudo de Ventas ───────────────────────── */}
       <SectionHeader title="Embudo de Ventas" />
@@ -862,7 +1025,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
             <ChartEmpty message="Sin datos de origen" height={192} />
           ) : (
             <>
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
                 <div style={{ width: 180, height: 220, flexShrink: 0, position: "relative" }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -916,7 +1079,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="grid grid-cols-[minmax(110px,160px)_1fr_90px_88px] gap-3 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <div className="grid grid-cols-[minmax(80px,1fr)_minmax(0,1fr)_64px_64px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid-cols-[minmax(110px,160px)_1fr_90px_88px] sm:gap-3">
                     <span>Origen</span>
                     <span />
                     <span className="text-right">Leads</span>
@@ -928,7 +1091,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       <button
                         key={o.platform}
                         type="button"
-                        className="grid w-full grid-cols-[minmax(110px,160px)_1fr_90px_88px] items-center gap-3 border-b border-border py-2.5 text-left transition-colors last:border-b-0 hover:bg-accent/20"
+                        className="grid w-full grid-cols-[minmax(80px,1fr)_minmax(0,1fr)_64px_64px] items-center gap-2 border-b border-border py-2.5 text-left transition-colors last:border-b-0 hover:bg-accent/20 sm:grid-cols-[minmax(110px,160px)_1fr_90px_88px] sm:gap-3"
                         onClick={() => openDrill(`Origen: ${o.platform}`, o.opps)}
                         onMouseEnter={() => setHoveredOrigin(i)}
                         onMouseLeave={() => setHoveredOrigin(undefined)}

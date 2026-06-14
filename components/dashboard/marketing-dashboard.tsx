@@ -164,27 +164,6 @@ function sourceCategory(opp: Opportunity): string {
   return "Otro"
 }
 
-// Pauta names from GHL look like "HEADLINE - URL - NUMERIC_ID" with the
-// headline repeating across many creatives. Truncating from the left collapses
-// them into identical strings, so we extract the headline plus a short token
-// from the URL path (e.g. Instagram shortcode, fb.me slug) for uniqueness.
-function shortPautaName(full: string): string {
-  const parts = full.split(" - ").map((s) => s.trim()).filter(Boolean)
-  const head = parts[0] ?? full
-  const url = parts[1] ?? ""
-  let token = ""
-  try {
-    const u = new URL(url)
-    const slug = u.pathname.split("/").filter(Boolean).pop() ?? ""
-    token = slug || u.hostname.replace(/^www\./, "")
-  } catch {
-    token = ""
-  }
-  if (token.length > 10) token = token.slice(0, 10)
-  const shortHead = head.length > 22 ? head.slice(0, 22) + "…" : head
-  return token ? `${shortHead} · ${token}` : shortHead
-}
-
 // Landing URLs in this location are the social links themselves:
 // instagram.com/p/… (Instagram) and fb.me/… (Facebook).
 function urlPlatform(url: string): "facebook" | "instagram" | null {
@@ -1060,7 +1039,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
               return (
                 <div className="flex items-center gap-4">
                   {/* Donut */}
-                  <div style={{ width: 160, height: 300, flexShrink: 0, position: "relative" }}>
+                  <div style={{ width: 160, height: 400, flexShrink: 0, position: "relative" }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -1202,7 +1181,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             total={pautasByTipoTotal}
             icon={FileText}
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <OrigenDeLeadInfo />
                 <button
                   onClick={() => setPautaUniqueLeads((v) => !v)}
@@ -1226,7 +1205,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                     pautasByTipoPlatforms.map((k) => [k, { label: k, color: PLATFORM_COLORS[k] ?? BRAND_AMBER }])
                   )}
                   className="aspect-auto"
-                  style={{ height: 300 }}
+                  style={{ height: 400 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={pautasByTipoRows} margin={{ top: 5, right: 8, left: 8, bottom: 16 }} barCategoryGap="20%">
@@ -1235,7 +1214,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
                       <YAxis tick={{ ...CHART_TICK }} tickLine={false} axisLine={false} allowDecimals={false} />
                       <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_, p) => p?.[0]?.payload?.tipo ?? String(_)} />} />
                       <Legend
-                        wrapperStyle={{ fontSize: 11, paddingTop: 32 }}
+                        wrapperStyle={{ fontSize: 11, paddingTop: 64}}
                         formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
                       />
                       {pautasByTipoPlatforms.map((key, i) => (
@@ -1376,7 +1355,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
           total={pautaByStageTotal}
           icon={Layers}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <TopNSlider value={stageTopN} max={pautaByStageKeyCount} onChange={setStageTopN} />
               <GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />
             </div>
@@ -1458,7 +1437,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
           total={lostByReasonTotal}
           icon={TrendingDown}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <TopNSlider value={lostTopN} max={lostByReasonKeyCount} onChange={setLostTopN} />
               <GroupByToggle value={lostGroupBy} onChange={setLostGroupBy} />
             </div>
@@ -1700,7 +1679,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
             icon={Calendar}
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {apptStatuses.length > 0 && (
                   <Select value={apptStatusFilter} onValueChange={setApptStatusFilter}>
                     <SelectTrigger
@@ -1800,7 +1779,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
             icon={TrendingUp}
             actions={
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <TopNSlider value={wonTopN} max={wonKeyCount} onChange={setWonTopN} />
                 <GroupByToggle value={wonGroupBy} onChange={setWonGroupBy} />
               </div>

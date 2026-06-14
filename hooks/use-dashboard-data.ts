@@ -12,6 +12,30 @@ import type {
 } from "@/lib/types";
 import { fetchStream } from "./fetch-stream";
 
+export type StepKey =
+  | "config"
+  | "contacts"
+  | "opportunities"
+  | "pautas"
+  | "appointments"
+  | "tasks";
+
+export interface StepState {
+  status: "pending" | "loading" | "done";
+  count?: number;
+}
+
+export type StepMap = Record<StepKey, StepState>;
+
+const INITIAL_STEPS: StepMap = {
+  config: { status: "pending" },
+  contacts: { status: "pending" },
+  opportunities: { status: "pending" },
+  pautas: { status: "pending" },
+  appointments: { status: "pending" },
+  tasks: { status: "pending" },
+};
+
 export interface DashboardData {
   contacts: Contact[];
   opportunities: Opportunity[];
@@ -42,6 +66,7 @@ export function useDashboardData(params?: {
   const [isError, setIsError] = useState(false);
   const [progress, setProgress] = useState<string>("Iniciando sincronización…");
   const [locationName, setLocationName] = useState<string>("");
+  const [steps, setSteps] = useState<StepMap>(INITIAL_STEPS);
   const abortRef = useRef<AbortController | null>(null);
 
   const startDate = params?.startDate;
@@ -61,9 +86,20 @@ export function useDashboardData(params?: {
     setIsLoading(true);
     setIsError(false);
     setProgress("Iniciando sincronización…");
+    setSteps(INITIAL_STEPS);
 
     try {
-      const result = await fetchStream<DashboardData>(url, setProgress, ctrl.signal, setLocationName);
+      const result = await fetchStream<DashboardData>(
+        url,
+        setProgress,
+        ctrl.signal,
+        setLocationName,
+        (step) =>
+          setSteps((prev) => ({
+            ...prev,
+            [step.key]: { status: step.status, count: step.count },
+          }))
+      );
       setData(result);
       if (result.locationName) setLocationName(result.locationName);
       setProgress("");
@@ -95,6 +131,7 @@ export function useDashboardData(params?: {
     isError,
     progress,
     locationName,
+    steps,
     refresh,
   };
 }

@@ -1,26 +1,34 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
+import type { StepKey, StepMap } from "@/hooks/use-dashboard-data"
 
 interface LoadingScreenProps {
   progress: string
   /** Name of the GHL sub-account being opened. Empty until resolved. */
   locationName?: string
+  /** Live per-dataset progress. All datasets load concurrently. */
+  steps?: StepMap
 }
 
-const SYNC_STEPS = [
-  "Pipelines",
-  "Contactos",
-  "Oportunidades",
-  "Pautas",
-  "Citas",
-] as const
+// Visible rows, in display order, with their Spanish labels. These mirror the
+// concurrent fetches in /api/dashboard — each advances independently.
+const STEP_ROWS: { key: StepKey; label: string }[] = [
+  { key: "config", label: "Configuración" },
+  { key: "contacts", label: "Contactos" },
+  { key: "opportunities", label: "Oportunidades" },
+  { key: "pautas", label: "Pautas" },
+  { key: "appointments", label: "Citas" },
+  { key: "tasks", label: "Tareas" },
+]
 
-function normalizeProgress(message: string): string {
-  return message
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
+const FALLBACK_STEPS: StepMap = {
+  config: { status: "loading" },
+  contacts: { status: "pending" },
+  opportunities: { status: "pending" },
+  pautas: { status: "pending" },
+  appointments: { status: "pending" },
+  tasks: { status: "pending" },
 }
 
 function SyncRing() {
@@ -79,18 +87,87 @@ function SyncRing() {
   )
 }
 
-function stepFromMessage(message: string): number {
-  const lower = normalizeProgress(message)
-  if (lower.includes("pipeline") || lower.includes("configuracion") || lower.includes("sincroniz")) return 0
-  if (lower.includes("contacto")) return 1
-  if (lower.includes("oportunidad")) return 2
-  if (lower.includes("pauta") || lower.includes("procesando")) return 3
-  if (lower.includes("citas") || /\bcita\b/.test(lower)) return 4
-  return 0
+function StepRow({
+  label,
+  status,
+  count,
+  delay,
+}: {
+  label: string
+  status: "pending" | "loading" | "done"
+  count?: number
+  delay: number
+}) {
+  const isDone = status === "done"
+  const isActive = status === "loading"
+
+  return (
+    <motion.div
+      className="flex items-center gap-3"
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay, duration: 0.3 }}
+    >
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-colors duration-300 ${
+          isDone
+            ? "bg-primary text-primary-foreground"
+            : isActive
+              ? "border-2 border-primary bg-primary/10 text-primary"
+              : "border border-border bg-muted/50 text-muted-foreground"
+        }`}
+      >
+        {isDone ? (
+          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : isActive ? (
+          <motion.span
+            className="h-1.5 w-1.5 rounded-full bg-primary"
+            animate={{ scale: [1, 1.35, 1], opacity: [1, 0.6, 1] }}
+            transition={{ duration: 1, repeat: Infinity }}
+          />
+        ) : (
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+        )}
+      </span>
+
+      <span
+        className={`flex-1 text-sm transition-colors duration-300 ${
+          isActive ? "font-medium text-foreground" : isDone ? "text-muted-foreground" : "text-muted-foreground/60"
+        }`}
+      >
+        {label}
+      </span>
+
+      {/* Live count: shows the running total while loading and the final total
+          when done. Tabular numerals keep the column from jittering as digits
+          change. */}
+      <span className="min-w-[3.5rem] text-right text-xs tabular-nums">
+        {count !== undefined && (isActive || isDone) ? (
+          <motion.span
+            key={`${status}-${count}`}
+            className={isDone ? "font-medium text-foreground" : "text-muted-foreground"}
+            initial={{ opacity: 0.4 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15 }}
+          >
+            {count.toLocaleString("es-MX")}
+          </motion.span>
+        ) : isActive ? (
+          <span className="text-muted-foreground/60">…</span>
+        ) : null}
+      </span>
+    </motion.div>
+  )
 }
 
-export function LoadingScreen({ progress, locationName }: LoadingScreenProps) {
-  const activeStep = stepFromMessage(progress)
+export function LoadingScreen({ progress, locationName, steps }: LoadingScreenProps) {
+  const resolved = steps ?? FALLBACK_STEPS
+
+  const total = STEP_ROWS.length
+  const completed = STEP_ROWS.filter((s) => resolved[s.key].status === "done").length
+  const pct = Math.round((completed / total) * 100)
 
   return (
     <motion.div
@@ -149,68 +226,47 @@ export function LoadingScreen({ progress, locationName }: LoadingScreenProps) {
             </div>
           </div>
 
-          <div className="w-full space-y-2">
-            {SYNC_STEPS.map((label, i) => {
-              const isDone = activeStep > i
-              const isActive = activeStep === i
+          <div className="w-full space-y-2.5">
+            {STEP_ROWS.map((row, i) => {
+              const s = resolved[row.key]
               return (
-                <motion.div
-                  key={label}
-                  className="flex items-center gap-3"
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.15 + i * 0.05, duration: 0.3 }}
-                >
-                  <span
-                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-colors duration-300 ${
-                      isDone
-                        ? "bg-primary text-primary-foreground"
-                        : isActive
-                          ? "border-2 border-primary bg-primary/10 text-primary"
-                          : "border border-border bg-muted/50 text-muted-foreground"
-                    }`}
-                  >
-                    {isDone ? (
-                      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    ) : isActive ? (
-                      <motion.span
-                        className="h-1.5 w-1.5 rounded-full bg-primary"
-                        animate={{ scale: [1, 1.35, 1], opacity: [1, 0.6, 1] }}
-                        transition={{ duration: 1, repeat: Infinity }}
-                      />
-                    ) : (
-                      <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
-                    )}
-                  </span>
-                  <span
-                    className={`text-sm transition-colors duration-300 ${
-                      isActive ? "font-medium text-foreground" : isDone ? "text-muted-foreground" : "text-muted-foreground/60"
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </motion.div>
+                <StepRow
+                  key={row.key}
+                  label={row.label}
+                  status={s.status}
+                  count={s.count}
+                  delay={0.15 + i * 0.05}
+                />
               )
             })}
           </div>
 
-          <div className="flex min-h-[2.25rem] w-full flex-col items-center justify-center">
-            <AnimatePresence mode="wait">
-              {progress && (
-                <motion.p
+          {/* Determinate progress bar driven by completed-step count, so the
+              user always sees how far along the sync is — not just motion. */}
+          <div className="w-full space-y-2">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
+              <motion.div
+                className="h-full rounded-full bg-primary"
+                initial={{ width: 0 }}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              />
+            </div>
+            <div className="flex min-h-[1.25rem] items-center justify-between text-xs text-muted-foreground">
+              <AnimatePresence mode="wait">
+                <motion.span
                   key={progress}
-                  className="max-w-full truncate text-center text-xs text-muted-foreground"
-                  initial={{ opacity: 0, y: 6 }}
+                  className="max-w-[70%] truncate"
+                  initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.2 }}
                 >
-                  {progress}
-                </motion.p>
-              )}
-            </AnimatePresence>
+                  {progress || "Sincronizando…"}
+                </motion.span>
+              </AnimatePresence>
+              <span className="tabular-nums">{pct}%</span>
+            </div>
           </div>
         </div>
       </div>

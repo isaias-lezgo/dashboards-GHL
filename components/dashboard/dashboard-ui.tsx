@@ -92,7 +92,7 @@ export function TotalBadge({ value, className }: { value: number | string; class
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-5 px-6 pb-8">{children}</div>
+  return <div className="flex flex-col gap-5 px-4 pb-8 sm:px-6">{children}</div>
 }
 
 export function DashboardCard({
@@ -132,14 +132,19 @@ export function ChartCardHeader({
   icon?: LucideIcon
   actions?: ReactNode
 }) {
+  const hasTrailing = actions !== undefined || total !== undefined
   return (
-    <CardHeader className="flex flex-row items-center gap-2 space-y-0 px-4 py-3">
-      {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
-      <CardTitle className="text-sm font-semibold leading-snug tracking-tight">{title}</CardTitle>
-      <div className="ml-auto flex items-center gap-2">
-        {actions}
-        {total !== undefined && <TotalBadge value={total} className="ml-0" />}
+    <CardHeader className="flex flex-col gap-2 space-y-0 px-4 py-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 items-center gap-2">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />}
+        <CardTitle className="text-sm font-semibold leading-snug tracking-tight">{title}</CardTitle>
       </div>
+      {hasTrailing && (
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:flex-nowrap sm:justify-end">
+          {actions}
+          {total !== undefined && <TotalBadge value={total} className="ml-0" />}
+        </div>
+      )}
     </CardHeader>
   )
 }

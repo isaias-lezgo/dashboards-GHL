@@ -40,6 +40,16 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
   const [customOpen, setCustomOpen] = React.useState(false)
   const isCustom = value.preset === "custom"
 
+  // One month on narrow screens, two side-by-side once there's room.
+  const [showTwoMonths, setShowTwoMonths] = React.useState(false)
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)")
+    const update = () => setShowTwoMonths(mq.matches)
+    update()
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
+  }, [])
+
   const handleCustomSelect = React.useCallback(
     (range: DayPickerRange | undefined) => {
       onChange({ preset: "custom", from: range?.from, to: range?.to })
@@ -105,10 +115,10 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
             </Button>
           </PopoverTrigger>
 
-          <PopoverContent align="start" className="w-auto p-0">
+          <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] overflow-x-auto p-0">
             <Calendar
               mode="range"
-              numberOfMonths={2}
+              numberOfMonths={showTwoMonths ? 2 : 1}
               locale={es}
               defaultMonth={value.from ?? new Date()}
               selected={isCustom ? { from: value.from, to: value.to } : undefined}

@@ -919,61 +919,87 @@ export async function getAllCustomObjectRecords(
   objectKey: string,
   onProgress?: (count: number) => void
 ): Promise<GHLCustomObjectRecord[]> {
-  const allRecords: GHLCustomObjectRecord[] = [];
-  let page = 1;
   const pageLimit = 100;
+  // locationId is required here, but in the request body — not the query string.
+  // noQueryLocationId keeps it out of the query; ghlFetch still injects it into
+  // the POST body (noBodyLocationId is left unset).
+  const fetchPage = (page: number) =>
+    ghlFetch<GHLCustomObjectRecordsResponse>(`/objects/${objectKey}/records/search`, {
+      method: "POST",
+      version: "2023-02-21",
+      noQueryLocationId: true,
+      body: { page, pageLimit },
+    });
 
-  while (true) {
-    const response = await ghlFetch<GHLCustomObjectRecordsResponse>(
-      `/objects/${objectKey}/records/search`,
-      {
-        method: "POST",
-        version: "2023-02-21",
-        // locationId is required here, but in the request body — not the query
-        // string. noQueryLocationId keeps it out of the query; ghlFetch still
-        // injects it into the POST body (noBodyLocationId is left unset).
-        noQueryLocationId: true,
-        body: { page, pageLimit },
-      }
-    );
+  const first = await fetchPage(1);
+  const total = first.total ?? first.records.length;
 
-    allRecords.push(...response.records);
-    onProgress?.(allRecords.length);
+  const seen = new Set<string>();
+  const all: GHLCustomObjectRecord[] = [];
+  const absorb = (records: GHLCustomObjectRecord[]) => {
+    for (const r of records) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      all.push(r);
+    }
+    onProgress?.(all.length);
+  };
+  absorb(first.records);
 
-    if (allRecords.length >= (response.total ?? 0) || response.records.length < pageLimit) break;
+  if (all.length >= total || first.records.length < pageLimit) return all;
 
-    page++;
-    await sleep(200);
-  }
+  // Total known after page 1 → fetch the remaining pages concurrently; ghlFetch's
+  // limiter bounds in-flight count and rate, so no manual paging/sleep is needed.
+  const totalPages = Math.ceil(total / pageLimit);
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) => fetchPage(i + 2).then((r) => r.records))
+  );
+  for (const records of rest) absorb(records);
 
-  return allRecords;
+  return all;
 }
 
 // ============ HELPER FUNCTIONS ============
 
-// Helper to fetch all pages of opportunities
+// Helper to fetch all pages of opportunities.
+// The /opportunities/search endpoint is page-numbered AND returns meta.total on
+// the first page, so once we have page 1 we know exactly how many pages remain
+// and can fetch them all concurrently. The global semaphore + token bucket in
+// ghlFetch bound the actual in-flight count and request rate, so there's no need
+// for the old sequential page-walk or the inter-page sleep — those just added
+// latency on top of the central limiter. Results are deduped by id so a shifting
+// dataset (page boundaries moving between requests) can't inflate the count.
 export async function getAllOpportunities(
   onProgress?: (count: number) => void
 ): Promise<GHLOpportunity[]> {
-  const allOpportunities: GHLOpportunity[] = [];
-  let page = 1;
-  let total: number | undefined;
+  const pageSize = 100;
+  const first = await getOpportunities({ page: 1, limit: pageSize });
+  const total = first.meta.total ?? first.opportunities.length;
 
-  while (true) {
-    const response = await getOpportunities({ page, limit: 100 });
-    if (total === undefined) total = response.meta.total;
+  const seen = new Set<string>();
+  const all: GHLOpportunity[] = [];
+  const absorb = (opps: GHLOpportunity[]) => {
+    for (const o of opps) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      all.push(o);
+    }
+    onProgress?.(all.length);
+  };
+  absorb(first.opportunities);
 
-    allOpportunities.push(...response.opportunities);
-    onProgress?.(allOpportunities.length);
+  if (all.length >= total || !first.meta.nextPage) return all;
 
-    // Stop once we have all records or the API says there's no next page
-    if (allOpportunities.length >= (total ?? 0) || !response.meta.nextPage) break;
+  // Fan out the remaining pages. ghlFetch's limiter keeps this safe.
+  const totalPages = Math.ceil(total / pageSize);
+  const rest = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, i) =>
+      getOpportunities({ page: i + 2, limit: pageSize }).then((r) => r.opportunities)
+    )
+  );
+  for (const opps of rest) absorb(opps);
 
-    page = response.meta.nextPage!;
-    await sleep(200);
-  }
-
-  return allOpportunities;
+  return all;
 }
 
 // Helper to fetch all contacts with cursor pagination
@@ -1019,7 +1045,9 @@ export async function getAllContacts(
     // pageNew===0 bailout above still protect us if the cursor isn't unique.
     const lastDateMs = new Date(last.dateAdded).getTime();
     startAfter = response.meta?.startAfter ?? (Number.isNaN(lastDateMs) ? undefined : lastDateMs);
-    await sleep(200);
+    // No inter-page sleep: cursor pagination must stay sequential, but ghlFetch's
+    // token bucket already paces the request rate. An extra sleep here is pure
+    // added latency.
   }
 
   return allContacts;

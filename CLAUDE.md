@@ -28,33 +28,42 @@ This is a single-page Next.js 15 (App Router) dashboard that surfaces GoHighLeve
 
 ### Current state
 
-- `components/dashboard/marketing-dashboard.tsx` — **empty, being rebuilt from scratch**
-- `components/dashboard/sales-dashboard.tsx` — **empty, being rebuilt from scratch**
-- **Removed**: `kpi-strip.tsx` and `ai-insights.tsx` have been deleted and are no longer referenced anywhere
+- `components/dashboard/marketing-dashboard.tsx` and `components/dashboard/sales-dashboard.tsx` — **fully built**: each receives already-filtered data as props and renders its own set of charts, KPI cards, and drill-down drawers.
+- A third **AI assistant** tab is rendered from `app/page.tsx` and always sees the full (unfiltered) dataset.
 
 ### Data flow
 
 ```
 GHL REST API (services.leadconnectorhq.com)
     ↓  server-side only
-lib/ghl-client.ts  (raw GHL types + fetch helpers)
+lib/ghl-client.ts  (raw GHL types + fetch helpers; process-wide concurrency + rate limiter)
     ↓
-app/api/dashboard/route.ts  (GET — transforms GHL → internal types, fetches in parallel)
-    ↓  JSON
-hooks/use-dashboard-data.ts  (SWR, 60 s dedup, falls back to mock data on error)
+app/api/dashboard/route.ts  (GET — transforms GHL → internal types; fetches contacts/opps/pautas/appointments/tasks concurrently)
+    ↓  NDJSON stream of {progress|location|step|data|error} frames
+hooks/fetch-stream.ts  (parses the NDJSON stream)
     ↓
-app/page.tsx  (tab state, filter state, applies client-side filters, renders dashboard)
+hooks/use-dashboard-data.ts  (custom streaming fetcher; exposes data, progress text, and structured per-dataset `steps`. No SWR/caching — refresh() re-runs the full sync)
+    ↓
+app/page.tsx  (tab state, date-filter state, applies the client-side date-range filter, renders dashboard)
     ↓
 components/dashboard/{marketing,sales}-dashboard.tsx
 ```
 
+### Loading & progress
+
+The dashboard fetch streams NDJSON progress frames rather than returning a single JSON blob, so the UI can show live progress during the multi-second GHL sync:
+- `{ type: "location", name }` — sub-account name (resolved first, for the loading header).
+- `{ type: "step", key, status, count }` — structured per-dataset progress. `key` ∈ `config | contacts | opportunities | pautas | appointments | tasks`; `status` ∈ `loading | done`. Because those datasets are fetched **concurrently**, the loading screen (`components/dashboard/loading-screen.tsx`) renders one live row per dataset with a running count, plus a determinate progress bar driven by completed-step count.
+- `{ type: "progress", message }` — human-readable fallback text.
+- `{ type: "data", ... }` / `{ type: "error", ... }` — terminal frames.
+
 ### Key design decisions
 
-- **Mock data fallback** (`lib/mock-data.ts`): when the GHL API is unavailable or returns an error, the UI transparently shows mock data. `app/page.tsx` uses `data?.contacts ?? mockContacts` patterns throughout.
+- **No mock-data fallback**: when the GHL API is unavailable or errors, the UI renders against empty arrays (`data?.contacts ?? []` patterns in `app/page.tsx`). The former `lib/mock-data.ts` and its stand-ins have been removed.
 - **All GHL API calls are server-only**: `lib/ghl-client.ts` is never imported from client components — only from `app/api/dashboard/route.ts`. This keeps the token out of the browser bundle.
 - **`/opportunities/search` uses `location_id` (snake_case)** while most other endpoints use `locationId` (camelCase). The `useSnakeCaseLocationId` flag in `ghlFetch` handles this quirk.
-- **Filtering is entirely client-side**: `lib/filter-helpers.ts` filters the already-fetched dataset. Date range filtering passes `startDate`/`endDate` params to the API route, which currently does not forward them to GHL (the GHL endpoints don't uniformly support them), so date filtering is effectively client-side too.
-- **`calls` and `tasks` arrays are always empty** in live data. GHL doesn't expose a public calls endpoint in the standard API; tasks require per-contact fetches. `lib/mock-data.ts` provides realistic stand-ins for UI development.
+- **Filtering is entirely client-side and date-range only**: `lib/date-range.ts` (`DateFilter`, `resolveDateRange`, `filterByDateRange`) filters the already-fetched dataset by date; `components/dashboard/date-range-filter.tsx` is the UI. The filtered slices are computed in `app/page.tsx` and passed to each dashboard as props. The date filter bar is hidden on the AI assistant tab, which always sees the full dataset.
+- **`calls` is always empty** in live data — GHL doesn't expose a public calls endpoint in the standard API. **`tasks` is populated** via the location-wide `/locations/:id/tasks/search` endpoint (`searchLocationTasks`), fetched concurrently with the other datasets.
 
 ### Internal type system
 
@@ -96,6 +105,6 @@ An HTTP MCP server (`ghl-mcp`, configured in `.mcp.json`) connects directly to G
 
 - `components/ui/` — shadcn/ui components (generated, do not hand-edit)
 - `components/dashboard/` — domain components; each dashboard component receives already-filtered data as props
-- `components/dashboard/filter-bar.tsx` defines and exports the `Filters` interface used everywhere
+- `components/dashboard/date-range-filter.tsx` is the only global filter UI; the `DateFilter` type lives in `lib/date-range.ts`
 - Charts use Recharts via the shadcn chart wrapper (`components/ui/chart.tsx`)
 - `components.json` controls shadcn/ui config (alias `@/components/ui`, Tailwind CSS v3)
