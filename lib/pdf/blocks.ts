@@ -3,11 +3,11 @@ import type { PdfBlock, CalloutStyle } from "./types";
 import { C, sanitizeBrand, hr } from "./branding";
 import { buildChart } from "./charts";
 
-const CALLOUT: Record<CalloutStyle, { bg: string; text: string }> = {
-  info: { bg: C.naranjaClar, text: C.amarilloTxt },
-  warn: { bg: C.amarilloBg, text: C.amarilloTxt },
-  ok: { bg: C.verdeClaro, text: C.verde },
-  error: { bg: C.rojoClaro, text: C.rojoText },
+const CALLOUT: Record<CalloutStyle, { bg: string; text: string; accent: string }> = {
+  info: { bg: C.naranjaClar, text: C.amarilloTxt, accent: C.naranja },
+  warn: { bg: C.amarilloBg, text: C.amarilloTxt, accent: C.naranja },
+  ok: { bg: C.verdeClaro, text: C.verde, accent: C.verde },
+  error: { bg: C.rojoClaro, text: C.rojoText, accent: C.rojoText },
 };
 
 // Minimal **bold** inline parser → pdfmake text runs.
@@ -122,13 +122,35 @@ function table(headers: string[], rows: string[][]): Content {
 
 function callout(style: CalloutStyle, text: string): Content {
   const c = CALLOUT[style] ?? CALLOUT.info;
+  const clean = sanitizeBrand(text);
+  // A short "Lead-in:" prefix (e.g. "Análisis IA:") is pulled out as a bold,
+  // accent-colored label so the body reads as a captioned note, not a wall.
+  const m = clean.match(/^([^:.\n]{2,28}):\s+([\s\S]+)$/);
+  const runs: Content[] = m
+    ? [
+        { text: `${m[1]}  `, bold: true, color: c.accent },
+        { text: m[2], color: c.text },
+      ]
+    : [{ text: clean, color: c.text }];
+  const noBorder: [boolean, boolean, boolean, boolean] = [false, false, false, false];
   return {
     table: {
-      widths: ["*"],
-      body: [[{ text: sanitizeBrand(text), fontSize: 9.5, color: c.text, margin: [12, 8, 12, 8] }]],
+      widths: [3.5, "*"],
+      body: [[
+        // Accent rail down the left edge.
+        { text: "", fillColor: c.accent, border: noBorder },
+        {
+          text: runs,
+          fontSize: 10,
+          lineHeight: 1.45,
+          fillColor: c.bg,
+          margin: [14, 12, 16, 12],
+          border: noBorder,
+        },
+      ]],
     },
-    layout: { defaultBorder: false, fillColor: () => c.bg },
-    margin: [0, 4, 0, 8],
+    layout: { defaultBorder: false, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+    margin: [0, 6, 0, 10],
   };
 }
 

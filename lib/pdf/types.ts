@@ -57,5 +57,7 @@ export interface PdfSpec {
   subtitle?: string;
   /** Render a cover page. Default true. */
   cover?: boolean;
+  /** Download filename (without extension). Falls back to a slug of `title`. */
+  filename?: string;
   blocks: PdfBlock[];
 }

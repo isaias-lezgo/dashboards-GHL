@@ -13,8 +13,17 @@ const PLATAFORMA_RULES: { label: string; rule: string }[] = [
   { label: "Facebook",  rule: 'URL contiene fb.me / facebook.com, fuente incluye "facebook", "meta", "fb" o es un ID numérico largo' },
   { label: "TikTok",    rule: 'fuente incluye "tiktok"' },
   { label: "Google",    rule: 'fuente incluye "google", "bing" o "yahoo"' },
-  { label: "WhatsApp",  rule: 'medio de atribución es "whatsapp" o el contacto tiene etiqueta "inbound whatsapp"' },
-  { label: "Otro",      rule: "no cumple ninguno de los anteriores" },
+  { label: "Otro",      rule: "no cumple ninguno de los anteriores ni los fallbacks" },
+]
+
+// If the primary signals above don't resolve a platform, a fallback cascade
+// probes additional origin hints (strongest → weakest) before settling on "Otro".
+const FALLBACK_RULES: { label: string; rule: string }[] = [
+  { label: "1. Origen de Lead", rule: 'campo del contacto "Origen de Lead" (Instagram/Facebook/TikTok…)' },
+  { label: "2. Medio",          rule: "medio de atribución de GHL (facebook, instagram, tiktok…)" },
+  { label: "3. Tipo de anuncio", rule: "utm_medium / utm_session_source" },
+  { label: "4. Campaña",        rule: "etiqueta de campaña (utm_content / utm_campaign)" },
+  { label: "5. URL / fuente",   rule: "re-escaneo de la URL y fuente completas" },
 ]
 
 const FUENTE_RULES: { label: string; rule: string }[] = [
@@ -53,6 +62,10 @@ export function OrigenDeLeadInfo() {
           <div>
             <p className="font-medium text-foreground mb-0.5">Plataforma (filas)</p>
             <RuleList rules={PLATAFORMA_RULES} />
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-0.5">Fallbacks de plataforma</p>
+            <RuleList rules={FALLBACK_RULES} />
           </div>
           <div>
             <p className="font-medium text-foreground mb-0.5">Fuente de creación (segmentos)</p>

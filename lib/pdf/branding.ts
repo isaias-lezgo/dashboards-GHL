@@ -1,4 +1,5 @@
-import type { Content, StyleDictionary, ContentCanvas } from "pdfmake/interfaces";
+import type { Content, StyleDictionary, ContentCanvas, ContentStack } from "pdfmake/interfaces";
+import { LOGO_DATA_URL, LOGO_ASPECT } from "./logo";
 
 // ─── Palette (ported from crear-documentos-lezgosuite.md) ──────────────────────
 export const C = {
@@ -7,6 +8,7 @@ export const C = {
   naranjaClar: "#FEF3E2",
   naranjaBord: "#FBCF86",
   azul: "#335577",
+  azulOsc: "#13293D", // deep navy chip behind the logo (white "L" needs dark bg)
   negro: "#0A0A0A",
   negroText: "#1A1A1A",
   grisMed: "#4B5563",
@@ -70,6 +72,30 @@ export function hr(color: string = C.grisBorde, thickness = 0.5): ContentCanvas 
   };
 }
 
+/**
+ * Logo on a deep-navy rounded badge. The house mark's "L" is white, so it
+ * vanishes on the white page — the dark badge keeps it legible everywhere the
+ * logo appears (cover wordmark + every page header).
+ *
+ * Built as a canvas rect with the image overlaid via computed margins (rather
+ * than a table cell fill) so the navy always fully contains the logo with even
+ * padding — fixed-width table cells let the image overflow the fill.
+ */
+export function logoBadge(logoH: number, pad = 6, radius = 5): ContentStack & { width: number } {
+  const logoW = logoH * LOGO_ASPECT;
+  const badgeW = logoW + pad * 2;
+  const badgeH = logoH + pad * 2;
+  return {
+    stack: [
+      { canvas: [{ type: "rect", x: 0, y: 0, w: badgeW, h: badgeH, r: radius, color: C.azulOsc }] },
+      // Overlay the logo onto the badge: pull it up over the canvas, then
+      // reserve `pad` below so the stack's height equals the full badge.
+      { image: LOGO_DATA_URL, width: logoW, height: logoH, margin: [pad, pad - badgeH, 0, pad] },
+    ],
+    width: badgeW,
+  };
+}
+
 // ─── Cover page ────────────────────────────────────────────────────────────────
 export function buildCover(spec: {
   title: string;
@@ -83,7 +109,14 @@ export function buildCover(spec: {
     canvas: [{ type: "rect", x: 0, y: 0, w: USABLE_WIDTH, h: 9, color: C.naranja }],
     margin: [0, 30, 0, 18],
   });
-  out.push({ text: "LEZGO SUITE", style: "coverWordmark", margin: [0, 0, 0, 14] });
+  out.push({
+    columns: [
+      logoBadge(47, 7, 6),
+      { text: "LEZGO SUITE", style: "coverWordmark", margin: [0, 26, 0, 0] },
+    ],
+    columnGap: 12,
+    margin: [0, 0, 0, 16],
+  });
   out.push(hr(C.grisBorde, 1));
   out.push({ text: sanitizeBrand(spec.title), style: "coverTitle", margin: [0, 18, 0, 0] });
   if (spec.accent) out.push({ text: sanitizeBrand(spec.accent), style: "coverAccent" });
@@ -117,24 +150,19 @@ export function buildCover(spec: {
 export function header(currentPage: number): Content | undefined {
   if (currentPage <= 1) return undefined;
   return {
-    margin: [40, 22, 40, 0],
+    margin: [40, 20, 40, 0],
     stack: [
       {
         columns: [
-          {
-            canvas: [{ type: "rect", x: 0, y: 0, w: 78, h: 16, color: C.naranja }],
-            width: 78,
-          },
-          { text: "", width: 8 },
-          { text: "Reporte · Lezgo Suite", fontSize: 8, bold: true, color: C.negroText, margin: [0, 3, 0, 0] },
+          logoBadge(18, 4, 3),
+          { text: "Reporte · Lezgo Suite", fontSize: 8, bold: true, color: C.negroText, margin: [0, 9, 0, 0] },
         ],
+        columnGap: 8,
       },
       {
         canvas: [{ type: "line", x1: 0, y1: 0, x2: USABLE_WIDTH, y2: 0, lineWidth: 1.5, lineColor: C.naranja }],
         margin: [0, 4, 0, 0],
       },
-      // Wordmark text overlaid on the orange block
-      { text: "LEZGO SUITE", fontSize: 6.5, bold: true, color: C.blanco, absolutePosition: { x: 48, y: 27 } },
     ],
   };
 }

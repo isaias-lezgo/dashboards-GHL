@@ -78,6 +78,8 @@ interface MarketingDashboardProps {
   calls?: Call[]
   appointments?: Appointment[]
   locationId?: string
+  /** Sub-account name, used in the exported report's filename. */
+  locationName?: string
   /** Label of the active global date filter, shown on the PDF report cover. */
   periodLabel?: string
 }
@@ -153,13 +155,27 @@ const SOURCE_CATEGORY_COLORS: Record<string, string> = {
   "Otro":          "#6b7280",
 }
 
+// Manually-created leads carry the CRM-UI fingerprint in the attribution, NOT
+// in `source`: GHL sets utmSessionSource="CRM UI" (→ adType) and medium="manual"
+// (→ attributionMedium). Detect any of those so hand-entered leads land in the
+// "CRM UI" bucket instead of falling through to "Otro".
+const CRM_UI_VALUES = ["crm ui", "crm", "manual"]
+function isCrmUi(src: string, med: string, attrMed: string): boolean {
+  return (
+    CRM_UI_VALUES.includes(src) ||
+    CRM_UI_VALUES.includes(med) ||
+    CRM_UI_VALUES.includes(attrMed)
+  )
+}
+
 function sourceCategory(opp: Opportunity): string {
   const src = (opp.source ?? "").toLowerCase()
   const med = (opp.adType ?? "").toLowerCase()
+  const attrMed = (opp.attributionMedium ?? "").toLowerCase()
   if (PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) || PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m))) return "Paid Social"
   if (PAID_SEARCH_SOURCES.some((s) => src.includes(s)) || PAID_SEARCH_MEDIUMS.some((m) => med.includes(m))) return "Paid Search"
   if (SOCIAL_ORGANIC_SOURCES.some((s) => src.includes(s)) || med.includes("social")) return "Social Media"
-  if (src === "" || src === "crm" || src === "crm ui" || src === "manual" || med === "" ) return "CRM UI"
+  if (src === "" || med === "" || isCrmUi(src, med, attrMed)) return "CRM UI"
   if (src.includes("web") || src.includes("website") || src.includes("landing") || med === "organic" || med === "referral") return "Orgánico Web"
   return "Otro"
 }
@@ -214,8 +230,8 @@ function platformFromContact(c?: Contact): string {
   ) return "Facebook"
   if (url.includes("tiktok") || src.includes("tiktok")) return "TikTok"
   if (src.includes("google") || src.includes("bing") || src.includes("yahoo")) return "Google"
-  const med = (c?.attributionMedium ?? "").toLowerCase()
-  if (med === "whatsapp" || (c?.tags ?? []).some((t) => t.toLowerCase().includes("inbound whatsapp"))) return "WhatsApp"
+  // WhatsApp is a contact channel, not a lead origin — see platformLabel() in
+  // lib/source-platform.ts. WhatsApp-attributed contacts fall through to "Otro".
   return "Otro"
 }
 
@@ -349,7 +365,7 @@ function TopNSlider({ value, max, onChange }: { value: number; max: number; onCh
   )
 }
 
-export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", periodLabel }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
@@ -792,7 +808,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
         id: "fuentes",
         title: "Oportunidades por fuente",
         explanation:
-          "Muestra de qué plataforma proviene cada oportunidad (Facebook, Instagram, WhatsApp, etc.), desglosada por la fuente de creación del registro en el CRM. Sirve para ver qué canales generan más leads.",
+          "Muestra de qué plataforma proviene cada oportunidad (Facebook, Instagram, TikTok, etc.), desglosada por la fuente de creación del registro en el CRM. Sirve para ver qué canales generan más leads.",
         ai: true,
         blocks: [{
           t: "chart", type: "bar", stacked: true, valueLabel: "Oportunidades",
@@ -987,6 +1003,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     return {
       reportType: "marketing",
       title: "Reporte de Marketing",
+      locationName,
       periodLabel,
       kpis: [
         { label: "Oportunidades", value: String(opportunities.length) },
@@ -1003,6 +1020,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
     lostByReasonRows, lostByReasonKeys, lostByReasonTotal, originRows, leadsByAdId,
     leadsByPlatformUrl, paidTrafficWithAppt, wonPaidTraffic, wonBySource, wonTotal,
     opportunities.length, paidSocialLeadCount, pautas.length, reingresoCount, periodLabel,
+    locationName,
   ])
 
   return (

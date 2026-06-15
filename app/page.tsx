@@ -253,6 +253,7 @@ export default function DashboardPage() {
             calls={calls}
             appointments={appointments}
             locationId={data?.locationId ?? ""}
+            locationName={locationName ?? undefined}
             periodLabel={periodLabel}
           />
         )}
@@ -268,6 +269,7 @@ export default function DashboardPage() {
             pautas={pautas}
             members={availableMembers}
             locationId={data?.locationId ?? ""}
+            locationName={locationName ?? undefined}
             periodLabel={periodLabel}
           />
         )}

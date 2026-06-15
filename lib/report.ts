@@ -19,6 +19,8 @@ export interface ReportSection {
 export interface ReportInput {
   reportType: "marketing" | "ventas"
   title: string
+  /** Sub-account / location name, used in the download filename. */
+  locationName?: string
   /** Human label of the active global date filter, e.g. "Últimos 30 días". */
   periodLabel?: string
   kpis: { label: string; value: string }[]
@@ -58,6 +60,22 @@ export function buildAnalyzePayload(input: ReportInput) {
   }
 }
 
+const MESES_ABREV = [
+  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+]
+
+// "15 de Jun 2:02pm" — readable Spanish stamp for the download filename.
+function reportStamp(d = new Date()): string {
+  const dia = d.getDate()
+  const mes = MESES_ABREV[d.getMonth()]
+  const h24 = d.getHours()
+  const ampm = h24 < 12 ? "am" : "pm"
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  const min = String(d.getMinutes()).padStart(2, "0")
+  return `${dia} de ${mes} ${h12}:${min}${ampm}`
+}
+
 export function buildReportSpec(input: ReportInput, ai: ReportAiResult | null): PdfSpec {
   const blocks: PdfBlock[] = []
 
@@ -88,6 +106,11 @@ export function buildReportSpec(input: ReportInput, ai: ReportAiResult | null): 
     }
   }
 
+  // e.g. "Reporte Marketing Lezgo Suite - 15 de Jun 2:02pm"
+  const tipoLabel = input.reportType === "marketing" ? "Marketing" : "Ventas"
+  const location = input.locationName?.trim() || "Lezgo Suite"
+  const filename = `Reporte ${tipoLabel} ${location} - ${reportStamp()}`
+
   return {
     title: input.title,
     accent: input.periodLabel,
@@ -97,6 +120,7 @@ export function buildReportSpec(input: ReportInput, ai: ReportAiResult | null): 
         ? "Reporte de adquisición: fuentes, pautas, atribución y resultados de campañas."
         : "Reporte comercial: embudo, conversión, citas y análisis de pérdidas.",
     cover: true,
+    filename,
     blocks,
   }
 }

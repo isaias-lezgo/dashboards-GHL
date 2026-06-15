@@ -108,6 +108,7 @@ export interface Opportunity {
   adId?: string
   attributionUrl?: string
   attributionMedium?: string  // computed: GHL-internal medium (whatsapp, instagram, calendar, manual, …) or utmSessionSource fallback
+  originPlatform?: string     // computed: linked contact's "Origen de Lead" custom field (Instagram/Facebook/TikTok/…); fallback signal for platformLabel
 }
 
 export interface Call {

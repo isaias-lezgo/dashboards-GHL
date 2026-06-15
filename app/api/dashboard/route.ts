@@ -495,6 +495,11 @@ export async function GET() {
             if (!opp.adId) opp.adId = contact.adId;
             if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
             if (!opp.attributionMedium) opp.attributionMedium = contact.attributionMedium;
+            // "Origen de Lead" is a contact-level custom field; surface it on the
+            // opportunity as an explicit, high-confidence fallback for platformLabel.
+            if (!opp.originPlatform) {
+              opp.originPlatform = cfString(contact.customFieldsResolved?.["Origen de Lead"]);
+            }
           }
         }
 

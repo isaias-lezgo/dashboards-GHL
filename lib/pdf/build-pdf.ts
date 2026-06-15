@@ -38,8 +38,22 @@ export function parsePdfSpec(input: unknown): PdfSpec | null {
     client: typeof o.client === "string" ? o.client : undefined,
     subtitle: typeof o.subtitle === "string" ? o.subtitle : undefined,
     cover: o.cover === false ? false : true,
+    filename: typeof o.filename === "string" && o.filename.trim() ? o.filename.trim() : undefined,
     blocks,
   };
+}
+
+// Strip characters that are illegal in filenames across Windows/macOS while
+// keeping the name human-readable (spaces, accents, "·", "-" all survive).
+function sanitizeFilename(s: string): string {
+  return (
+    s
+      .replace(/[/\\?%*:|"<>]/g, ".") // ":" in "2:02pm" → "2.02pm", etc.
+      .replace(/\s+/g, " ")
+      .replace(/\.{2,}/g, ".")
+      .trim()
+      .slice(0, 120) || "reporte"
+  );
 }
 
 function slugify(s: string): string {
@@ -79,6 +93,9 @@ type Vfs = Record<string, string>;
 // Promise<Blob> (older 0.2.x took a callback). We use the promise form.
 interface PdfDoc {
   getBlob: (() => Promise<Blob>) | ((cb: (b: Blob) => void) => void);
+  // 0.3.x: resolves to the rendered pdfkit document, from which we read the
+  // real page count (see getPageCount).
+  getStream?: () => Promise<unknown>;
 }
 interface PdfMakeStatic {
   vfs?: Vfs;
@@ -96,6 +113,29 @@ function getBlob(doc: PdfDoc): Promise<Blob> {
   return new Promise<Blob>((resolve) => {
     (doc.getBlob as (cb: (b: Blob) => void) => void)((b) => resolve(b));
   });
+}
+
+// Read the *real* rendered page count from pdfmake's underlying pdfkit document,
+// not the number of spec blocks (one block can span many pages, or several
+// blocks can share one). getStream() resolves to the pdfkit doc once all pages
+// have been laid out. We read it two ways and fall back gracefully — a missing
+// count must never break the download, so we return undefined on any failure.
+async function getPageCount(doc: PdfDoc): Promise<number | undefined> {
+  if (typeof doc.getStream !== "function") return undefined;
+  try {
+    const pdfDoc = (await doc.getStream()) as {
+      bufferedPageRange?: () => { start: number; count: number };
+      _root?: { data?: { Pages?: { data?: { Count?: number } } } };
+    };
+    const range = pdfDoc.bufferedPageRange?.();
+    if (range && Number.isFinite(range.start + range.count)) {
+      return range.start + range.count;
+    }
+    const count = pdfDoc._root?.data?.Pages?.data?.Count;
+    return typeof count === "number" && count > 0 ? count : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Pull a usable vfs font map out of whatever shape pdfmake's vfs_fonts module
@@ -143,10 +183,14 @@ export async function downloadPdf(input: unknown): Promise<PdfResult> {
   try {
     const docDef = buildDocDefinition(spec);
     const pdfMake = await getPdfMake();
-    const filename = `${slugify(spec.title)}.pdf`;
-    const blob = await getBlob(pdfMake.createPdf(docDef));
+    const filename = spec.filename
+      ? `${sanitizeFilename(spec.filename)}.pdf`
+      : `${slugify(spec.title)}.pdf`;
+    const doc = pdfMake.createPdf(docDef);
+    const blob = await getBlob(doc);
+    const pages = await getPageCount(doc);
     triggerBlobDownload(blob, filename);
-    return { success: true, filename, pages: spec.blocks.length };
+    return { success: true, filename, pages };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }

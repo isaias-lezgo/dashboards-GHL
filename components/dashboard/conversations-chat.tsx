@@ -17,8 +17,8 @@ import {
   TrendingUp,
   MessagesSquare,
   UserRound,
-  Megaphone,
   ListChecks,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -131,11 +131,11 @@ const SUGGESTIONS: Suggestion[] = [
       "Dame el perfil completo de [nombre del contacto]: datos, etiquetas, oportunidades abiertas y su actividad más reciente.",
   },
   {
-    icon: Megaphone,
-    category: "Marketing",
-    title: "Rendimiento de campañas",
+    icon: FileText,
+    category: "Reporte PDF",
+    title: "Reporte semanal en PDF",
     prompt:
-      "¿Qué campaña está generando más leads este mes y cuál es su tasa de respuesta? Compárala con el mes anterior.",
+      "Genera un reporte en PDF de la última semana con los leads nuevos, las citas agendadas y las oportunidades ganadas. Incluye un gráfico de leads por origen y una tabla resumen por etapa del pipeline, y al final dime el nombre del archivo descargable.",
   },
   {
     icon: ListChecks,
@@ -393,7 +393,7 @@ export function ConversationsChat({
           <div className="min-w-0">
             <p className="text-sm font-semibold">Asistente IA</p>
             <p className="hidden truncate text-[10px] text-muted-foreground sm:block">
-              Pregunta sobre cualquier cosa.
+              Pregunta, analiza y genera reportes en PDF con gráficos y tablas.
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-3">
@@ -568,7 +568,9 @@ function ConvEmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
       </div>
       <p className="text-[11px] leading-relaxed text-muted-foreground/40">
         Contactos, citas, oportunidades, tareas y notas se consultan en vivo.
-        Conversaciones reales, no muestras. El sistema puede crear gráficos, tablas y exportar CSVs. 
+        Conversaciones reales, no muestras. Además puede generar reportes en PDF
+        con el branding de Lezgo Suite, crear gráficos interactivos y tablas, y
+        exportar CSVs.
       </p>
     </div>
   );

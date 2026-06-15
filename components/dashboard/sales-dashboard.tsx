@@ -60,6 +60,8 @@ interface SalesDashboardProps {
   pautas?: Pauta[]
   members?: string[]
   locationId?: string
+  /** Sub-account name, used in the exported report's filename. */
+  locationName?: string
   /** Label of the active global date filter, shown on the PDF report cover. */
   periodLabel?: string
 }
@@ -105,7 +107,7 @@ function startOfWeek(input: Date): Date {
   return d
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", periodLabel }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
   const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
@@ -166,7 +168,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     // undercount in GHL; include them only when they keep the funnel descending,
     // otherwise the step conversions read as nonsense (>100%).
     const stages: Array<{ key: string; label: string; opps: Opportunity[] }> = [
-      { key: "leads", label: "Leads recibidos", opps: opportunities },
+      { key: "leads", label: "Oportunidades recibidas", opps: opportunities },
       ...(contactedIds.size > 0 && contactados.length >= conCita.length
         ? [{ key: "contacted", label: "Contactados", opps: contactados }]
         : []),
@@ -424,12 +426,12 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     if (funnelData.length > 0) {
       sections.push({
         id: "funnel",
-        title: "Recorrido del lead",
+        title: "Recorrido de la oportunidad",
         explanation:
-          "El embudo de ventas por hitos: leads recibidos, contactados, con cita agendada y ganados. Cada paso muestra cuántos leads sobreviven a esa etapa del recorrido.",
+          "El embudo de ventas por hitos: oportunidades recibidas, contactadas, con cita agendada y ganadas. Cada paso muestra cuántas oportunidades sobreviven a esa etapa del recorrido.",
         ai: true,
         blocks: [{
-          t: "chart", type: "bar", orientation: "h", valueLabel: "Leads",
+          t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
           title: `Embudo (total: ${kpiMetrics.total})`,
           series: funnelData.map((s) => ({ label: s.label, value: s.count })),
         }],
@@ -439,19 +441,19 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     if (monthlyFunnel.months.length > 0) {
       sections.push({
         id: "historico",
-        title: "Histórico de leads y conversión a cita",
+        title: "Histórico de oportunidades y conversión a cita",
         explanation:
-          "Cohorte mensual: cuántos leads se crearon cada mes y qué porcentaje de ellos llegó a agendar cita y a cerrarse. Permite ver si el volumen y la calidad mejoran o empeoran con el tiempo.",
+          "Cohorte mensual: cuántas oportunidades se crearon cada mes y qué porcentaje de ellas llegó a agendar cita y a cerrarse. Permite ver si el volumen y la calidad mejoran o empeoran con el tiempo.",
         ai: true,
         blocks: [
           {
-            t: "chart", type: "line", valueLabel: "Leads",
-            title: "Leads creados por mes",
+            t: "chart", type: "line", valueLabel: "Oportunidades",
+            title: "Oportunidades creadas por mes",
             series: monthlyFunnel.chartData.map((m) => ({ label: m.label, value: m.leads })),
           },
           {
             t: "table",
-            headers: ["Mes", "Leads", "Con cita", "% a cita", "Ganados", "% cierre"],
+            headers: ["Mes", "Oportunidades", "Con cita", "% a cita", "Ganados", "% cierre"],
             rows: monthlyFunnel.months.map((m) => [
               m.label,
               String(m.leads.length),
@@ -468,13 +470,13 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     if (origenData.length > 0) {
       sections.push({
         id: "origen",
-        title: "Origen de leads y conversión a cita",
+        title: "Origen de oportunidades y conversión a cita",
         explanation:
-          "De qué plataforma proviene cada lead y qué porcentaje de cada origen llega a agendar una cita. Compara el volumen contra la calidad de cada canal.",
+          "De qué plataforma proviene cada oportunidad y qué porcentaje de cada origen llega a agendar una cita. Compara el volumen contra la calidad de cada canal.",
         ai: true,
         blocks: [{
           t: "table",
-          headers: ["Plataforma", "Leads", "% del total", "% a cita"],
+          headers: ["Plataforma", "Oportunidades", "% del total", "% a cita"],
           rows: origenData.map((o) => [
             o.platform,
             String(o.count),
@@ -531,6 +533,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     return {
       reportType: "ventas",
       title: "Reporte de Ventas",
+      locationName,
       periodLabel,
       kpis: [
         { label: "Ingreso ganado", value: mxn(kpiMetrics.wonRevenue) },
@@ -544,7 +547,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
     }
   }, [
     funnelData, monthlyFunnel, origenData, pipelineMatrix, apptOutcomeData,
-    lossGroupsData, kpiMetrics, appointments.length, periodLabel,
+    lossGroupsData, kpiMetrics, appointments.length, periodLabel, locationName,
   ])
 
   return (
@@ -802,7 +805,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       <SectionHeader title="Embudo de Ventas" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DashboardCard>
-          <ChartCardHeader title="Recorrido del lead" total={opportunities.length} />
+          <ChartCardHeader title="Recorrido de la oportunidad" total={opportunities.length} />
           <ChartCardContent>
             {opportunities.length === 0 ? (
               <ChartEmpty message="Sin oportunidades para mostrar" height={192} />
@@ -860,8 +863,8 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   })}
                 </div>
                 <ChartHint>
-                  {funnelData.some((s) => s.key === "contacted") && "Contactados = leads con al menos un mensaje o llamada · "}
-                  Citas = el contacto del lead tiene una cita · Haz clic en una etapa para ver los leads
+                  {funnelData.some((s) => s.key === "contacted") && "Contactados = oportunidades con al menos un mensaje o llamada · "}
+                  Citas = el contacto de la oportunidad tiene una cita · Haz clic en una etapa para ver las oportunidades
                 </ChartHint>
               </>
             )}
@@ -870,7 +873,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
 
         <DashboardCard>
           <ChartCardHeader
-            title="Histórico de leads y conversión a cita"
+            title="Histórico de oportunidades y conversión a cita"
             total={`${monthlyFunnel.months.length} meses`}
           />
           <ChartCardContent>
@@ -880,8 +883,8 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
               <>
                 <ChartContainer
                   config={{
-                    leads: { label: "Leads creados", color: STRUCTURAL_NAVY },
-                    rate: { label: "Tasa Lead → Cita (%)", color: BRAND_AMBER },
+                    leads: { label: "Oportunidades creadas", color: STRUCTURAL_NAVY },
+                    rate: { label: "Tasa Oportunidad → Cita (%)", color: BRAND_AMBER },
                   }}
                   style={{ height: 280 }}
                   className="w-full"
@@ -904,20 +907,20 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     <Bar
                       yAxisId="left"
                       dataKey="leads"
-                      name="Leads creados"
+                      name="Oportunidades creadas"
                       fill={STRUCTURAL_NAVY}
                       radius={[3, 3, 0, 0]}
                       cursor="pointer"
                       onClick={(data: any) => {
                         const month = monthlyFunnel.months.find((m) => m.key === data.key)
-                        if (month) openDrill(`Leads de ${month.label}`, month.leads)
+                        if (month) openDrill(`Oportunidades de ${month.label}`, month.leads)
                       }}
                     />
                     <Line
                       yAxisId="right"
                       type="monotone"
                       dataKey="rate"
-                      name="Tasa Lead → Cita (%)"
+                      name="Tasa Oportunidad → Cita (%)"
                       stroke={BRAND_AMBER}
                       strokeWidth={2.5}
                       dot={{ r: 4, fill: BRAND_AMBER }}
@@ -925,7 +928,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   </ComposedChart>
                 </ChartContainer>
                 <ChartHint>
-                  Barras: leads creados por mes · Línea: % de esos leads que llegaron a cita · Haz clic en una barra para ver los leads
+                  Barras: oportunidades creadas por mes · Línea: % de esas oportunidades que llegaron a cita · Haz clic en una barra para ver las oportunidades
                 </ChartHint>
               </>
             )}
@@ -961,7 +964,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   </thead>
                   <tbody>
                     {([
-                      { label: "Leads creados", get: (m: (typeof monthlyFunnel.months)[number]) => m.leads },
+                      { label: "Oportunidades creadas", get: (m: (typeof monthlyFunnel.months)[number]) => m.leads },
                       { label: "Llegaron a cita", get: (m: (typeof monthlyFunnel.months)[number]) => m.conCita },
                       { label: "Ganados", get: (m: (typeof monthlyFunnel.months)[number]) => m.ganados },
                     ] as const).map((row) => (
@@ -988,8 +991,8 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                       </tr>
                     ))}
                     {([
-                      { label: "Tasa Lead → Cita", get: (m: (typeof monthlyFunnel.months)[number]) => m.citaRate },
-                      { label: "Tasa Lead → Ganado", get: (m: (typeof monthlyFunnel.months)[number]) => m.cierreRate },
+                      { label: "Tasa Oportunidad → Cita", get: (m: (typeof monthlyFunnel.months)[number]) => m.citaRate },
+                      { label: "Tasa Oportunidad → Ganado", get: (m: (typeof monthlyFunnel.months)[number]) => m.cierreRate },
                     ] as const).map((row, ri) => (
                       <tr key={row.label} className={ri === 0 ? "border-t-2 border-border" : ""}>
                         <td className="px-3 py-2 text-muted-foreground">{row.label}</td>
@@ -1009,17 +1012,17 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </table>
               </div>
               <ChartHint>
-                Cohorte mensual: cada columna sigue a los leads creados ese mes · Columna resaltada = mes más reciente · Haz clic en un número para ver los leads
+                Cohorte mensual: cada columna sigue a las oportunidades creadas ese mes · Columna resaltada = mes más reciente · Haz clic en un número para ver las oportunidades
               </ChartHint>
             </>
           )}
         </ChartCardContent>
       </DashboardCard>
 
-      {/* ── Origen de Leads ────────────────────────── */}
-      <SectionHeader title="Origen de Leads" />
+      {/* ── Origen de Oportunidades ────────────────── */}
+      <SectionHeader title="Origen de Oportunidades" />
       <DashboardCard>
-        <ChartCardHeader title="Origen de leads y conversión a cita" total={opportunities.length} />
+        <ChartCardHeader title="Origen de oportunidades y conversión a cita" total={opportunities.length} />
         <ChartCardContent>
           {origenData.length === 0 ? (
             <ChartEmpty message="Sin datos de origen" height={192} />
@@ -1074,7 +1077,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                     <div style={{ color: "hsl(var(--foreground))", fontSize: 22, fontWeight: 700, lineHeight: 1 }}>
                       {opportunities.length.toLocaleString("es-MX")}
                     </div>
-                    <div style={{ color: "hsl(var(--muted-foreground))", fontSize: 9, marginTop: 2 }}>LEADS</div>
+                    <div style={{ color: "hsl(var(--muted-foreground))", fontSize: 9, marginTop: 2 }}>OPORTUNIDADES</div>
                   </div>
                 </div>
 
@@ -1082,7 +1085,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   <div className="grid grid-cols-[minmax(80px,1fr)_minmax(0,1fr)_64px_64px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid-cols-[minmax(110px,160px)_1fr_90px_88px] sm:gap-3">
                     <span>Origen</span>
                     <span />
-                    <span className="text-right">Leads</span>
+                    <span className="text-right">Oportunidades</span>
                     <span className="text-right">→ Citas</span>
                   </div>
                   {origenData.map((o, i) => {
@@ -1133,7 +1136,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </div>
               </div>
               <ChartHint>
-                → Citas = leads de cada origen cuyo contacto tiene al menos una cita · Haz clic en una fila para ver los leads
+                → Citas = oportunidades de cada origen cuyo contacto tiene al menos una cita · Haz clic en una fila para ver las oportunidades
               </ChartHint>
             </>
           )}
@@ -1251,7 +1254,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                 </table>
               </div>
               <ChartHint>
-                Intensidad = volumen de leads · azul = pipeline abierto · ámbar = ganado · rojo = perdido · Haz clic en una celda para ver los leads
+                Intensidad = volumen de oportunidades · azul = pipeline abierto · ámbar = ganado · rojo = perdido · Haz clic en una celda para ver las oportunidades
               </ChartHint>
             </>
           )}
@@ -1325,7 +1328,7 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
                   </button>
                 ))}
               </div>
-              <ChartHint>% sobre el total de perdidos · Haz clic en una tarjeta para ver los leads</ChartHint>
+              <ChartHint>% sobre el total de perdidos · Haz clic en una tarjeta para ver las oportunidades</ChartHint>
             </>
           )}
         </ChartCardContent>
