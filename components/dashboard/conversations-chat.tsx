@@ -49,6 +49,7 @@ import {
 } from "@/lib/conversations-panel";
 import { ConversationsContextPanel } from "@/components/dashboard/conversations-context-panel";
 import { ChatChart } from "@/components/dashboard/chat-chart";
+import { ChatQuestion } from "@/components/dashboard/chat-question";
 import {
   ChartDrillDrawer,
   DRILL_CLOSED,
@@ -299,12 +300,14 @@ export function ConversationsChat({
     send,
     stop,
     reset,
+    pendingQuestion,
+    answer,
   } = useAgentLoop({ datasetSummary, dataset, onToolExecuted });
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, status]);
+  }, [messages, status, pendingQuestion]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -429,6 +432,10 @@ export function ConversationsChat({
           {messages.map((m, i) => (
             <ConvMessageBubble key={i} message={m} onDrill={handleChartDrill} />
           ))}
+
+          {pendingQuestion && !busy && (
+            <ChatQuestion question={pendingQuestion} onAnswer={answer} />
+          )}
 
           {busy && status && (
             <div className="flex items-center gap-2.5 py-1 text-xs text-muted-foreground">
