@@ -57,7 +57,9 @@ export interface PendingQuestion {
   multiSelect: boolean;
   context?: string;
 }
-export type AnswerPayload = { values: string[] } | { text: string };
+export type AnswerPayload =
+  | { values: string[]; labels?: string[] }
+  | { text: string };
 
 interface TurnUsage {
   inputTokens: number;
@@ -349,7 +351,9 @@ export function useAgentLoop({
       if (!stash) return;
 
       const summary =
-        "values" in payload ? payload.values.join(", ") : payload.text;
+        "values" in payload
+          ? (payload.labels ?? payload.values).join(", ")
+          : payload.text;
       const askResult: ToolResultBlock = {
         type: "tool_result",
         tool_use_id: stash.askToolUseId,
@@ -359,15 +363,16 @@ export function useAgentLoop({
             : JSON.stringify({ answer: payload.text, freeText: true }),
       };
 
-      // The user message carries a visible text bubble (the chosen answer) plus
-      // the tool_result blocks (sibling results + the ask_user answer) so every
-      // prior tool_use stays paired with a tool_result on resume.
+      // The user message carries the tool_result blocks (sibling results + the
+      // ask_user answer) FIRST — the Anthropic API requires tool_result blocks to
+      // precede any other content — followed by a visible text bubble with the
+      // chosen answer. Every prior tool_use stays paired with a tool_result.
       const userMsg: UIMessage = {
         role: "user",
         blocks: [
-          { type: "text", text: summary },
           ...stash.partialResults,
           askResult,
+          { type: "text", text: summary },
         ],
       };
       const resumed = [...stash.convo, userMsg];

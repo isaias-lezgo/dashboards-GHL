@@ -76,7 +76,15 @@ export function ChatQuestion({
             type="button"
             size="sm"
             disabled={selected.size === 0}
-            onClick={() => onAnswer({ values: Array.from(selected) })}
+            onClick={() => {
+              const chosen = question.options.filter((o) =>
+                selected.has(optValue(o)),
+              );
+              onAnswer({
+                values: chosen.map(optValue),
+                labels: chosen.map((o) => o.label),
+              });
+            }}
             className="h-7 gap-1.5 px-3 text-[11px]"
           >
             Confirmar
@@ -88,7 +96,7 @@ export function ChatQuestion({
             <button
               key={i}
               type="button"
-              onClick={() => onAnswer({ values: [optValue(o)] })}
+              onClick={() => onAnswer({ values: [optValue(o)], labels: [o.label] })}
               className="flex flex-col gap-0.5 rounded-xl border border-border/50 bg-background/50 p-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/5"
             >
               <span className="text-[13px] font-medium leading-tight text-foreground/90">
