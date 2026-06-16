@@ -254,6 +254,8 @@ export const TOOL_DEFINITIONS = [
         query: { type: "string", description: "Substring match on nombrePauta or tipo." },
         tipo: { type: "string", description: "Exact tipo match." },
         contactId: { type: "string", description: "Only pautas linked to this contact." },
+        createdAfter: { type: "string", description: "ISO date — only pautas created on/after this date." },
+        createdBefore: { type: "string", description: "ISO date — only pautas created on/before this date." },
         limit: { type: "number" },
       },
     },
@@ -306,7 +308,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         includeContactIds: {
@@ -334,7 +336,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         columns: {
@@ -445,7 +447,7 @@ export const TOOL_DEFINITIONS = [
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. Tasks: status, assignedTo, contactIds, dueAfter, dueBefore, overdue. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId, createdAfter, createdBefore. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. Tasks: status, assignedTo, contactIds, dueAfter, dueBefore, overdue. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
             },
           },
           required: ["entity"],
@@ -601,6 +603,48 @@ export const TOOL_DEFINITIONS = [
         },
       },
       required: ["title", "blocks"],
+    },
+  },
+  {
+    name: "ask_user",
+    description:
+      "Hace UNA pregunta de opción múltiple al usuario y PAUSA hasta que responda. Úsalo SOLO cuando un término sea genuinamente ambiguo entre rutas de datos distintas que darían respuestas materialmente diferentes y el contexto no lo aclare (ver la sección 'Cuándo preguntar' del prompt). Llama esta herramienta SOLA (sin otras herramientas en el mismo turno). NO la uses para ambigüedades triviales ni si el usuario ya especificó la ruta — en esos casos elige el valor por defecto y dilo en una línea.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "La pregunta, en español, breve y concreta.",
+        },
+        context: {
+          type: "string",
+          description:
+            "Opcional. Una sola línea de 'por qué pregunto' que se muestra bajo la pregunta para orientar al usuario.",
+        },
+        multiSelect: {
+          type: "boolean",
+          description:
+            "Si es true, el usuario puede elegir varias opciones (chips + botón Confirmar). Default false (elige una sola).",
+        },
+        options: {
+          type: "array",
+          description: "Las opciones a mostrar. 2 a 4 idealmente.",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "Texto del botón/chip (en español)." },
+              value: {
+                type: "string",
+                description:
+                  "Opcional. Valor que se te reporta de vuelta. Si se omite, se usa el label.",
+              },
+              hint: { type: "string", description: "Opcional. Subtítulo de una línea." },
+            },
+            required: ["label"],
+          },
+        },
+      },
+      required: ["question", "options"],
     },
   },
 ] as const;
@@ -786,11 +830,19 @@ function oppRollup(
   return { oppCount: opps.length, oppValueSum: sum };
 }
 
+// Strip " - URL - NUMERIC_ID" suffix from nombrePauta (e.g. "TITLE - https://... - 120241019662550611")
+// so the AI sees only the campaign title in compact results and aggregate keys.
+function campaignTitle(s: string | null | undefined): string | undefined {
+  if (!s) return undefined;
+  const idx = s.indexOf(" - http");
+  return idx !== -1 ? s.slice(0, idx).trim() : s;
+}
+
 function compactPauta(p: Pauta, index: ChatIndex) {
   return {
     id: p.id,
     tipo: p.tipo,
-    nombre: p.nombrePauta,
+    nombre: campaignTitle(p.nombrePauta),
     contactId: p.contactId,
     createdAt: p.createdAt,
     ...oppRollup(p.contactId, index),
@@ -868,6 +920,11 @@ export function executeTool(
         : [];
       return { ok: true, points: series.length };
     }
+    case "ask_user":
+      // UI-only / loop-intercepted. The agent loop pauses on this tool and never
+      // calls the executor in practice; this ack only exists so an unexpected
+      // execution path still yields a valid tool_result.
+      return { ok: true, pending: true };
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -1137,7 +1194,8 @@ function listValues(input: ToolInput, data: ChatDataset) {
         counts.set(k, (counts.get(k) ?? 0) + 1);
       }
     } else {
-      const k = v === null || v === undefined || v === "" ? "(sin valor)" : String(v);
+      const raw2 = v === null || v === undefined || v === "" ? "(sin valor)" : String(v);
+      const k = raw2.includes(" - http") ? (campaignTitle(raw2) ?? raw2) : raw2;
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
   }
@@ -1463,7 +1521,9 @@ function aggregateRows(
       if (raw.length === 0) push(buckets, "(sin tag)", r);
       for (const t of raw) push(buckets, String(t), r);
     } else {
-      const key = raw === undefined || raw === null || raw === "" ? "(sin valor)" : String(raw);
+      const rawStr = raw === undefined || raw === null || raw === "" ? "(sin valor)" : String(raw);
+      // Strip URL+ID suffix from nombrePauta-style values ("TITLE - https://... - ID")
+      const key = rawStr.includes(" - http") ? (campaignTitle(rawStr) ?? rawStr) : rawStr;
       push(buckets, key, r);
     }
   }
@@ -1715,6 +1775,8 @@ function applyPautaFilters(rows: Pauta[], f: ToolInput): Pauta[] {
   return rows.filter((p) => {
     if (typeof f.tipo === "string" && !ieq(p.tipo, f.tipo)) return false;
     if (typeof f.contactId === "string" && p.contactId !== f.contactId) return false;
+    if (typeof f.createdAfter === "string" && +new Date(p.createdAt) < startBound(f.createdAfter)) return false;
+    if (typeof f.createdBefore === "string" && +new Date(p.createdAt) > endBound(f.createdBefore)) return false;
     return true;
   });
 }
