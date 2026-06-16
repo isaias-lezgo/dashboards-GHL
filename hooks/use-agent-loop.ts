@@ -45,6 +45,20 @@ export interface UIMessage {
   blocks: AnyBlock[];
 }
 
+export interface QuestionOption {
+  label: string;
+  value?: string;
+  hint?: string;
+}
+export interface PendingQuestion {
+  toolUseId: string;
+  question: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+  context?: string;
+}
+export type AnswerPayload = { values: string[] } | { text: string };
+
 interface TurnUsage {
   inputTokens: number;
   outputTokens: number;
@@ -95,6 +109,8 @@ export interface AgentLoopReturn {
   stop: () => void;
   reset: () => void;
   runWithMessages: (msgs: UIMessage[]) => void;
+  pendingQuestion: PendingQuestion | null;
+  answer: (payload: AnswerPayload) => void;
 }
 
 export function useAgentLoop({
@@ -108,6 +124,12 @@ export function useAgentLoop({
   const [error, setError] = useState<string | null>(null);
   const [totalCost, setTotalCost] = useState(0);
   const [totalTools, setTotalTools] = useState(0);
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
+  const pauseStashRef = useRef<{
+    convo: UIMessage[];
+    partialResults: ToolResultBlock[];
+    askToolUseId: string;
+  } | null>(null);
 
   const stopRef = useRef(false);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -190,8 +212,17 @@ export function useAgentLoop({
               : `Ejecutando ${toolUses.length} herramientas…`
           );
 
+          // A clarifying question pauses the loop. Run any sibling tools so their
+          // results are ready for the resume, but hold the request until the user
+          // answers (the model is told to call ask_user alone, so toRun is usually
+          // empty here).
+          const askUse = toolUses.find((b) => b.name === "ask_user");
+          const toRun = askUse
+            ? toolUses.filter((b) => b.name !== "ask_user")
+            : toolUses;
+
           const toolResults: ToolResultBlock[] = await Promise.all(
-            toolUses.map(async (tu): Promise<ToolResultBlock> => {
+            toRun.map(async (tu): Promise<ToolResultBlock> => {
               try {
                 let result: unknown;
                 if (tu.name === "get_contact_messages") {
@@ -241,7 +272,41 @@ export function useAgentLoop({
             })
           );
 
-          setTotalTools((n) => n + toolUses.length);
+          setTotalTools((n) => n + toRun.length);
+
+          if (askUse) {
+            const aInput = askUse.input as Record<string, unknown>;
+            const rawOptions = Array.isArray(aInput.options)
+              ? (aInput.options as unknown[])
+              : [];
+            const options: QuestionOption[] = rawOptions
+              .filter(
+                (o): o is Record<string, unknown> =>
+                  Boolean(o) && typeof o === "object",
+              )
+              .map((o) => ({
+                label: String(o.label ?? ""),
+                value: o.value !== undefined ? String(o.value) : undefined,
+                hint: o.hint !== undefined ? String(o.hint) : undefined,
+              }))
+              .filter((o) => o.label);
+            pauseStashRef.current = {
+              convo,
+              partialResults: toolResults,
+              askToolUseId: askUse.id,
+            };
+            setPendingQuestion({
+              toolUseId: askUse.id,
+              question: String(aInput.question ?? ""),
+              options,
+              multiSelect: aInput.multiSelect === true,
+              context:
+                typeof aInput.context === "string" ? aInput.context : undefined,
+            });
+            setBusy(false);
+            setStatus(null);
+            return;
+          }
 
           convo = [...convo, { role: "user", blocks: toolResults }];
           setMessages(convo);
@@ -278,9 +343,53 @@ export function useAgentLoop({
     [datasetSummary, dataset]
   );
 
+  const answer = useCallback(
+    (payload: AnswerPayload) => {
+      const stash = pauseStashRef.current;
+      if (!stash) return;
+
+      const summary =
+        "values" in payload ? payload.values.join(", ") : payload.text;
+      const askResult: ToolResultBlock = {
+        type: "tool_result",
+        tool_use_id: stash.askToolUseId,
+        content:
+          "values" in payload
+            ? JSON.stringify({ answer: payload.values })
+            : JSON.stringify({ answer: payload.text, freeText: true }),
+      };
+
+      // The user message carries a visible text bubble (the chosen answer) plus
+      // the tool_result blocks (sibling results + the ask_user answer) so every
+      // prior tool_use stays paired with a tool_result on resume.
+      const userMsg: UIMessage = {
+        role: "user",
+        blocks: [
+          { type: "text", text: summary },
+          ...stash.partialResults,
+          askResult,
+        ],
+      };
+      const resumed = [...stash.convo, userMsg];
+
+      pauseStashRef.current = null;
+      setPendingQuestion(null);
+      setMessages(resumed);
+      messagesRef.current = resumed;
+      void runWithMessages(resumed);
+    },
+    [runWithMessages],
+  );
+
   const send = useCallback(
     (text: string) => {
       if (busy) return;
+      // If a clarifying question is open, route the typed text as its answer so
+      // the pending ask_user tool_use gets a matching tool_result.
+      if (pauseStashRef.current) {
+        answer({ text });
+        return;
+      }
       const userMsg: UIMessage = {
         role: "user",
         blocks: [{ type: "text", text }],
@@ -290,7 +399,7 @@ export function useAgentLoop({
       messagesRef.current = next;
       void runWithMessages(next);
     },
-    [busy, runWithMessages]
+    [busy, runWithMessages, answer]
   );
 
   const stop = useCallback(() => {
@@ -304,6 +413,8 @@ export function useAgentLoop({
     setStatus(null);
     setTotalCost(0);
     setTotalTools(0);
+    setPendingQuestion(null);
+    pauseStashRef.current = null;
   }, []);
 
   return {
@@ -317,5 +428,7 @@ export function useAgentLoop({
     stop,
     reset,
     runWithMessages,
+    pendingQuestion,
+    answer,
   };
 }
