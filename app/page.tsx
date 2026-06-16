@@ -247,6 +247,7 @@ export default function DashboardPage() {
           <MarketingDashboard
             opportunities={opportunities}
             contacts={contacts}
+            allContacts={data?.contacts ?? []}
             pautas={pautas}
             pipelines={data?.pipelines ?? []}
             tasks={tasks}
@@ -261,6 +262,7 @@ export default function DashboardPage() {
           <SalesDashboard
             opportunities={opportunities}
             contacts={contacts}
+            allContacts={data?.contacts ?? []}
             calls={calls}
             messages={filteredMessages}
             appointments={appointments}

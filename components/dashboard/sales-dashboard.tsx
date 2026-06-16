@@ -52,6 +52,15 @@ import type { ReportInput, ReportSection } from "@/lib/report"
 interface SalesDashboardProps {
   opportunities: Opportunity[]
   contacts: Contact[]
+  /**
+   * Full, date-unfiltered contact set, used only as a lookup table when a
+   * drill-down/detail drawer resolves an opportunity's linked contact. A
+   * contact can be created before its opportunity, so the date filter may drop
+   * it from `contacts` even while the opportunity is in range — resolving the
+   * join against the filtered slice would then show "Contacto no encontrado".
+   * Charts/KPIs still use the date-filtered `contacts`. Defaults to `contacts`.
+   */
+  allContacts?: Contact[]
   calls: Call[]
   messages: Message[]
   appointments: Appointment[]
@@ -107,7 +116,10 @@ function startOfWeek(input: Date): Date {
   return d
 }
 
-export function SalesDashboard({ opportunities, contacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, contacts, allContacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
+  // Lookup table for drawer contact-resolution: the full set when provided,
+  // falling back to the date-filtered `contacts` for backward compatibility.
+  const lookupContacts = allContacts ?? contacts
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
   const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
@@ -1338,14 +1350,14 @@ export function SalesDashboard({ opportunities, contacts, calls, messages = [], 
       <AppointmentDrillDrawer
         drill={apptDrill}
         onDrillChange={setApptDrill}
-        contacts={contacts}
+        contacts={lookupContacts}
       />
 
       {/* Drill-down drawer */}
       <ChartDrillDrawer
         drill={drill}
         onDrillChange={setDrill}
-        contacts={contacts}
+        contacts={lookupContacts}
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}

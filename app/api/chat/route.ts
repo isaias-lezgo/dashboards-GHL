@@ -106,7 +106,7 @@ export async function POST(req: Request) {
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: body.maxTokens ?? 8192,
+      max_tokens: body.maxTokens ?? 4096,
       system: [
         {
           type: "text",

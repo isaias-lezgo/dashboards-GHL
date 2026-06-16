@@ -72,6 +72,15 @@ const apptStatusLabel = (s: string) => APPT_STATUS_LABELS[s] ?? s
 interface MarketingDashboardProps {
   opportunities: Opportunity[]
   contacts: Contact[]
+  /**
+   * Full, date-unfiltered contact set, used only as a lookup table when the
+   * drill-down drawer resolves an opportunity's linked contact. A contact can
+   * be created before its opportunity, so the date filter may drop it from
+   * `contacts` even while the opportunity is in range — resolving the join
+   * against the filtered slice would then show "Contacto no encontrado".
+   * Charts/KPIs still use the date-filtered `contacts`. Defaults to `contacts`.
+   */
+  allContacts?: Contact[]
   pautas: Pauta[]
   pipelines?: Pipeline[]
   tasks?: Task[]
@@ -365,7 +374,10 @@ function TopNSlider({ value, max, onChange }: { value: number; max: number; onCh
   )
 }
 
-export function MarketingDashboard({ opportunities, contacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, contacts, allContacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
+  // Lookup table for drawer contact-resolution: the full set when provided,
+  // falling back to the date-filtered `contacts` for backward compatibility.
+  const lookupContacts = allContacts ?? contacts
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
@@ -2033,7 +2045,7 @@ export function MarketingDashboard({ opportunities, contacts, pautas, pipelines 
       <ChartDrillDrawer
         drill={drill}
         onDrillChange={setDrill}
-        contacts={contacts}
+        contacts={lookupContacts}
         tasks={tasks}
         calls={calls}
         allOpportunities={opportunities}
