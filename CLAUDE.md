@@ -16,11 +16,15 @@ There are no automated tests in this project.
 
 ## Environment Variables
 
-Two vars are required in `.env.local`:
+Required vars in `.env.local`:
 - `GHL_API_TOKEN` — GoHighLevel Private Integration Token (bearer auth)
 - `GHL_LOCATION_ID` — GHL location/sub-account ID
+- `DASHBOARD_PASSWORD` — shared password for the login gate (you choose it)
+- `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
 
-Both are read exclusively server-side inside `lib/ghl-client.ts`.
+`GHL_*` are read exclusively server-side inside `lib/ghl-client.ts`. The dashboard
+auth vars are read server-side in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
+`middleware.ts` — never exposed to the browser.
 
 ## Architecture
 
