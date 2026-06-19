@@ -100,6 +100,10 @@ export function useDashboardData(params?: {
             [step.key]: { status: step.status, count: step.count },
           }))
       );
+      // Ignore the result of a fetch that has since been superseded (e.g. the
+      // mount→abort→remount cycle from React StrictMode in dev or router.refresh
+      // after login). Otherwise a stale fetch can clobber the newer one's state.
+      if (ctrl.signal.aborted) return;
       setData(result);
       if (result.locationName) setLocationName(result.locationName);
       setProgress("");
@@ -109,7 +113,11 @@ export function useDashboardData(params?: {
         setProgress("");
       }
     } finally {
-      setIsLoading(false);
+      // Only the current (non-aborted) fetch may flip loading off. A superseded
+      // fetch's finally must not turn off the spinner while the newer fetch is
+      // still in flight — that was surfacing the empty dashboard behind the
+      // loading screen.
+      if (!ctrl.signal.aborted) setIsLoading(false);
     }
   }, []);
 
