@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { DetailDrawer } from "./detail-drawer"
 import type { Opportunity, Contact, Task, Call, Pauta, Appointment, Message } from "@/lib/types"
+import { isWonOpp } from "@/lib/opportunity-status"
 import { DollarSign, User, Tag, ChevronRight, TrendingUp, Phone, Mail } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
@@ -305,8 +306,8 @@ function ContactList({
 function MembersList({ members, opportunities }: { members: string[]; opportunities: Opportunity[] }) {
   const stats = members.map((member) => {
     const opps = opportunities.filter((o) => o.assignedTo === member)
-    const won = opps.filter((o) => o.status === "won").length
-    const revenue = opps.filter((o) => o.status === "won").reduce((s, o) => s + o.value, 0)
+    const won = opps.filter(isWonOpp).length
+    const revenue = opps.filter(isWonOpp).reduce((s, o) => s + o.value, 0)
     return { member, total: opps.length, won, revenue }
   }).sort((a, b) => b.total - a.total)
 

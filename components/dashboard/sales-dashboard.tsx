@@ -24,6 +24,7 @@ import {
 import type { Opportunity, Contact, Call, Message, Task, Appointment, Pauta, Pipeline } from "@/lib/types"
 import { Users, TrendingUp, Target, DollarSign, CalendarDays } from "lucide-react"
 import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel } from "@/lib/source-platform"
+import { isWonOpp } from "@/lib/opportunity-status"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -136,11 +137,13 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
 
   const kpiMetrics = useMemo(() => {
     const total = opportunities.length
-    const won = opportunities.filter((o) => o.status === "won").length
-    const open = opportunities.filter((o) => o.status === "open").length
+    const won = opportunities.filter(isWonOpp).length
+    // Keep status buckets disjoint: a stage-driven win (status "open" but in a
+    // "Negocio Ganado"/"Won" stage) counts as won, not open.
+    const open = opportunities.filter((o) => o.status === "open" && !isWonOpp(o)).length
     const lost = opportunities.filter((o) => o.status === "lost").length
     const abandoned = opportunities.filter((o) => o.status === "abandoned").length
-    const wonRevenue = opportunities.filter((o) => o.status === "won").reduce((sum, o) => sum + o.value, 0)
+    const wonRevenue = opportunities.filter(isWonOpp).reduce((sum, o) => sum + o.value, 0)
     const activeMembers = membersProp.length > 0
       ? membersProp.length
       : new Set(opportunities.map((o) => o.assignedTo).filter(Boolean)).size
@@ -173,7 +176,7 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
     const conCita = opportunities.filter((o) => apptIds.has(o.contactId))
     const contactados = opportunities.filter((o) => contactedIds.has(o.contactId))
     const realizadas = opportunities.filter((o) => showedIds.has(o.contactId))
-    const ganados = opportunities.filter((o) => o.status === "won")
+    const ganados = opportunities.filter(isWonOpp)
 
     // Core milestones come from robust data (creation, appointments, status).
     // The optional ones (conversations coverage, "showed" status hygiene) often
@@ -225,7 +228,7 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
       const [y, m] = key.split("-").map(Number)
       const e = byMonth.get(key)!
       const conCita = e.leads.filter((o) => apptContactIds.has(o.contactId))
-      const ganados = e.leads.filter((o) => o.status === "won")
+      const ganados = e.leads.filter(isWonOpp)
       return {
         key,
         label: new Date(y, m - 1, 1).toLocaleDateString("es-MX", { month: "short", year: "2-digit" }),
@@ -384,7 +387,9 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
     if (opportunities.length === 0) return null
     const stageOrder: string[] = []
     for (const p of pipelines) for (const s of p.stages) if (!stageOrder.includes(s)) stageOrder.push(s)
-    const openOpps = opportunities.filter((o) => o.status === "open")
+    // Stage-driven wins keep status "open"; surface them in the "Ganado" row
+    // below rather than as an open stage, so they aren't counted twice.
+    const openOpps = opportunities.filter((o) => o.status === "open" && !isWonOpp(o))
     const openStages = [...new Set(openOpps.map((o) => o.stage))].sort((a, b) => {
       const ai = stageOrder.indexOf(a)
       const bi = stageOrder.indexOf(b)
@@ -406,7 +411,10 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
       ["lost", "Perdido", "#ef4444", "lost"],
     ]
     for (const [status, label, dot, kind] of statusRows) {
-      const opps = opportunities.filter((o) => o.status === status)
+      // "won" spans both GHL status and stage-driven wins; the rest stay status-based.
+      const opps = status === "won"
+        ? opportunities.filter(isWonOpp)
+        : opportunities.filter((o) => o.status === status)
       if (opps.length > 0) rows.push({ label, dot, kind, opps })
     }
     const colOf = matrixBy === "origen"
@@ -685,7 +693,7 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
           onClick={() =>
             openDrill(
               "Oportunidades Ganadas",
-              opportunities.filter((o) => o.status === "won"),
+              opportunities.filter(isWonOpp),
               "Ingreso ganado total",
             )
           }
@@ -696,7 +704,7 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
           value={`${kpiMetrics.conversionRate.toFixed(1)}%`}
           sublabel={`${kpiMetrics.won} ganadas`}
           icon={TrendingUp}
-          onClick={() => openDrill("Oportunidades Ganadas", opportunities.filter((o) => o.status === "won"))}
+          onClick={() => openDrill("Oportunidades Ganadas", opportunities.filter(isWonOpp))}
         />
         <KpiCard
           label="Miembros activos"

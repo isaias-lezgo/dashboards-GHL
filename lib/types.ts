@@ -50,6 +50,7 @@ export interface Contact {
   // Computed attribution (derived from attributions array)
   source?: string
   campaign?: string
+  campaignName?: string // computed: utmCampaign alone (the ad campaign / "pauta" identity)
   adType?: string
   adId?: string
   attributionUrl?: string
@@ -104,6 +105,7 @@ export interface Opportunity {
 
   // Computed attribution (derived from attributions array)
   campaign?: string
+  campaignName?: string // computed: utmCampaign alone (the ad campaign / "pauta" identity)
   adType?: string
   adId?: string
   attributionUrl?: string

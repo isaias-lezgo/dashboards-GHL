@@ -99,6 +99,7 @@ function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>):
     createdAt: ghl.dateAdded,
     source: attr?.utmSource || attr?.adSource || ghl.source || "direct",
     campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+    campaignName: attr?.utmCampaign || undefined,
     adType: attr?.utmMedium || attr?.utmSessionSource,
     adId: attr?.utmAdId || undefined,
     attributionUrl: attr?.url || ghl.attributionSource?.url || undefined,
@@ -126,6 +127,7 @@ function transformOpportunity(
     tags: ghl.tags ?? ghl.contact?.tags ?? [],
     source: attr?.utmSource || attr?.adSource || ghl.source,
     campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+    campaignName: attr?.utmCampaign || undefined,
     adType: attr?.utmMedium || attr?.utmSessionSource,
     adId: attr?.utmAdId || undefined,
     attributionUrl: attr?.url || undefined,
@@ -466,6 +468,7 @@ export async function GET() {
             createdAt: raw.createdAt,
             source: attr?.utmSource || attr?.adSource || raw.source || "direct",
             campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+            campaignName: attr?.utmCampaign || undefined,
             adType: attr?.utmMedium || attr?.utmSessionSource,
             adId: attr?.utmAdId || undefined,
             attributionUrl: attr?.url || undefined,
@@ -490,6 +493,7 @@ export async function GET() {
           const contact = contactById.get(opp.contactId);
           if (contact) {
             if (!opp.campaign) opp.campaign = contact.campaign;
+            if (!opp.campaignName) opp.campaignName = contact.campaignName;
             if (!opp.adType) opp.adType = contact.adType;
             if (!opp.source) opp.source = contact.source;
             if (!opp.adId) opp.adId = contact.adId;

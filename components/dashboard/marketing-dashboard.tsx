@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/chart"
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
 import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check, ExternalLink } from "lucide-react"
-import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel } from "@/lib/source-platform"
+import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel, originSignalText, hasGoogleAdsSignal, hasWebsiteSignal } from "@/lib/source-platform"
+import { isWonOpp } from "@/lib/opportunity-status"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import { ExportReportButton } from "./export-report-button"
 import type { ReportInput, ReportSection } from "@/lib/report"
@@ -181,9 +182,19 @@ function sourceCategory(opp: Opportunity): string {
   const src = (opp.source ?? "").toLowerCase()
   const med = (opp.adType ?? "").toLowerCase()
   const attrMed = (opp.attributionMedium ?? "").toLowerCase()
+  // Website leads arrive without a UTM platform (pushed in via Zapier →
+  // source/medium look like "Third Party"/"zapier"); the surviving signal lives
+  // in the opportunity custom fields. Distinguish paid vs organic website:
+  //   • "Tipo de pauta = Google Ads"            → Paid Search (paid website lead)
+  //   • website "Origen de Lead" with NO pauta  → Orgánico Web (organic website lead)
+  const originSignal = originSignalText(opp)
+  if (hasGoogleAdsSignal(originSignal)) return "Paid Search"
   if (PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) || PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m))) return "Paid Social"
   if (PAID_SEARCH_SOURCES.some((s) => src.includes(s)) || PAID_SEARCH_MEDIUMS.some((m) => med.includes(m))) return "Paid Search"
   if (SOCIAL_ORGANIC_SOURCES.some((s) => src.includes(s)) || med.includes("social")) return "Social Media"
+  // Organic website origin — checked before the empty-source CRM-UI catch below,
+  // since these leads also have a blank source/medium.
+  if (hasWebsiteSignal(originSignal)) return "Orgánico Web"
   if (src === "" || med === "" || isCrmUi(src, med, attrMed)) return "CRM UI"
   if (src.includes("web") || src.includes("website") || src.includes("landing") || med === "organic" || med === "referral") return "Orgánico Web"
   return "Otro"
@@ -277,9 +288,10 @@ function LinkButton({ value }: { value: string }) {
   )
 }
 
-type PaidGroupBy = "url" | "id" | "platform"
+type PaidGroupBy = "campaign" | "url" | "id" | "platform"
 
 const PAID_GROUP_OPTIONS: { v: PaidGroupBy; label: string }[] = [
+  { v: "campaign", label: "Campaña" },
   { v: "url", label: "URL" },
   { v: "id", label: "ID" },
   { v: "platform", label: "Origen" },
@@ -310,17 +322,43 @@ function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: 
 function paidGroupByKey(opp: Opportunity, groupBy: PaidGroupBy): string | null | undefined {
   if (groupBy === "platform") return platformLabel(opp)
   if (groupBy === "url") return opp.attributionUrl
+  if (groupBy === "campaign") return opp.campaignName
   return opp.adId
 }
 
-function paidGroupByLabel(key: string, groupBy: PaidGroupBy): string {
+// Campaign names in an account usually share a long boilerplate prefix
+// (e.g. "IW - CC - FF - Corregidora - ") and differ only by a suffix such as the
+// month. Grouping by campaign would then render visually identical bars. Given a
+// chart's set of campaign keys, return the length of the run shared by every key
+// (trimmed to a separator boundary) so labels can drop it. Returns 0 for
+// non-campaign modes or when there's nothing meaningful to strip.
+function campaignPrefixCut(keys: string[], groupBy: PaidGroupBy): number {
+  if (groupBy !== "campaign" || keys.length < 2) return 0
+  let prefix = keys[0] ?? ""
+  for (const k of keys) {
+    let i = 0
+    while (i < prefix.length && i < k.length && prefix[i] === k[i]) i++
+    prefix = prefix.slice(0, i)
+    if (!prefix) return 0
+  }
+  // Cut on the last separator so we never slice mid-word.
+  const cut = Math.max(prefix.lastIndexOf(" "), prefix.lastIndexOf("-")) + 1
+  return cut > 3 ? cut : 0
+}
+
+function paidGroupByLabel(key: string, groupBy: PaidGroupBy, prefixCut = 0): string {
   if (groupBy === "url") return paidTrafficUrlLabel(key)
+  if (groupBy === "campaign") {
+    const rest = (prefixCut > 0 ? key.slice(prefixCut) : key).trim() || key
+    return rest.length > 30 ? rest.slice(0, 30) + "…" : rest
+  }
   return key
 }
 
 function paidGroupByHint(groupBy: PaidGroupBy): string {
   if (groupBy === "url") return "URL de atribución"
   if (groupBy === "id") return "ID de anuncio"
+  if (groupBy === "campaign") return "campaña"
   return "plataforma de origen"
 }
 
@@ -380,10 +418,10 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   const lookupContacts = allContacts ?? contacts
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
-  const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("url")
-  const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("url")
-  const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("url")
-  const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("url")
+  const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("campaign")
+  const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("campaign")
+  const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("campaign")
+  const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("campaign")
   const [originGroupBy, setOriginGroupBy] = useState<OriginGroupBy>("platform")
   const [onlyReingresos, setOnlyReingresos] = useState(false)
   const [pautaUniqueLeads, setPautaUniqueLeads] = useState(false)
@@ -536,10 +574,11 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     return { pautaByStageRows: rows, pautaByStageKeys: keys, pautaByStageKeyCount }
   }, [opportunities, stageOrder, stageGroupBy, stageTopN])
 
+  const stageCampaignCut = campaignPrefixCut(pautaByStageKeys, stageGroupBy)
   const pautaByStageConfig = Object.fromEntries(
     pautaByStageKeys.map((k, i) => [
       k,
-      { label: paidGroupByLabel(k, stageGroupBy), color: stageGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
+      { label: paidGroupByLabel(k, stageGroupBy, stageCampaignCut), color: stageGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
     ])
   )
 
@@ -583,10 +622,11 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     return { lostByReasonRows: rows, lostByReasonKeys: keys, lostByReasonKeyCount }
   }, [opportunities, lostGroupBy, lostTopN])
 
+  const lostCampaignCut = campaignPrefixCut(lostByReasonKeys, lostGroupBy)
   const lostByReasonConfig = Object.fromEntries(
     lostByReasonKeys.map((k, i) => [
       k,
-      { label: paidGroupByLabel(k, lostGroupBy), color: lostGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
+      { label: paidGroupByLabel(k, lostGroupBy, lostCampaignCut), color: lostGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
     ])
   )
 
@@ -677,7 +717,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     }
     return Array.from(map.entries())
       .map(([key, opps]) => {
-        const wonOpps = opps.filter((o) => o.status === "won")
+        const wonOpps = opps.filter(isWonOpp)
         const wonValue = wonOpps.reduce((s, o) => s + o.value, 0)
         return {
           key,
@@ -744,11 +784,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     }
     const allEntries = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
     const apptKeyCount = allEntries.length
+    const prefixCut = campaignPrefixCut(allEntries.map(([k]) => k), apptGroupBy)
     const sliced = apptTopN >= apptKeyCount ? allEntries : allEntries.slice(0, Math.round(apptTopN))
     return {
       paidTrafficWithAppt: sliced.map(([rawKey, count]) => ({
         rawKey,
-        label: paidGroupByLabel(rawKey, apptGroupBy),
+        label: paidGroupByLabel(rawKey, apptGroupBy, prefixCut),
         count,
       })),
       apptKeyCount,
@@ -759,7 +800,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   const { wonPaidTraffic, wonKeyCount } = useMemo(() => {
     const counts = new Map<string, { count: number; value: number }>()
     for (const o of opportunities) {
-      if (!isPaidTraffic(o) || o.status !== "won") continue
+      if (!isPaidTraffic(o) || !isWonOpp(o)) continue
       const rawKey = paidGroupByKey(o, wonGroupBy)
       if (!rawKey) continue
       const prev = counts.get(rawKey) ?? { count: 0, value: 0 }
@@ -767,11 +808,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     }
     const allEntries = Array.from(counts.entries()).sort((a, b) => b[1].count - a[1].count)
     const wonKeyCount = allEntries.length
+    const prefixCut = campaignPrefixCut(allEntries.map(([k]) => k), wonGroupBy)
     const sliced = wonTopN >= wonKeyCount ? allEntries : allEntries.slice(0, Math.round(wonTopN))
     return {
       wonPaidTraffic: sliced.map(([rawKey, { count, value }]) => ({
         rawKey,
-        label: paidGroupByLabel(rawKey, wonGroupBy),
+        label: paidGroupByLabel(rawKey, wonGroupBy, prefixCut),
         count,
         value,
       })),
@@ -785,7 +827,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   const wonBySource = useMemo(() => {
     const byPlatform = new Map<string, Map<string, number>>()
     for (const o of opportunities) {
-      if (o.status !== "won") continue
+      if (!isWonOpp(o)) continue
       const platform = platformLabel(o)
       const cat = sourceCategory(o)
       if (!byPlatform.has(platform)) byPlatform.set(platform, new Map())
@@ -801,7 +843,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   }, [opportunities])
 
   const wonTotal = useMemo(
-    () => opportunities.reduce((s, o) => (o.status === "won" ? s + 1 : s), 0),
+    () => opportunities.reduce((s, o) => (isWonOpp(o) ? s + 1 : s), 0),
     [opportunities],
   )
 
@@ -1420,7 +1462,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           style={{ color: "#374151", marginRight: 4 }}
                           title={value}
                         >
-                          {paidGroupByLabel(value, stageGroupBy).slice(0, 20)}
+                          {paidGroupByLabel(value, stageGroupBy, stageCampaignCut).slice(0, 20)}
                         </span>
                       )}
                     />
@@ -1441,7 +1483,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                             if (o.stage !== stage) return false
                             return paidGroupByKey(o, stageGroupBy) === key
                           })
-                          const label = paidGroupByLabel(key, stageGroupBy)
+                          const label = paidGroupByLabel(key, stageGroupBy, stageCampaignCut)
                           openDrill(
                             `${label} · ${stage}`,
                             items,
@@ -1499,7 +1541,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                       iconSize={8}
                       formatter={(value: string) => (
                         <span style={{ color: "#374151", marginRight: 4 }} title={value}>
-                          {paidGroupByLabel(value, lostGroupBy).slice(0, 20)}
+                          {paidGroupByLabel(value, lostGroupBy, lostCampaignCut).slice(0, 20)}
                         </span>
                       )}
                     />
@@ -1521,7 +1563,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                             if ((o.lostReason || "Sin razón") !== reason) return false
                             return paidGroupByKey(o, lostGroupBy) === key
                           })
-                          const label = paidGroupByLabel(key, lostGroupBy)
+                          const label = paidGroupByLabel(key, lostGroupBy, lostCampaignCut)
                           openDrill(
                             `${label} · ${reason}`,
                             items,
@@ -1866,7 +1908,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           openDrill(
                             `Ganados de tráfico pagado: ${data.label}`,
                             opportunities.filter((o) => {
-                              if (!isPaidTraffic(o) || o.status !== "won") return false
+                              if (!isPaidTraffic(o) || !isWonOpp(o)) return false
                               return paidGroupByKey(o, wonGroupBy) === rawKey
                             })
                           )
@@ -1936,7 +1978,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           if (!count) return
                           openDrill(
                             `Ganadas: ${data.platform} · ${key}`,
-                            opportunities.filter((o) => o.status === "won" && platformLabel(o) === data.platform && sourceCategory(o) === key)
+                            opportunities.filter((o) => isWonOpp(o) && platformLabel(o) === data.platform && sourceCategory(o) === key)
                           )
                         }}
                       />
@@ -1979,7 +2021,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                   </TableHeader>
                   <TableBody>
                     {originRows.map((row) => {
-                      const wonOpps = row.opps.filter((o) => o.status === "won")
+                      const wonOpps = row.opps.filter(isWonOpp)
                       return (
                         <TableRow key={row.key} className="cursor-pointer">
                           <TableCell className="text-xs font-medium text-foreground">

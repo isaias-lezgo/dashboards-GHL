@@ -20,17 +20,19 @@ const PLATAFORMA_RULES: { label: string; rule: string }[] = [
 // probes additional origin hints (strongest → weakest) before settling on "Otro".
 const FALLBACK_RULES: { label: string; rule: string }[] = [
   { label: "1. Origen de Lead", rule: 'campo del contacto "Origen de Lead" (Instagram/Facebook/TikTok…)' },
-  { label: "2. Medio",          rule: "medio de atribución de GHL (facebook, instagram, tiktok…)" },
-  { label: "3. Tipo de anuncio", rule: "utm_medium / utm_session_source" },
-  { label: "4. Campaña",        rule: "etiqueta de campaña (utm_content / utm_campaign)" },
-  { label: "5. URL / fuente",   rule: "re-escaneo de la URL y fuente completas" },
+  { label: "2. Campos de la oportunidad", rule: 'Origen de Lead / Tipo de pauta / Nombre pauta — lead del sitio web con "Tipo de pauta = Google Ads" → Google; sitio web orgánico (sin pauta) se queda en Otro en plataforma' },
+  { label: "3. Medio",          rule: "medio de atribución de GHL (facebook, instagram, tiktok…)" },
+  { label: "4. Tipo de anuncio", rule: "utm_medium / utm_session_source" },
+  { label: "5. Campaña",        rule: "etiqueta de campaña (utm_content / utm_campaign)" },
+  { label: "6. URL / fuente",   rule: "re-escaneo de la URL y fuente completas" },
 ]
 
 const FUENTE_RULES: { label: string; rule: string }[] = [
   { label: "Paid Social",  rule: "fuente en meta/facebook/instagram/tiktok o medio en paid_social/cpc/cpm" },
+  { label: "Paid Search",  rule: 'fuente/medio en google/bing ads, o campo "Tipo de pauta = Google Ads" (incluye leads del sitio web vía Google Ads)' },
   { label: "Social Media", rule: "fuente orgánica en redes sociales sin medio de pago" },
   { label: "CRM UI",       rule: "fuente vacía o ingresada manualmente desde el CRM" },
-  { label: "Orgánico Web", rule: 'fuente contiene "web"/"website"/"landing" o medio "organic"/"referral"; también paid search (google/bing ads)' },
+  { label: "Orgánico Web", rule: 'origen del sitio web sin pauta (Sitio Web / Formulario Sitio Web / Web…), o fuente "web"/"website"/"landing" o medio "organic"/"referral"' },
   { label: "Otro",         rule: "fuente no clasificada en los anteriores" },
 ]
 
