@@ -390,7 +390,14 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
     // Stage-driven wins keep status "open"; surface them in the "Ganado" row
     // below rather than as an open stage, so they aren't counted twice.
     const openOpps = opportunities.filter((o) => o.status === "open" && !isWonOpp(o))
-    const openStages = [...new Set(openOpps.map((o) => o.stage))].sort((a, b) => {
+    // Derive stage list from ALL opportunities (any status) so stages whose opps
+    // have all moved to won/lost still appear as rows (with 0 open counts).
+    // Won-stage-named stages (e.g. "Negocio Ganado") are excluded here since they
+    // are represented by the aggregate "Ganado" row below.
+    const wonStagePattern = /ganad[oa]|\bwon\b/i
+    const allActiveStages = [...new Set(
+      opportunities.map((o) => o.stage).filter((s) => !wonStagePattern.test(s ?? ""))
+    )].sort((a, b) => {
       const ai = stageOrder.indexOf(a)
       const bi = stageOrder.indexOf(b)
       if (ai === -1 && bi === -1) return a.localeCompare(b)
@@ -399,7 +406,7 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
       return ai - bi
     })
     type MatrixRow = { label: string; dot: string; kind: "open" | "won" | "abandoned" | "lost"; opps: Opportunity[] }
-    const rows: MatrixRow[] = openStages.map((s) => ({
+    const rows: MatrixRow[] = allActiveStages.map((s) => ({
       label: s,
       dot: "#3b82f6",
       kind: "open" as const,
