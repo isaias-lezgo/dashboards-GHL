@@ -17,13 +17,16 @@ There are no automated tests in this project.
 ## Environment Variables
 
 Required vars in `.env.local`:
-- `GHL_API_TOKEN` — GoHighLevel Private Integration Token (bearer auth)
-- `GHL_LOCATION_ID` — GHL location/sub-account ID
-- `DASHBOARD_PASSWORD` — shared password for the login gate (you choose it)
+- `DASHBOARD_CLIENTS` — JSON array of clients, one per GHL sub-account:
+  `[{"id","name","locationId","ghlToken","password"?}]`. `password` is optional and
+  defaults to that client's `locationId`. Use `npm run add-client` to extend it safely.
 - `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
+- `ANTHROPIC_API_KEY` — for the AI assistant tab
+- `GHL_API_TOKEN` / `GHL_LOCATION_ID` — **not read by the app.** Kept only so the dev
+  GHL MCP server (`.mcp.json`) can point at one sub-account.
 
-`GHL_*` are read exclusively server-side inside `lib/ghl-client.ts`. The dashboard
-auth vars are read server-side in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
+All are server-side only. `DASHBOARD_CLIENTS` is read in `lib/clients.ts`;
+`DASHBOARD_AUTH_SECRET` in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
 `middleware.ts` — never exposed to the browser.
 
 ## Architecture
@@ -52,6 +55,47 @@ app/page.tsx  (tab state, date-filter state, applies the client-side date-range 
     ↓
 components/dashboard/{marketing,sales}-dashboard.tsx
 ```
+
+### Multi-client (multi-tenancy)
+
+One deployment serves every client. **The password IS the client's identity.**
+
+1. `lib/clients.ts` — the roster, parsed from `DASHBOARD_CLIENTS`. This is the
+   **seam**: nothing downstream knows the roster comes from an env var, so swapping
+   in a database later touches only this file.
+2. Login (`app/api/auth/login/route.ts`) looks the submitted password up across the
+   roster (`findClientByPassword` — constant-time, no early return) and HMAC-signs
+   the matched client's id into the `dash_session` cookie:
+   `<clientId>.<expiryMs>.<hmac>`. The id is inside the signed payload, so a client
+   cannot edit their cookie to reach another client's data.
+3. Every GHL-touching route calls `requireClient()` (`lib/session.ts`), which
+   re-verifies the cookie **itself** — it deliberately does not trust a
+   middleware-injected header, which would be a spoofing surface. Middleware only
+   verifies the signature; resolving the client there would drag the roster into the
+   Edge bundle.
+4. The route runs its GHL work inside `withClient(client, ...)`
+   (`lib/ghl-context.ts`, an `AsyncLocalStorage`). `ghlFetch` reads credentials via
+   `currentClient()`, which is why none of its ~113 exported functions needed a
+   signature change. `currentClient()` **fails closed** — it throws rather than
+   falling back to a default token.
+5. `lib/ghl-limiter.ts` keys the concurrency semaphore, token bucket, and 429
+   cooldown **by location id**, because GHL's budget is per location. Shared, one
+   client's 429 would freeze every other client's sync.
+
+**NEVER** replace the AsyncLocalStorage context with a module-level "current client"
+variable: one serverless instance serves overlapping requests, so that would
+silently serve client A's dashboard using client B's token.
+
+The two streaming routes (`dashboard`, `dashboard-messages`) enter the context
+**inside** the `ReadableStream` `start()` callback — the stream outlives the
+handler's return, so wrapping the handler would leave the pump running outside the
+context.
+
+`app/api/chat` and `app/api/analyze-report` never touch GHL (they work off data the
+browser already holds), so they need no client context — only the middleware gate.
+
+Verification scripts (no test framework in this repo): `npm run verify:clients`,
+`verify:auth`, `verify:limiter`.
 
 ### Loading & progress
 
