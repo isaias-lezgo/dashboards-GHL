@@ -5,6 +5,14 @@
 // Credentials are per-request, not per-process: ghlFetch reads them from the
 // AsyncLocalStorage context established by the route (see lib/ghl-context.ts).
 import { currentClient } from "./ghl-context";
+import {
+  acquireSlot,
+  releaseSlot,
+  acquireRateToken,
+  noteRateLimitHeaders,
+  note429,
+  RATE_LIMIT_INTERVAL_MS,
+} from "./ghl-limiter";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 // GHL's current API contract. Verified (read-only probe) to return shapes
@@ -15,104 +23,6 @@ const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2023-02-21";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ---- Global concurrency limiter ----
-// Every GHL request in this server process funnels through ghlFetch, and BOTH
-// dashboard routes (/api/dashboard and /api/dashboard-messages) import this same
-// module. Each route already bounds its own fan-out, but nothing bounds them
-// *together* — run concurrently they burst well past GHL's per-token rate limit,
-// which produced 429 storms and 401 "Command timed out" gateway errors. A single
-// process-wide semaphore caps total in-flight requests so the combined load stays
-// safe no matter how the fan-outs overlap. Tunable; GHL's burst limit is ~100
-// requests / 10s, so 8 concurrent leaves comfortable headroom.
-const MAX_CONCURRENT_GHL_REQUESTS = 8;
-let activeGhlRequests = 0;
-const ghlWaitQueue: Array<() => void> = [];
-
-function acquireSlot(): Promise<void> {
-  if (activeGhlRequests < MAX_CONCURRENT_GHL_REQUESTS) {
-    activeGhlRequests++;
-    return Promise.resolve();
-  }
-  // At capacity — wait until a slot is handed off directly (active count stays
-  // pinned at the max while the slot transfers, so we never over-admit).
-  return new Promise<void>((resolve) => ghlWaitQueue.push(resolve));
-}
-
-function releaseSlot(): void {
-  const next = ghlWaitQueue.shift();
-  if (next) {
-    next(); // hand the slot straight to the next waiter; active count unchanged
-  } else {
-    activeGhlRequests--;
-  }
-}
-
-// ---- Global request-RATE limiter ----
-// The concurrency cap above bounds in-flight requests but NOT the request *rate*,
-// and those are different things. GHL's burst budget is 100 requests / 10s per
-// location (confirmed via the `x-ratelimit-max` / `x-ratelimit-interval-
-// milliseconds` response headers it returns on every call). Because GHL answers
-// in ~60ms, 8 concurrent requests fire at >100/s — ~10x over budget — which is
-// exactly what produced the 429 storms when fanning out over ~700 contacts.
-//
-// This token bucket paces the rate. We target 80/10s to leave headroom for the
-// burst allowance and any other consumer of the same token (e.g. the GHL MCP).
-// A small bucket capacity smooths emission instead of letting a burst align
-// badly with GHL's window: worst-case requests in any 10s window =
-// capacity + rate*10s = 8 + 80 = 88, comfortably under 100.
-const RATE_LIMIT_MAX = 80; // requests we allow ourselves per interval
-const RATE_LIMIT_INTERVAL_MS = 10_000;
-const RATE_REFILL_PER_MS = RATE_LIMIT_MAX / RATE_LIMIT_INTERVAL_MS;
-const RATE_BUCKET_CAPACITY = MAX_CONCURRENT_GHL_REQUESTS;
-
-let rateTokens = RATE_BUCKET_CAPACITY;
-let rateLastRefill = Date.now();
-// Hard floor shared by ALL requests: when GHL pushes back with 429 (or reports a
-// near-empty budget) nothing starts until this timestamp. This makes one 429
-// throttle the whole process instead of each request blindly retrying in lockstep.
-let cooldownUntil = 0;
-
-function refillRateTokens(): void {
-  const now = Date.now();
-  rateTokens = Math.min(
-    RATE_BUCKET_CAPACITY,
-    rateTokens + (now - rateLastRefill) * RATE_REFILL_PER_MS
-  );
-  rateLastRefill = now;
-}
-
-// Block until a request may start: honor any active global cooldown, then wait
-// for a rate-limiter token. Called before EVERY HTTP attempt (including retries),
-// so 429 backoff is paced too — not just the initial request.
-async function acquireRateToken(): Promise<void> {
-  for (;;) {
-    const now = Date.now();
-    if (now < cooldownUntil) {
-      await sleep(cooldownUntil - now);
-      continue;
-    }
-    refillRateTokens();
-    if (rateTokens >= 1) {
-      rateTokens -= 1;
-      return;
-    }
-    await sleep(Math.ceil((1 - rateTokens) / RATE_REFILL_PER_MS));
-  }
-}
-
-// Read GHL's rate headers off a response. When the remaining budget for the
-// current window is nearly spent, coast (set a short global cooldown until the
-// window resets) so we glide under the limit instead of tripping a 429.
-function noteRateLimitHeaders(response: Response): void {
-  const remaining = Number(response.headers.get("x-ratelimit-remaining"));
-  if (Number.isFinite(remaining) && remaining <= 2) {
-    const interval =
-      Number(response.headers.get("x-ratelimit-interval-milliseconds")) ||
-      RATE_LIMIT_INTERVAL_MS;
-    cooldownUntil = Math.max(cooldownUntil, Date.now() + interval);
-  }
-}
 
 interface GHLRequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -181,7 +91,7 @@ async function ghlFetch<T>(
   // Cap total concurrent in-flight GHL requests across the whole process. Held
   // for the request's full lifetime — including retry backoff — so that when GHL
   // pushes back with 429s we aggressively shed concurrency instead of hammering.
-  await acquireSlot();
+  await acquireSlot(locationId);
   try {
     // 4 retries (5 attempts total). Backoff is jittered so concurrent requests
     // don't re-fire in lockstep (a synchronized retry wave just re-triggers the
@@ -190,7 +100,7 @@ async function ghlFetch<T>(
     const MAX_RETRIES = 4;
     const jitter = () => Math.floor(Math.random() * 500);
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      await acquireRateToken();
+      await acquireRateToken(locationId);
       let response: Response;
       try {
         response = await fetch(url.toString(), {
@@ -210,7 +120,7 @@ async function ghlFetch<T>(
       }
 
       // Absorb GHL's rate-limit headers so we coast under the limit pre-emptively.
-      noteRateLimitHeaders(response);
+      noteRateLimitHeaders(locationId, response);
 
       if (response.status === 429 || response.status >= 500) {
         if (attempt === MAX_RETRIES) {
@@ -219,14 +129,15 @@ async function ghlFetch<T>(
         const retryAfter = Number(response.headers.get("Retry-After") ?? 0);
         if (response.status === 429) {
           // A 429 means we (or another consumer of this token) overran the window.
-          // Set a process-wide cooldown until the window resets so EVERY pending
-          // request backs off together, not just this one.
+          // Cool down THIS LOCATION until the window resets, so every pending
+          // request for this client backs off together — and no other client is
+          // affected (a shared cooldown would freeze every tenant's sync).
           const interval =
             Number(response.headers.get("x-ratelimit-interval-milliseconds")) ||
             RATE_LIMIT_INTERVAL_MS;
           const cool = retryAfter > 0 ? retryAfter * 1000 : interval;
-          cooldownUntil = Math.max(cooldownUntil, Date.now() + cool + jitter());
-          console.warn(`[GHL] 429 — global cooldown ~${cool}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          note429(locationId, cool + jitter());
+          console.warn(`[GHL] 429 for ${locationId} — cooldown ~${cool}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
           continue; // acquireRateToken() at the top of the loop waits out the cooldown
         }
         const delay = retryAfter > 0 ? retryAfter * 1000 : Math.pow(2, attempt) * 1000 + jitter();
@@ -263,7 +174,7 @@ async function ghlFetch<T>(
 
     throw new Error("GHL API Error: unexpected retry loop exit");
   } finally {
-    releaseSlot();
+    releaseSlot(locationId);
   }
 }
 
