@@ -4,8 +4,8 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
   signToken,
-  safeEqual,
 } from "@/lib/auth";
+import { findClientByPassword, type ClientConfig } from "@/lib/clients";
 
 export const runtime = "nodejs";
 
@@ -44,9 +44,8 @@ function recordFailure(ip: string): void {
 }
 
 export async function POST(req: Request) {
-  const password = process.env.DASHBOARD_PASSWORD;
-  if (!password || !process.env.DASHBOARD_AUTH_SECRET) {
-    console.error("[auth] DASHBOARD_PASSWORD or DASHBOARD_AUTH_SECRET not set");
+  if (!process.env.DASHBOARD_CLIENTS || !process.env.DASHBOARD_AUTH_SECRET) {
+    console.error("[auth] DASHBOARD_CLIENTS or DASHBOARD_AUTH_SECRET not set");
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 
@@ -63,15 +62,26 @@ export async function POST(req: Request) {
     submitted = "";
   }
 
-  if (!safeEqual(submitted, password)) {
+  // The password IS the client's identity. findClientByPassword compares against
+  // every client with no early return, so timing reveals nothing about the roster.
+  let client: ClientConfig | null = null;
+  try {
+    client = findClientByPassword(submitted);
+  } catch (err) {
+    // A malformed roster must not look like a wrong password.
+    console.error("[auth] Invalid DASHBOARD_CLIENTS:", err);
+    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
+  }
+
+  if (!client) {
     recordFailure(ip);
     return NextResponse.json({ error: "invalid_password" }, { status: 401 });
   }
 
-  // Success: clear failures and set the signed session cookie.
+  // Success: clear failures and set the signed session cookie for THIS client.
   attempts.delete(ip);
   const expiryMs = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
-  const token = await signToken(expiryMs);
+  const token = await signToken(client.id, expiryMs);
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, token, {

@@ -12,9 +12,12 @@ export async function middleware(req: NextRequest) {
     return denied(req);
   }
 
+  // Only verifies the signature — it deliberately does NOT resolve the client,
+  // which would drag the roster into the Edge bundle. Routes resolve the client
+  // themselves via requireClient() (lib/session.ts).
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  const ok = await verifyToken(token);
-  if (ok) return NextResponse.next();
+  const clientId = await verifyToken(token);
+  if (clientId) return NextResponse.next();
   return denied(req);
 }
 

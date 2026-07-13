@@ -26,6 +26,7 @@ import {
   Target,
   ClipboardList,
   Sparkles,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -201,6 +202,22 @@ export default function DashboardPage() {
               ) : (
                 <Moon className="h-4 w-4" />
               )}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg text-white/70 hover:bg-white/10 hover:text-white"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" })
+                // A full page load, not a router push: this drops all client-side
+                // dashboard state, so the next client to log in on this browser
+                // can't see the previous client's data behind a cached React tree.
+                window.location.href = "/login"
+              }}
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>

@@ -48,22 +48,32 @@ async function hmac(message: string): Promise<string> {
     .join("");
 }
 
-// Token format: "<expiryMs>.<hmac(expiryMs)>". Contains no password or PII.
-export async function signToken(expiryMs: number): Promise<string> {
-  const payload = String(expiryMs);
+// Token format: "<clientId>.<expiryMs>.<hmac(clientId.expiryMs)>".
+// The client id is INSIDE the signed payload, so a client cannot edit their
+// cookie to impersonate another client — the signature check fails. Contains no
+// password and no PII.
+export async function signToken(clientId: string, expiryMs: number): Promise<string> {
+  const payload = `${clientId}.${expiryMs}`;
   const sig = await hmac(payload);
   return `${payload}.${sig}`;
 }
 
-export async function verifyToken(value: string | undefined): Promise<boolean> {
-  if (!value) return false;
-  const dot = value.indexOf(".");
-  if (dot < 0) return false;
-  const payload = value.slice(0, dot);
-  const sig = value.slice(dot + 1);
-  const expiryMs = Number(payload);
-  if (!Number.isFinite(expiryMs)) return false;
-  if (Date.now() > expiryMs) return false; // expired
-  const expected = await hmac(payload);
-  return safeEqual(sig, expected);
+// Returns the client id on success, null on any failure (missing, malformed,
+// expired, or bad signature). Callers resolve the id to a ClientConfig.
+export async function verifyToken(value: string | undefined): Promise<string | null> {
+  if (!value) return null;
+  const parts = value.split(".");
+  if (parts.length !== 3) return null;
+
+  const [clientId, expiryRaw, sig] = parts;
+  if (!clientId) return null;
+
+  const expiryMs = Number(expiryRaw);
+  if (!Number.isFinite(expiryMs)) return null;
+  if (Date.now() > expiryMs) return null; // expired
+
+  const expected = await hmac(`${clientId}.${expiryMs}`);
+  if (!safeEqual(sig, expected)) return null;
+
+  return clientId;
 }

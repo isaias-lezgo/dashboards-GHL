@@ -1,6 +1,10 @@
 import { getConversations, getMessages } from "@/lib/ghl-client"
 import { ghlMessageToInternal } from "@/lib/ghl-message-mapper"
 import type { Message } from "@/lib/types"
+import { requireClient, unauthorized } from "@/lib/session"
+import { withClient } from "@/lib/ghl-context"
+
+export const runtime = "nodejs"
 
 const BATCH_SIZE = 10
 
@@ -31,6 +35,9 @@ async function fetchThread(
 }
 
 export async function GET(request: Request) {
+  const client = await requireClient()
+  if (!client) return unauthorized()
+
   const { searchParams } = new URL(request.url)
 
   const contactIds = (searchParams.get("contactIds") ?? "")
@@ -41,19 +48,21 @@ export async function GET(request: Request) {
   const rawLimit = parseInt(searchParams.get("messageLimit") ?? "100", 10)
   const messageLimit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 500) : 100
 
-  const locationId = process.env.GHL_LOCATION_ID ?? ""
+  const locationId = client.locationId
 
   if (contactIds.length === 0) {
     return Response.json({ threads: [], locationId })
   }
 
-  const threads: Array<{ contactId: string; messages: Message[]; hasMore: boolean }> = []
+  return withClient(client, async () => {
+    const threads: Array<{ contactId: string; messages: Message[]; hasMore: boolean }> = []
 
-  for (let i = 0; i < contactIds.length; i += BATCH_SIZE) {
-    const batch = contactIds.slice(i, i + BATCH_SIZE)
-    const results = await Promise.all(batch.map((id) => fetchThread(id, messageLimit)))
-    threads.push(...results)
-  }
+    for (let i = 0; i < contactIds.length; i += BATCH_SIZE) {
+      const batch = contactIds.slice(i, i + BATCH_SIZE)
+      const results = await Promise.all(batch.map((id) => fetchThread(id, messageLimit)))
+      threads.push(...results)
+    }
 
-  return Response.json({ threads, locationId })
+    return Response.json({ threads, locationId })
+  })
 }
