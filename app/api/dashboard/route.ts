@@ -15,6 +15,8 @@ import {
   type GHLCalendarEvent,
   type GHLTask,
 } from "@/lib/ghl-client";
+import { requireClient, unauthorized } from "@/lib/session";
+import { withClient } from "@/lib/ghl-context";
 import type {
   Contact,
   Opportunity,
@@ -282,287 +284,299 @@ async function fetchAppointments(userMap: Map<string, string>): Promise<Appointm
   return appointments;
 }
 
+export const runtime = "nodejs";
+
 export async function GET() {
+  // Resolve the client here, in the request scope — cookies() is unavailable
+  // inside the stream callback below.
+  const client = await requireClient();
+  if (!client) return unauthorized();
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj: unknown) => {
-        controller.enqueue(encoder.encode(enc(obj)));
-      };
-      // Structured per-dataset progress. The client renders one live row per
-      // step (status + running count), so the user watches every stream advance
-      // in parallel instead of staring at a single flickering line. `progress`
-      // text frames are still sent as a human-readable fallback.
-      const sendStep = (
-        key: string,
-        status: "loading" | "done",
-        count?: number
-      ) => send({ type: "step", key, status, ...(count !== undefined ? { count } : {}) });
+      // The client context is entered HERE, not around GET(): the stream keeps
+      // producing frames after GET() has returned, so wrapping the handler would
+      // leave the pump running outside the context (where currentClient() throws).
+      await withClient(client, async () => {
+        const send = (obj: unknown) => {
+          controller.enqueue(encoder.encode(enc(obj)));
+        };
+        // Structured per-dataset progress. The client renders one live row per
+        // step (status + running count), so the user watches every stream advance
+        // in parallel instead of staring at a single flickering line. `progress`
+        // text frames are still sent as a human-readable fallback.
+        const sendStep = (
+          key: string,
+          status: "loading" | "done",
+          count?: number
+        ) => send({ type: "step", key, status, ...(count !== undefined ? { count } : {}) });
 
-      try {
-        send({ type: "progress", message: "Iniciando sincronización…" });
-        sendStep("config", "loading");
+        try {
+          send({ type: "progress", message: "Iniciando sincronización…" });
+          sendStep("config", "loading");
 
-        // Resolve the sub-account name first so the loading screen can show which
-        // location is being opened. Cheap single call — don't block the rest on it.
-        let locationName = "";
-        const locationPromise = getLocation()
-          .then((res) => {
-            const name = res?.location?.name?.trim();
-            if (name) {
-              locationName = name;
-              send({ type: "location", name });
+          // Resolve the sub-account name first so the loading screen can show which
+          // location is being opened. Cheap single call — don't block the rest on it.
+          let locationName = "";
+          const locationPromise = getLocation()
+            .then((res) => {
+              const name = res?.location?.name?.trim();
+              if (name) {
+                locationName = name;
+                send({ type: "location", name });
+              }
+            })
+            .catch(() => {
+              /* non-fatal: loading screen just omits the sub-account name */
+            });
+
+          // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
+          const [pipelinesResult, usersResult, customFieldsResult] =
+            await Promise.allSettled([
+              getPipelines(),
+              getUsers(),
+              getCustomFields(),
+            ]);
+
+          send({ type: "progress", message: "Cargando pipelines y configuración…" });
+
+          const pipelinesRaw = pipelinesResult.status === "fulfilled" ? pipelinesResult.value : { pipelines: [] };
+          const usersRaw = usersResult.status === "fulfilled" ? usersResult.value : { users: [] };
+          const customFieldsRaw = customFieldsResult.status === "fulfilled" ? customFieldsResult.value : { customFields: [] };
+
+          // Build custom field id→name lookup
+          const customFieldMap = new Map<string, string>();
+          for (const cf of customFieldsRaw.customFields) {
+            customFieldMap.set(cf.id, cf.name);
+          }
+
+          // Build pipeline lookup map
+          const pipelineMap = new Map<string, { name: string; stages: Map<string, string> }>();
+          const pipelineList: Pipeline[] = [];
+
+          for (const p of pipelinesRaw.pipelines) {
+            const stageMap = new Map<string, string>();
+            for (const s of p.stages) {
+              stageMap.set(s.id, s.name);
             }
-          })
-          .catch(() => {
-            /* non-fatal: loading screen just omits the sub-account name */
+            pipelineMap.set(p.id, { name: p.name, stages: stageMap });
+            pipelineList.push({
+              id: p.id,
+              name: p.name,
+              stages: p.stages.map((s) => s.name),
+            });
+          }
+
+          // Build user lookup map
+          const userMap = new Map<string, string>();
+          const members: string[] = [];
+          for (const u of usersRaw.users) {
+            const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
+            userMap.set(u.id, name);
+            members.push(name);
+          }
+          sendStep("config", "done");
+
+          // Contacts, opportunities, pautas, appointments and tasks are all
+          // independent of one another — only the transforms afterward depend on
+          // the lookup maps built above. Fetch them concurrently and let the
+          // process-wide semaphore + token bucket in ghl-client pace the combined
+          // GHL load (the old "fetch pautas last to avoid rate-limiting" ordering
+          // is now handled centrally). Progress messages from contacts/opps
+          // interleave — the intended tradeoff for the latency win.
+          send({ type: "progress", message: "Cargando datos de GoHighLevel…" });
+          for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks"]) {
+            sendStep(k, "loading", 0);
+          }
+
+          const [contactsRaw, opportunitiesRaw, pautas, appointments, tasks] =
+            await Promise.all([
+              getAllContacts((count) => {
+                send({ type: "progress", message: `Cargando contactos… ${count.toLocaleString("es-MX")}` });
+                sendStep("contacts", "loading", count);
+              })
+                .then((r) => { sendStep("contacts", "done", r.length); return r; })
+                .catch((err: unknown) => {
+                  console.error("[GHL] Contacts fetch failed:", err);
+                  sendStep("contacts", "done", 0);
+                  return [] as import("@/lib/ghl-client").GHLContact[];
+                }),
+              getAllOpportunities((count) => {
+                send({ type: "progress", message: `Cargando oportunidades… ${count.toLocaleString("es-MX")}` });
+                sendStep("opportunities", "loading", count);
+              })
+                .then((r) => { sendStep("opportunities", "done", r.length); return r; })
+                .catch((err: unknown) => {
+                  console.error("[GHL] Opportunities fetch failed:", err);
+                  sendStep("opportunities", "done", 0);
+                  return [] as import("@/lib/ghl-client").GHLOpportunity[];
+                }),
+              fetchAllPautas((count) => sendStep("pautas", "loading", count))
+                .then((r) => { sendStep("pautas", "done", r.length); return r; }),
+              fetchAppointments(userMap)
+                .then((r) => { sendStep("appointments", "done", r.length); return r; }),
+              searchLocationTasks()
+                .then((raw) => raw.map(transformTask))
+                .then((r) => { sendStep("tasks", "done", r.length); return r; })
+                .catch((err: unknown) => {
+                  console.error("[GHL] Tasks fetch failed:", err);
+                  sendStep("tasks", "done", 0);
+                  return [] as Task[];
+                }),
+            ]);
+
+          send({ type: "progress", message: "Procesando datos…" });
+
+          // Transform contacts
+          const contacts: Contact[] = contactsRaw.map((c) => {
+            const contact = transformContact(c, customFieldMap);
+            if (contact.assignedTo && userMap.has(contact.assignedTo)) {
+              contact.assignedTo = userMap.get(contact.assignedTo);
+            }
+            return contact;
           });
 
-        // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
-        const [pipelinesResult, usersResult, customFieldsResult] =
-          await Promise.allSettled([
-            getPipelines(),
-            getUsers(),
-            getCustomFields(),
-          ]);
-
-        send({ type: "progress", message: "Cargando pipelines y configuración…" });
-
-        const pipelinesRaw = pipelinesResult.status === "fulfilled" ? pipelinesResult.value : { pipelines: [] };
-        const usersRaw = usersResult.status === "fulfilled" ? usersResult.value : { users: [] };
-        const customFieldsRaw = customFieldsResult.status === "fulfilled" ? customFieldsResult.value : { customFields: [] };
-
-        // Build custom field id→name lookup
-        const customFieldMap = new Map<string, string>();
-        for (const cf of customFieldsRaw.customFields) {
-          customFieldMap.set(cf.id, cf.name);
-        }
-
-        // Build pipeline lookup map
-        const pipelineMap = new Map<string, { name: string; stages: Map<string, string> }>();
-        const pipelineList: Pipeline[] = [];
-
-        for (const p of pipelinesRaw.pipelines) {
-          const stageMap = new Map<string, string>();
-          for (const s of p.stages) {
-            stageMap.set(s.id, s.name);
-          }
-          pipelineMap.set(p.id, { name: p.name, stages: stageMap });
-          pipelineList.push({
-            id: p.id,
-            name: p.name,
-            stages: p.stages.map((s) => s.name),
+          // Transform opportunities
+          const opportunities: Opportunity[] = opportunitiesRaw.map((o) => {
+            const opp = transformOpportunity(o, pipelineMap, customFieldMap);
+            if (opp.assignedTo && userMap.has(opp.assignedTo)) {
+              opp.assignedTo = userMap.get(opp.assignedTo);
+            }
+            return opp;
           });
-        }
 
-        // Build user lookup map
-        const userMap = new Map<string, string>();
-        const members: string[] = [];
-        for (const u of usersRaw.users) {
-          const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim();
-          userMap.set(u.id, name);
-          members.push(name);
-        }
-        sendStep("config", "done");
-
-        // Contacts, opportunities, pautas, appointments and tasks are all
-        // independent of one another — only the transforms afterward depend on
-        // the lookup maps built above. Fetch them concurrently and let the
-        // process-wide semaphore + token bucket in ghl-client pace the combined
-        // GHL load (the old "fetch pautas last to avoid rate-limiting" ordering
-        // is now handled centrally). Progress messages from contacts/opps
-        // interleave — the intended tradeoff for the latency win.
-        send({ type: "progress", message: "Cargando datos de GoHighLevel…" });
-        for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks"]) {
-          sendStep(k, "loading", 0);
-        }
-
-        const [contactsRaw, opportunitiesRaw, pautas, appointments, tasks] =
-          await Promise.all([
-            getAllContacts((count) => {
-              send({ type: "progress", message: `Cargando contactos… ${count.toLocaleString("es-MX")}` });
-              sendStep("contacts", "loading", count);
-            })
-              .then((r) => { sendStep("contacts", "done", r.length); return r; })
-              .catch((err: unknown) => {
-                console.error("[GHL] Contacts fetch failed:", err);
-                sendStep("contacts", "done", 0);
-                return [] as import("@/lib/ghl-client").GHLContact[];
-              }),
-            getAllOpportunities((count) => {
-              send({ type: "progress", message: `Cargando oportunidades… ${count.toLocaleString("es-MX")}` });
-              sendStep("opportunities", "loading", count);
-            })
-              .then((r) => { sendStep("opportunities", "done", r.length); return r; })
-              .catch((err: unknown) => {
-                console.error("[GHL] Opportunities fetch failed:", err);
-                sendStep("opportunities", "done", 0);
-                return [] as import("@/lib/ghl-client").GHLOpportunity[];
-              }),
-            fetchAllPautas((count) => sendStep("pautas", "loading", count))
-              .then((r) => { sendStep("pautas", "done", r.length); return r; }),
-            fetchAppointments(userMap)
-              .then((r) => { sendStep("appointments", "done", r.length); return r; }),
-            searchLocationTasks()
-              .then((raw) => raw.map(transformTask))
-              .then((r) => { sendStep("tasks", "done", r.length); return r; })
-              .catch((err: unknown) => {
-                console.error("[GHL] Tasks fetch failed:", err);
-                sendStep("tasks", "done", 0);
-                return [] as Task[];
-              }),
-          ]);
-
-        send({ type: "progress", message: "Procesando datos…" });
-
-        // Transform contacts
-        const contacts: Contact[] = contactsRaw.map((c) => {
-          const contact = transformContact(c, customFieldMap);
-          if (contact.assignedTo && userMap.has(contact.assignedTo)) {
-            contact.assignedTo = userMap.get(contact.assignedTo);
+          // Enrich opportunities with attribution from linked contact
+          const contactById = new Map<string, Contact>();
+          for (const c of contacts) {
+            contactById.set(c.id, c);
           }
-          return contact;
-        });
 
-        // Transform opportunities
-        const opportunities: Opportunity[] = opportunitiesRaw.map((o) => {
-          const opp = transformOpportunity(o, pipelineMap, customFieldMap);
-          if (opp.assignedTo && userMap.has(opp.assignedTo)) {
-            opp.assignedTo = userMap.get(opp.assignedTo);
+          // GHL guarantees every opportunity has a contact, and the
+          // /opportunities/search response already embeds { id, name, email,
+          // phone, tags }. The /contacts/ list endpoint, however, sometimes
+          // omits records (archived, restricted, pagination quirks). For any
+          // opp whose contact wasn't returned by /contacts/, synthesize a
+          // Contact from the opportunity-embedded data so the UI always
+          // resolves the lookup.
+          let synthesizedCount = 0;
+          for (const raw of opportunitiesRaw) {
+            const embedded = raw.contact;
+            if (!embedded?.id) continue;
+            if (contactById.has(embedded.id)) continue;
+
+            const attr = firstAttr(raw.attributions);
+            const synth: Contact = {
+              id: embedded.id,
+              name:
+                embedded.name?.trim() ||
+                embedded.email ||
+                embedded.phone ||
+                "Sin nombre",
+              email: embedded.email ?? "",
+              phone: embedded.phone ?? "",
+              tags: embedded.tags ?? [],
+              dateAdded: raw.createdAt,
+              createdAt: raw.createdAt,
+              source: attr?.utmSource || attr?.adSource || raw.source || "direct",
+              campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
+              campaignName: attr?.utmCampaign || undefined,
+              adType: attr?.utmMedium || attr?.utmSessionSource,
+              adId: attr?.utmAdId || undefined,
+              attributionUrl: attr?.url || undefined,
+              attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
+              assignedTo:
+                raw.assignedTo && userMap.has(raw.assignedTo)
+                  ? userMap.get(raw.assignedTo)
+                  : raw.assignedTo,
+            };
+            contactById.set(embedded.id, synth);
+            contacts.push(synth);
+            synthesizedCount++;
           }
-          return opp;
-        });
+          if (synthesizedCount > 0) {
+            console.warn(
+              `[GHL] Synthesized ${synthesizedCount} contacts from opportunity-embedded data ` +
+                `(missing from /contacts/ list of ${contactsRaw.length}).`
+            );
+          }
 
-        // Enrich opportunities with attribution from linked contact
-        const contactById = new Map<string, Contact>();
-        for (const c of contacts) {
-          contactById.set(c.id, c);
-        }
-
-        // GHL guarantees every opportunity has a contact, and the
-        // /opportunities/search response already embeds { id, name, email,
-        // phone, tags }. The /contacts/ list endpoint, however, sometimes
-        // omits records (archived, restricted, pagination quirks). For any
-        // opp whose contact wasn't returned by /contacts/, synthesize a
-        // Contact from the opportunity-embedded data so the UI always
-        // resolves the lookup.
-        let synthesizedCount = 0;
-        for (const raw of opportunitiesRaw) {
-          const embedded = raw.contact;
-          if (!embedded?.id) continue;
-          if (contactById.has(embedded.id)) continue;
-
-          const attr = firstAttr(raw.attributions);
-          const synth: Contact = {
-            id: embedded.id,
-            name:
-              embedded.name?.trim() ||
-              embedded.email ||
-              embedded.phone ||
-              "Sin nombre",
-            email: embedded.email ?? "",
-            phone: embedded.phone ?? "",
-            tags: embedded.tags ?? [],
-            dateAdded: raw.createdAt,
-            createdAt: raw.createdAt,
-            source: attr?.utmSource || attr?.adSource || raw.source || "direct",
-            campaign: buildCampaignLabel(attr?.utmContent, attr?.utmCampaign),
-            campaignName: attr?.utmCampaign || undefined,
-            adType: attr?.utmMedium || attr?.utmSessionSource,
-            adId: attr?.utmAdId || undefined,
-            attributionUrl: attr?.url || undefined,
-            attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
-            assignedTo:
-              raw.assignedTo && userMap.has(raw.assignedTo)
-                ? userMap.get(raw.assignedTo)
-                : raw.assignedTo,
-          };
-          contactById.set(embedded.id, synth);
-          contacts.push(synth);
-          synthesizedCount++;
-        }
-        if (synthesizedCount > 0) {
-          console.warn(
-            `[GHL] Synthesized ${synthesizedCount} contacts from opportunity-embedded data ` +
-              `(missing from /contacts/ list of ${contactsRaw.length}).`
-          );
-        }
-
-        for (const opp of opportunities) {
-          const contact = contactById.get(opp.contactId);
-          if (contact) {
-            if (!opp.campaign) opp.campaign = contact.campaign;
-            if (!opp.campaignName) opp.campaignName = contact.campaignName;
-            if (!opp.adType) opp.adType = contact.adType;
-            if (!opp.source) opp.source = contact.source;
-            if (!opp.adId) opp.adId = contact.adId;
-            if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
-            if (!opp.attributionMedium) opp.attributionMedium = contact.attributionMedium;
-            // "Origen de Lead" is a contact-level custom field; surface it on the
-            // opportunity as an explicit, high-confidence fallback for platformLabel.
-            if (!opp.originPlatform) {
-              opp.originPlatform = cfString(contact.customFieldsResolved?.["Origen de Lead"]);
+          for (const opp of opportunities) {
+            const contact = contactById.get(opp.contactId);
+            if (contact) {
+              if (!opp.campaign) opp.campaign = contact.campaign;
+              if (!opp.campaignName) opp.campaignName = contact.campaignName;
+              if (!opp.adType) opp.adType = contact.adType;
+              if (!opp.source) opp.source = contact.source;
+              if (!opp.adId) opp.adId = contact.adId;
+              if (!opp.attributionUrl) opp.attributionUrl = contact.attributionUrl;
+              if (!opp.attributionMedium) opp.attributionMedium = contact.attributionMedium;
+              // "Origen de Lead" is a contact-level custom field; surface it on the
+              // opportunity as an explicit, high-confidence fallback for platformLabel.
+              if (!opp.originPlatform) {
+                opp.originPlatform = cfString(contact.customFieldsResolved?.["Origen de Lead"]);
+              }
             }
           }
+
+          // Conversations/messages are fetched separately by /api/dashboard-messages
+          // (background load) so the expensive per-user message fan-out stays off
+          // the critical path of the initial dashboard render.
+          //
+          // Appointments and tasks were already fetched concurrently above (see the
+          // Promise.all). GHL exposes no public calls endpoint in the standard API.
+          const calls: Call[] = [];
+
+          // Extract unique tags, campaigns, sources
+          const tagSet = new Set<string>();
+          const campaignSet = new Set<string>();
+          const sourceSet = new Set<string>();
+          for (const c of contacts) {
+            for (const t of c.tags) tagSet.add(t);
+            if (c.campaign) campaignSet.add(c.campaign);
+            if (c.source) sourceSet.add(c.source);
+          }
+          for (const o of opportunities) {
+            if (o.campaign) campaignSet.add(o.campaign);
+            if (o.source) sourceSet.add(o.source);
+          }
+
+          // Ensure the sub-account name is settled before the final payload.
+          await locationPromise;
+
+          send({
+            type: "data",
+            locationName,
+            contacts,
+            opportunities,
+            calls,
+            tasks,
+            appointments,
+            pipelines: pipelineList,
+            members,
+            tags: Array.from(tagSet),
+            campaigns: Array.from(campaignSet),
+            sources: Array.from(sourceSet),
+            pautas,
+            locationId: client.locationId,
+            meta: {
+              totalContacts: contacts.length,
+              totalOpportunities: opportunities.length,
+              fetchedAt: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          console.error("[GHL Dashboard API Error]", error);
+          send({
+            type: "error",
+            error: "Failed to fetch dashboard data",
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        } finally {
+          controller.close();
         }
-
-        // Conversations/messages are fetched separately by /api/dashboard-messages
-        // (background load) so the expensive per-user message fan-out stays off
-        // the critical path of the initial dashboard render.
-        //
-        // Appointments and tasks were already fetched concurrently above (see the
-        // Promise.all). GHL exposes no public calls endpoint in the standard API.
-        const calls: Call[] = [];
-
-        // Extract unique tags, campaigns, sources
-        const tagSet = new Set<string>();
-        const campaignSet = new Set<string>();
-        const sourceSet = new Set<string>();
-        for (const c of contacts) {
-          for (const t of c.tags) tagSet.add(t);
-          if (c.campaign) campaignSet.add(c.campaign);
-          if (c.source) sourceSet.add(c.source);
-        }
-        for (const o of opportunities) {
-          if (o.campaign) campaignSet.add(o.campaign);
-          if (o.source) sourceSet.add(o.source);
-        }
-
-        // Ensure the sub-account name is settled before the final payload.
-        await locationPromise;
-
-        send({
-          type: "data",
-          locationName,
-          contacts,
-          opportunities,
-          calls,
-          tasks,
-          appointments,
-          pipelines: pipelineList,
-          members,
-          tags: Array.from(tagSet),
-          campaigns: Array.from(campaignSet),
-          sources: Array.from(sourceSet),
-          pautas,
-          locationId: process.env.GHL_LOCATION_ID ?? "",
-          meta: {
-            totalContacts: contacts.length,
-            totalOpportunities: opportunities.length,
-            fetchedAt: new Date().toISOString(),
-          },
-        });
-      } catch (error) {
-        console.error("[GHL Dashboard API Error]", error);
-        send({
-          type: "error",
-          error: "Failed to fetch dashboard data",
-          message: error instanceof Error ? error.message : "Unknown error",
-        });
-      } finally {
-        controller.close();
-      }
+      });
     },
   });
 

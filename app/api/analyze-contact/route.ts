@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { getOpportunityById } from "@/lib/ghl-client";
+import { requireClient, unauthorized } from "@/lib/session";
+import { withClient } from "@/lib/ghl-context";
 
 // ─── Request types ────────────────────────────────────────────────────────────
 
@@ -247,111 +249,118 @@ function buildContext(
 
 // ─── Route handler ────────────────────────────────────────────────────────────
 
+export const runtime = "nodejs";
+
 export async function POST(req: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY no está configurada en el servidor" },
-      { status: 500 }
-    );
-  }
+  const client = await requireClient();
+  if (!client) return unauthorized();
 
-  let body: AnalyzeContactBody;
-  try {
-    body = (await req.json()) as AnalyzeContactBody;
-  } catch {
-    return NextResponse.json({ error: "Cuerpo de petición inválido" }, { status: 400 });
-  }
+  return withClient(client, async () => {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { error: "ANTHROPIC_API_KEY no está configurada en el servidor" },
+        { status: 500 }
+      );
+    }
 
-  if (!body.opportunityId || !body.contact?.name || !body.opportunity?.id || !body.opportunity?.pipelineName) {
-    return NextResponse.json(
-      { error: "Faltan campos requeridos: opportunityId, contact.name, opportunity.id" },
-      { status: 400 }
-    );
-  }
-
-  // Prefer the appointments the client already loaded; only fall back to a
-  // live GHL fetch when the client sent none (avoids a redundant round-trip).
-  let calendarEvents: Array<{
-    title?: string;
-    startTime: string;
-    endTime: string;
-    appointmentStatus?: string;
-    notes?: string;
-  }> = [];
-  if (Array.isArray(body.appointments) && body.appointments.length > 0) {
-    calendarEvents = body.appointments.map((a) => ({
-      title: a.title,
-      startTime: a.startTime,
-      endTime: a.endTime ?? a.startTime,
-      appointmentStatus: a.status,
-      notes: a.notes,
-    }));
-  } else {
+    let body: AnalyzeContactBody;
     try {
-      const oppDetail = await getOpportunityById(body.opportunityId);
-      calendarEvents = oppDetail.calendarEvents ?? [];
-    } catch (err) {
-      console.warn("[analyze-contact] Could not fetch opportunity detail for calendar events:", err);
+      body = (await req.json()) as AnalyzeContactBody;
+    } catch {
+      return NextResponse.json({ error: "Cuerpo de petición inválido" }, { status: 400 });
     }
-  }
 
-  const tz = body.userTimezone ?? "America/Mexico_City";
-  const contextText = buildContext(body, calendarEvents, tz);
-  const client = new Anthropic();
-
-  try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: `Analiza el siguiente perfil de contacto del CRM:\n\n${contextText}`,
-        },
-      ],
-    });
-
-    const textBlock = response.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text"
-    );
-
-    return NextResponse.json({
-      analysis: textBlock?.text ?? "No se pudo generar el análisis.",
-      usage: {
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
-        cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
-      },
-    });
-  } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      return NextResponse.json({ error: "API key de Anthropic inválida" }, { status: 500 });
-    }
-    if (error instanceof Anthropic.RateLimitError) {
+    if (!body.opportunityId || !body.contact?.name || !body.opportunity?.id || !body.opportunity?.pipelineName) {
       return NextResponse.json(
-        { error: "Límite de tasa alcanzado, intenta de nuevo en un momento" },
-        { status: 429 }
+        { error: "Faltan campos requeridos: opportunityId, contact.name, opportunity.id" },
+        { status: 400 }
       );
     }
-    if (error instanceof Anthropic.APIError) {
-      console.error("[analyze-contact] Anthropic API error:", error.status, error.message);
+
+    // Prefer the appointments the client already loaded; only fall back to a
+    // live GHL fetch when the client sent none (avoids a redundant round-trip).
+    let calendarEvents: Array<{
+      title?: string;
+      startTime: string;
+      endTime: string;
+      appointmentStatus?: string;
+      notes?: string;
+    }> = [];
+    if (Array.isArray(body.appointments) && body.appointments.length > 0) {
+      calendarEvents = body.appointments.map((a) => ({
+        title: a.title,
+        startTime: a.startTime,
+        endTime: a.endTime ?? a.startTime,
+        appointmentStatus: a.status,
+        notes: a.notes,
+      }));
+    } else {
+      try {
+        const oppDetail = await getOpportunityById(body.opportunityId);
+        calendarEvents = oppDetail.calendarEvents ?? [];
+      } catch (err) {
+        console.warn("[analyze-contact] Could not fetch opportunity detail for calendar events:", err);
+      }
+    }
+
+    const tz = body.userTimezone ?? "America/Mexico_City";
+    const contextText = buildContext(body, calendarEvents, tz);
+    const client = new Anthropic();
+
+    try {
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content: `Analiza el siguiente perfil de contacto del CRM:\n\n${contextText}`,
+          },
+        ],
+      });
+
+      const textBlock = response.content.find(
+        (b): b is Anthropic.TextBlock => b.type === "text"
+      );
+
+      return NextResponse.json({
+        analysis: textBlock?.text ?? "No se pudo generar el análisis.",
+        usage: {
+          inputTokens: response.usage.input_tokens,
+          outputTokens: response.usage.output_tokens,
+          cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+          cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Anthropic.AuthenticationError) {
+        return NextResponse.json({ error: "API key de Anthropic inválida" }, { status: 500 });
+      }
+      if (error instanceof Anthropic.RateLimitError) {
+        return NextResponse.json(
+          { error: "Límite de tasa alcanzado, intenta de nuevo en un momento" },
+          { status: 429 }
+        );
+      }
+      if (error instanceof Anthropic.APIError) {
+        console.error("[analyze-contact] Anthropic API error:", error.status, error.message);
+        return NextResponse.json(
+          { error: `Error de Anthropic API: ${error.message}` },
+          { status: 502 }
+        );
+      }
+      console.error("[analyze-contact] Unknown error:", error);
       return NextResponse.json(
-        { error: `Error de Anthropic API: ${error.message}` },
-        { status: 502 }
+        { error: "Error desconocido al generar el análisis" },
+        { status: 500 }
       );
     }
-    console.error("[analyze-contact] Unknown error:", error);
-    return NextResponse.json(
-      { error: "Error desconocido al generar el análisis" },
-      { status: 500 }
-    );
-  }
+  });
 }

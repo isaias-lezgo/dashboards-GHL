@@ -1,6 +1,10 @@
 // GoHighLevel API Client
 // Uses Private Integration Token authentication
 // API Docs: https://marketplace.gohighlevel.com/docs
+//
+// Credentials are per-request, not per-process: ghlFetch reads them from the
+// AsyncLocalStorage context established by the route (see lib/ghl-context.ts).
+import { currentClient } from "./ghl-context";
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
 // GHL's current API contract. Verified (read-only probe) to return shapes
@@ -131,15 +135,9 @@ async function ghlFetch<T>(
   endpoint: string,
   options: GHLRequestOptions = {}
 ): Promise<T> {
-  const token = process.env.GHL_API_TOKEN;
-  const locationId = process.env.GHL_LOCATION_ID;
-
-  if (!token) {
-    throw new Error("GHL_API_TOKEN environment variable is not set");
-  }
-  if (!locationId) {
-    throw new Error("GHL_LOCATION_ID environment variable is not set");
-  }
+  // Fails closed if the route forgot to establish the context — never falls back
+  // to a default token, because serving the wrong tenant is worse than a 500.
+  const { ghlToken: token, locationId } = currentClient();
 
   // Replace :locationId placeholder in endpoint
   const hadLocationPlaceholder = endpoint.includes(":locationId");
