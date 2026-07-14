@@ -10,9 +10,29 @@ npm run dev        # Start Next.js dev server (localhost:3000)
 npm run build      # Production build (TypeScript errors are ignored — see next.config.mjs)
 npm run start      # Serve production build
 npm run lint       # Run ESLint
+
+# Multi-client
+npm run add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
+                   # Non-interactive: npm run add-client -- --name "X" --location <id> --token pit-…
+
+# Verification (see below — there is no test framework)
+npm run verify:clients   # lib/clients.ts   — roster parsing + password lookup
+npm run verify:auth      # lib/auth.ts      — session token; incl. the cookie-tamper rejection
+npm run verify:limiter   # lib/ghl-limiter.ts — per-location isolation
+npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
-There are no automated tests in this project.
+**No test framework, and not adopting one.** Instead, the three pure modules where a
+silent bug would be a *cross-tenant data leak* have assertion scripts under
+`scripts/verify-*.ts` (plain `node:assert/strict`, run via `tsx`). Run them after
+touching auth, the roster, or the limiter. Everything else is verified by driving the
+real app.
+
+Gotcha when writing these scripts: this package is CommonJS (no `"type": "module"`),
+so `tsx` compiles to CJS where **top-level `await` fails**. Wrap async work in a
+`main()` and call `main().catch(...)` — see the existing scripts.
+
+Installing anything needs `npm install --legacy-peer-deps`.
 
 ## Environment Variables
 
@@ -31,7 +51,7 @@ All are server-side only. `DASHBOARD_CLIENTS` is read in `lib/clients.ts`;
 
 ## Architecture
 
-This is a single-page Next.js 15 (App Router) dashboard that surfaces GoHighLevel CRM data in two views: **Marketing** and **Sales**.
+This is a single-page Next.js 16 (App Router) dashboard that surfaces GoHighLevel CRM data in two views: **Marketing** and **Sales**. It is **multi-tenant**: one deployment serves every client, and a client's password resolves to their own GHL sub-account (see "Multi-client" below).
 
 ### Current state
 
@@ -41,11 +61,16 @@ This is a single-page Next.js 15 (App Router) dashboard that surfaces GoHighLeve
 ### Data flow
 
 ```
-GHL REST API (services.leadconnectorhq.com)
-    ↓  server-side only
-lib/ghl-client.ts  (raw GHL types + fetch helpers; process-wide concurrency + rate limiter)
+browser → middleware.ts (verifies the signed dash_session cookie)
     ↓
-app/api/dashboard/route.ts  (GET — transforms GHL → internal types; fetches contacts/opps/pautas/appointments/tasks concurrently)
+app/api/dashboard/route.ts
+    ↓  requireClient()  → resolves the cookie's client id to a ClientConfig (lib/session.ts)
+    ↓  withClient(...)  → establishes the per-request credential context (lib/ghl-context.ts)
+    ↓
+lib/ghl-client.ts  (raw GHL types + fetch helpers; reads token+location from the context)
+    ↓  lib/ghl-limiter.ts  (concurrency + rate limiting, keyed PER LOCATION)
+GHL REST API (services.leadconnectorhq.com)
+    ↓  back up: transforms GHL → internal types; contacts/opps/pautas/appointments/tasks fetched concurrently
     ↓  NDJSON stream of {progress|location|step|data|error} frames
 hooks/fetch-stream.ts  (parses the NDJSON stream)
     ↓
@@ -85,6 +110,15 @@ One deployment serves every client. **The password IS the client's identity.**
 **NEVER** replace the AsyncLocalStorage context with a module-level "current client"
 variable: one serverless instance serves overlapping requests, so that would
 silently serve client A's dashboard using client B's token.
+
+**Password model — a deliberate, informed tradeoff. Do not "fix" it unprompted.**
+A client's password defaults to their GHL `locationId`. That id is *not* a secret
+(it appears in GHL URLs, embed codes, webhook payloads, Make scenarios) and it
+**cannot be rotated**. The owner accepted this knowingly, for the convenience of
+having nothing extra to manage. The escape hatch is already built in: the optional
+`password` field on a client entry overrides the default, so any single client can be
+given a real, rotatable password by adding one line — no migration, no code change.
+Suggest that if a password leaks; don't rewrite the model on your own initiative.
 
 The two streaming routes (`dashboard`, `dashboard-messages`) enter the context
 **inside** the `ReadableStream` `start()` callback — the stream outlives the
