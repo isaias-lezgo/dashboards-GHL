@@ -438,11 +438,14 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   // Drill to the contacts (leads) behind a set of pautas. Resolving to
   // opportunities here would drastically undercount, since most pauta contacts
   // never become opportunities — the drawer count must track the bar's count.
+  // Resolve against lookupContacts, NOT the date-filtered `contacts`: pauta
+  // charts are filtered by the pauta's own createdAt, and a pauta from this
+  // period can belong to a contact created before it.
   const openPautaDrill = useCallback((title: string, pautaItems: Pauta[]) => {
     const contactIds = new Set(pautaItems.map(p => p.contactId).filter((id): id is string => Boolean(id)))
-    const contactItems = contacts.filter(c => contactIds.has(c.id))
+    const contactItems = lookupContacts.filter(c => contactIds.has(c.id))
     setDrill({ open: true, title, opportunities: [], contactItems })
-  }, [contacts])
+  }, [lookupContacts])
 
   // Derive ordered stage list using GHL pipeline order; fall back to alphabetical for unlisted stages
   const stageOrder = useMemo(() => {
@@ -481,11 +484,14 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       .sort((a, b) => b.total - a.total)
   }, [opportunities])
 
+  // Built from the UNFILTERED contacts: a pauta inside the date range can belong
+  // to a contact created before it. Looking that contact up in the date-filtered
+  // set would miss it and mis-bucket the pauta's platform as "Otro".
   const contactById = useMemo(() => {
     const m = new Map<string, Contact>()
-    for (const c of contacts) m.set(c.id, c)
+    for (const c of lookupContacts) m.set(c.id, c)
     return m
-  }, [contacts])
+  }, [lookupContacts])
 
   // Pautas por canal (tipo) apiladas por plataforma de origen del contacto.
   // pautaUniqueLeads === true counts distinct contacts per tipo×platform (so the
@@ -1406,7 +1412,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                                 pautaReingresoMap.get(p.id) === key
                             )
                             const contactIds = new Set(matchedPautas.map((p) => p.contactId))
-                            const contactItems = contacts.filter((c) => contactIds.has(c.id))
+                            const contactItems = lookupContacts.filter((c) => contactIds.has(c.id))
                             setDrill({ open: true, title: `${key} · ${monthLabel}`, opportunities: [], contactItems })
                           }}
                         />

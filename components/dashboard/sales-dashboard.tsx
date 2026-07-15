@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   Bar,
   BarChart,
@@ -16,6 +16,7 @@ import {
   Legend,
   Cell,
 } from "recharts"
+import { cn } from "@/lib/utils"
 import { CardContent } from "@/components/ui/card"
 import {
   ChartContainer,
@@ -76,8 +77,8 @@ interface SalesDashboardProps {
   periodLabel?: string
 }
 
-// Funnel milestone palette — entry blue → progress teal/green → won amber.
-const FUNNEL_STAGE_COLORS = ["#3b82f6", "#8b5cf6", "#14b8a6", "#22c55e", BRAND_AMBER]
+// Funnel milestones are one quantity draining through stages, so hue carries no
+// data: navy frames the prospecting steps, amber marks the outcome worth reading.
 
 const APPT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   showed:    { label: "Asistió",    color: "#10b981" },
@@ -126,6 +127,10 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
   const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
   const [hoveredOrigin, setHoveredOrigin] = useState<number | undefined>(undefined)
   const [timelineGran, setTimelineGran] = useState<TimelineGran>("month")
+  // Funnel meters fill from empty on first paint; afterwards they morph in place
+  // as the date filter changes, so the motion always reads as the data moving.
+  const [funnelReady, setFunnelReady] = useState(false)
+  useEffect(() => setFunnelReady(true), [])
 
   const openDrill = useCallback((title: string, items: Opportunity[], subtitle?: string) => {
     setDrill({ open: true, title, subtitle, opportunities: items })
@@ -193,10 +198,10 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
         : []),
       { key: "won", label: "Ganados", opps: ganados },
     ]
-    return stages.map((s, i) => ({
+    return stages.map((s) => ({
       ...s,
       count: s.opps.length,
-      color: s.key === "won" ? BRAND_AMBER : FUNNEL_STAGE_COLORS[i % FUNNEL_STAGE_COLORS.length],
+      color: s.key === "won" ? BRAND_AMBER : STRUCTURAL_NAVY,
     }))
   }, [opportunities, messages, calls, appointments])
 
@@ -839,50 +844,73 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
             ) : (
               <>
                 <div className="flex flex-col">
+                  {/* Labels the right-hand column once, so the rows don't repeat "del total"
+                      five times and can't be misread as the step-to-step conversion. */}
+                  <div className="mb-1 pr-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                    % del total
+                  </div>
                   {funnelData.map((s, i) => {
                     const max = funnelData[0]?.count || 1
                     const prev = i > 0 ? funnelData[i - 1].count : 0
                     const conv = i > 0 && prev > 0 ? (s.count / prev) * 100 : null
+                    const share = (s.count / max) * 100
+                    const dropped = prev - s.count
                     return (
                       <div key={s.key}>
                         {i > 0 && conv !== null && conv <= 100 && (
-                          <div className="flex items-center gap-1.5 py-1.5 pl-6 text-[11px] text-muted-foreground">
-                            <span className="font-bold text-primary">↓</span>
-                            <span className="font-semibold text-foreground/70 tabular-nums">{conv.toFixed(1)}%</span>
-                            del paso anterior
-                            {prev > s.count && (
+                          <div className="flex items-center gap-2 py-1 pl-4 text-[11px]">
+                            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+                            <span className="font-semibold tabular-nums text-foreground/70">{conv.toFixed(1)}%</span>
+                            <span className="text-muted-foreground">del paso anterior</span>
+                            {dropped > 0 && (
                               <>
-                                <span className="opacity-50">·</span>
-                                <span className="tabular-nums">−{(prev - s.count).toLocaleString("es-MX")} no avanzaron</span>
+                                <span aria-hidden className="text-muted-foreground/40">·</span>
+                                <span className="tabular-nums text-muted-foreground">
+                                  −{dropped.toLocaleString("es-MX")} no avanzaron
+                                </span>
                               </>
                             )}
                           </div>
                         )}
                         <button
                           type="button"
-                          className="group grid w-full grid-cols-[1fr_96px] items-center gap-3 text-left"
                           onClick={() => openDrill(s.label, s.opps)}
+                          aria-label={`${s.label}: ${s.count} oportunidades, ${share.toFixed(1)}% del total`}
+                          className="group flex w-full flex-col gap-1.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                         >
-                          <div
-                            className="flex h-11 items-center rounded-lg border px-3.5 transition-[filter] group-hover:brightness-110"
-                            style={{
-                              width: `${Math.max((s.count / max) * 100, 24)}%`,
-                              minWidth: 170,
-                              background: `${s.color}1f`,
-                              borderColor: `${s.color}55`,
-                              borderLeft: `4px solid ${s.color}`,
-                            }}
-                          >
+                          <span className="grid w-full grid-cols-[auto_1fr_auto] items-baseline gap-2.5">
+                            {/* The won stage is the number the reader came for, but its bar is
+                                honestly tiny. Amber gives it the weight the bar can't. */}
                             <span
-                              className="text-lg font-bold tabular-nums tracking-tight"
-                              style={s.count === 0 ? { color: "#ef4444" } : undefined}
+                              className={cn(
+                                "min-w-[2.5ch] text-right text-[17px] font-semibold tabular-nums tracking-tight",
+                                s.count === 0 && "text-muted-foreground/50",
+                              )}
+                              style={s.key === "won" && s.count > 0 ? { color: BRAND_AMBER } : undefined}
                             >
                               {s.count.toLocaleString("es-MX")}
                             </span>
-                            <span className="ml-2.5 truncate text-xs font-medium text-foreground">{s.label}</span>
-                          </div>
-                          <span className="text-right text-[11px] tabular-nums text-muted-foreground">
-                            {((s.count / max) * 100).toFixed(1)}% del total
+                            <span className="truncate text-xs font-medium text-foreground">{s.label}</span>
+                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                              {share.toFixed(1)}%
+                            </span>
+                          </span>
+                          {/* The meter is its own rail rather than a fill behind the text: at these
+                              shares (a win can be 0.5%) a background fill would slice through the
+                              numeral and read as a stray accent stripe. */}
+                          <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                            {/* Scaled, not resized — width is a layout property. The track clips the
+                                square edge, so the radius never distorts under scaleX. */}
+                            <span
+                              aria-hidden
+                              className="absolute inset-y-0 left-0 block w-full origin-left will-change-transform group-hover:brightness-110 motion-reduce:!transition-none"
+                              style={{
+                                background: s.color,
+                                transform: `scaleX(${funnelReady ? s.count / max : 0})`,
+                                transition: "transform 700ms cubic-bezier(0.16, 1, 0.3, 1)",
+                                transitionDelay: `${i * 60}ms`,
+                              }}
+                            />
                           </span>
                         </button>
                       </div>

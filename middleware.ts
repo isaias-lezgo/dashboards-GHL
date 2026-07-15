@@ -33,7 +33,10 @@ function denied(req: NextRequest) {
 
 // Match everything EXCEPT: the login page, the auth API routes, and Next static
 // assets / favicon. Note `/login` and `/api/auth` are excluded so they stay
-// reachable while unauthenticated.
+// reachable while unauthenticated — as must the favicon, which the browser
+// requests on the login page itself.
 export const config = {
-  matcher: ["/((?!login|api/auth|_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|favicon-32x32.png).*)",
+  ],
 };
