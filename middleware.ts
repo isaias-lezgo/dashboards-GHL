@@ -37,6 +37,6 @@ function denied(req: NextRequest) {
 // requests on the login page itself.
 export const config = {
   matcher: [
-    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|favicon-32x32.png).*)",
+    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|icon.png).*)",
   ],
 };
