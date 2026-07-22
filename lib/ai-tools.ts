@@ -12,6 +12,7 @@ import type {
   Call,
 } from "@/lib/types";
 import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
+import { isDePauta, resolveCampaignName } from "@/lib/pauta";
 
 export interface ChatDataset {
   contacts: Contact[];
@@ -201,12 +202,13 @@ export const TOOL_DEFINITIONS = [
   {
     name: "search_opportunities",
     description:
-      "Search/filter opportunities. Filter values for source/campaign/adId/attributionUrl/adType/assignedTo/stage/pipeline/priority are matched case-insensitively. campaign is usually empty (esp. WhatsApp/Meta paid) — use adId/attributionUrl for the real ad/campaign identity. Returns compact rows. Use get_opportunity for full details.",
+      "Search/filter opportunities. Filter values for source/campaign/adId/attributionUrl/adType/assignedTo/stage/pipeline/priority are matched case-insensitively. campaign is usually empty (esp. WhatsApp/Meta paid) — use adId/attributionUrl for the real ad/campaign identity, or the `dePauta` filter for the paid-advertising universe. Each row includes `dePauta` (is it paid advertising?) and `campaignResolved` (best-effort campaign name). Returns compact rows. Use get_opportunity for full details.",
     input_schema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Substring match on opportunity name." },
         contactIds: { type: "array", items: { type: "string" }, description: "Only return opps whose contactId is in this list. Use this to cross-join from appointments/pautas/messages → opportunities via contactId." },
+        dePauta: { type: "boolean", description: "Filter to paid-advertising opportunities (\"de pauta\"). true = only opps whose contact is linked to a Pauta record OR that carry a paid-traffic source/medium signal; false = only opps that are NOT de pauta. This is the SAME definition the Marketing dashboard's 'por pauta' charts use. Prefer this over source/campaign guesses when the user asks about pauta / tráfico pagado / anuncios." },
         pipeline: { type: "string", description: "Exact pipeline name." },
         stage: { type: "string", description: "Exact stage name." },
         status: { type: "string", enum: ["open", "won", "lost", "abandoned"] },
@@ -298,7 +300,7 @@ export const TOOL_DEFINITIONS = [
         groupBy: {
           type: "string",
           description:
-            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Tasks: 'status' (pending/completed), 'assignedTo', 'assignedToName'. CAMPAIGN questions: 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)'. When the user asks 'por campaña', ALSO group by 'adId' and 'attributionUrl' — those hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
+            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Opportunities also support 'dePauta' (true/false — paid-advertising universe) and 'campaignResolved' (best-effort campaign name via the fallback chain — PREFER this over raw 'campaign' for 'por campaña' breakdowns of pauta). Tasks: 'status' (pending/completed), 'assignedTo', 'assignedToName'. CAMPAIGN questions: raw 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)' — use 'campaignResolved' instead, or ALSO group by 'adId' and 'attributionUrl' which hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
         },
         metric: {
           type: "string",
@@ -308,7 +310,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: dePauta (boolean — paid-advertising universe), status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         includeContactIds: {
@@ -336,7 +338,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters — same keys as the corresponding search_* tool. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds. Opportunities: dePauta (boolean — paid-advertising universe), status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds. Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         columns: {
@@ -447,7 +449,7 @@ export const TOOL_DEFINITIONS = [
               type: "object",
               additionalProperties: true,
               description:
-                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId, createdAfter, createdBefore. Opportunities: status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. Tasks: status, assignedTo, contactIds, dueAfter, dueBefore, overdue. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
+                "Same filter keys as search_<entity>/aggregate. Appointments: status, assignedTo, startAfter, startBefore. Pautas: tipo, contactId, createdAfter, createdBefore. Opportunities: dePauta (boolean — paid-advertising universe), status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore. Tasks: status, assignedTo, contactIds, dueAfter, dueBefore, overdue. customFields (contacts/opportunities) is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] }; pass \"(sin valor)\" to match records where the field is empty/unset.",
             },
           },
           required: ["entity"],
@@ -792,7 +794,7 @@ function compactContact(c: Contact) {
   };
 }
 
-function compactOpp(o: Opportunity) {
+function compactOpp(o: Opportunity, index: ChatIndex) {
   return {
     id: o.id,
     name: o.name,
@@ -808,6 +810,12 @@ function compactOpp(o: Opportunity) {
     archived: o.archived || undefined,
     source: o.source || undefined,
     campaign: o.campaign || undefined,
+    // Whether this opp counts as paid-advertising ("de pauta"): contact linked to
+    // a Pauta record OR paid-traffic source signal. Same rule as the dashboard.
+    dePauta: isDePauta(o, index.pautasByContact),
+    // Campaign name resolved through the full fallback chain (campaignName →
+    // "Nombre pauta" custom field → utmContent → first Pauta record).
+    campaignResolved: campaignTitle(resolveCampaignName(o, index.pautaNameByContact)),
     adType: o.adType || undefined,
     attributionMedium: o.attributionMedium || undefined,
     assignedTo: o.assignedTo,
@@ -1013,7 +1021,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
       break;
     }
     case "opportunities": {
-      const filtered = applyOppFilters(data.opportunities, filters);
+      const filtered = applyOppFilters(data.opportunities, filters, getChatIndex(data));
       headers = userColumns ?? CSV_COLUMNS.opportunities;
       rows = filtered.map((o) => ({
         name: o.name,
@@ -1123,12 +1131,12 @@ function listFields(input: ToolInput, data: ChatDataset) {
       fields: [
         "id", "name", "contactId", "pipelineId", "pipelineName", "stage", "status",
         "value", "monetaryValue", "currency", "probability",
-        "source", "campaign", "adType", "adId", "attributionMedium", "attributionUrl", "assignedTo", "tags", "priority",
+        "source", "campaign", "campaignResolved", "dePauta", "adType", "adId", "attributionMedium", "attributionUrl", "assignedTo", "tags", "priority",
         "closedAt", "createdAt", "updatedAt", "lastActivity",
         "lostReason", "lostReasonId", "notes", "archived", "origin",
         "campaignId", "funnelId", "workflowId", "customFields", "customFieldsResolved", "attributions",
       ],
-      note: "attributionMedium is the REAL platform/channel the opportunity's lead came from — values like 'whatsapp', 'facebook', 'instagram', 'tiktok'. For any 'por qué plataforma / canal' question, group by 'attributionMedium' — NEVER infer the platform from tags. adType distinguishes paid vs organic. customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}); multi-option fields hold a string[]. To filter, pass customFields: { \"Field Name\": \"value\" } to search_opportunities/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
+      note: "dePauta (boolean) marks paid-advertising opps — the SAME 'de pauta' rule the Marketing dashboard uses (contact linked to a Pauta record OR paid-traffic source signal); filter with dePauta:true/false and group with groupBy:'dePauta'. campaignResolved is the best-effort campaign name (campaignName → 'Nombre pauta' custom field → utmContent → first Pauta record) — prefer it over raw 'campaign' for 'por campaña' breakdowns. attributionMedium is the REAL platform/channel the opportunity's lead came from — values like 'whatsapp', 'facebook', 'instagram', 'tiktok'. For any 'por qué plataforma / canal' question, group by 'attributionMedium' — NEVER infer the platform from tags. adType distinguishes paid vs organic. customFieldsResolved is a name→value object with human-readable field names (e.g. {\"Usuarios Contratados\": \"10\", \"Servicio Técnico\": \"Estándar\"}); multi-option fields hold a string[]. To filter, pass customFields: { \"Field Name\": \"value\" } to search_opportunities/aggregate; to group or enumerate, use 'cf:<Field Name>'. Run list_values field='cf:<Field Name>' first to see exact option values.",
       count: data.opportunities.length,
     },
     pautas: {
@@ -1294,7 +1302,7 @@ function getContactRelated(input: ToolInput, data: ChatDataset, index: ChatIndex
   if (kinds.includes("opportunities")) {
     result.opportunities = data.opportunities
       .filter((o) => o.contactId === id)
-      .map(compactOpp);
+      .map((o) => compactOpp(o, index));
   }
   if (kinds.includes("pautas")) {
     result.pautas = data.pautas
@@ -1320,68 +1328,18 @@ function getContactRelated(input: ToolInput, data: ChatDataset, index: ChatIndex
 // ─── opportunities ────────────────────────────────────────────────────────────
 
 function searchOpportunities(input: ToolInput, data: ChatDataset) {
+  const index = getChatIndex(data);
   const q = lc(input.query);
-  const contactIds = Array.isArray(input.contactIds) ? new Set(input.contactIds as string[]) : undefined;
-  const pipeline = typeof input.pipeline === "string" ? input.pipeline : undefined;
-  const stage = typeof input.stage === "string" ? input.stage : undefined;
-  const status = typeof input.status === "string" ? input.status : undefined;
-  const source = typeof input.source === "string" ? input.source : undefined;
-  const campaign = typeof input.campaign === "string" ? input.campaign : undefined;
-  const adId = typeof input.adId === "string" ? input.adId : undefined;
-  const attributionUrl = typeof input.attributionUrl === "string" ? input.attributionUrl : undefined;
-  const attributionMedium = typeof input.attributionMedium === "string" ? input.attributionMedium : undefined;
-  const assignedTo = typeof input.assignedTo === "string" ? input.assignedTo : undefined;
-  const priority = typeof input.priority === "string" ? input.priority : undefined;
-  const archived = typeof input.archived === "boolean" ? input.archived : undefined;
-  const minValue = typeof input.minValue === "number" ? input.minValue : undefined;
-  const maxValue = typeof input.maxValue === "number" ? input.maxValue : undefined;
-  const minProb = typeof input.minProbability === "number" ? input.minProbability : undefined;
-  const maxProb = typeof input.maxProbability === "number" ? input.maxProbability : undefined;
-  const customFields = input.customFields && typeof input.customFields === "object" ? input.customFields : undefined;
-  const after = typeof input.createdAfter === "string" ? startBound(input.createdAfter) : undefined;
-  const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
-  const closedAfter = typeof input.closedAfter === "string" ? startBound(input.closedAfter) : undefined;
-  const closedBefore = typeof input.closedBefore === "string" ? endBound(input.closedBefore) : undefined;
   const limit = clampLimit(input.limit);
 
-  const out: Opportunity[] = [];
-  for (const o of data.opportunities) {
-    if (q && !lc(o.name).includes(q)) continue;
-    if (contactIds && !contactIds.has(o.contactId)) continue;
-    if (pipeline && !ieq(o.pipelineName, pipeline)) continue;
-    if (stage && !ieq(o.stage, stage)) continue;
-    if (status && !ieq(o.status, status)) continue;
-    if (source && !ieq(o.source, source)) continue;
-    if (campaign && !isub(o.campaign, campaign)) continue;
-    if (adId && !ieq(o.adId, adId)) continue;
-    if (attributionUrl && !isub(o.attributionUrl, attributionUrl)) continue;
-    if (attributionMedium && !ieq(o.attributionMedium, attributionMedium)) continue;
-    if (assignedTo && !ieq(o.assignedTo, assignedTo)) continue;
-    if (priority && !ieq(o.priority, priority)) continue;
-    if (archived !== undefined && Boolean(o.archived) !== archived) continue;
-    if (minValue !== undefined && o.value < minValue) continue;
-    if (maxValue !== undefined && o.value > maxValue) continue;
-    if (minProb !== undefined && (o.probability ?? 0) < minProb) continue;
-    if (maxProb !== undefined && (o.probability ?? 100) > maxProb) continue;
-    if (customFields && !matchesCustomFields(o.customFieldsResolved, customFields)) continue;
-    if (after !== undefined || before !== undefined) {
-      const t = +new Date(o.createdAt);
-      if (after !== undefined && t < after) continue;
-      if (before !== undefined && t > before) continue;
-    }
-    if (closedAfter !== undefined || closedBefore !== undefined) {
-      const t = o.closedAt ? +new Date(o.closedAt) : undefined;
-      if (t === undefined) continue;
-      if (closedAfter !== undefined && t < closedAfter) continue;
-      if (closedBefore !== undefined && t > closedBefore) continue;
-    }
-    out.push(o);
-    if (out.length > limit) break;
-  }
-  const truncated = out.length > limit;
-  const rows = truncated ? out.slice(0, limit) : out;
+  // All structured filters (incl. dePauta + resolved-campaign) live in the shared
+  // applyOppFilters; only the free-text name query is search-specific.
+  const filtered = applyOppFilters(data.opportunities, input, index)
+    .filter((o) => !q || lc(o.name).includes(q));
+  const truncated = filtered.length > limit;
+  const rows = truncated ? filtered.slice(0, limit) : filtered;
   return {
-    rows: rows.map(compactOpp),
+    rows: rows.map((o) => compactOpp(o, index)),
     returned: rows.length,
     truncated,
   };
@@ -1470,8 +1428,16 @@ function filteredRows(
   switch (entity) {
     case "contacts":
       return applyContactFilters(data.contacts, filters) as unknown as Array<Record<string, unknown>>;
-    case "opportunities":
-      return applyOppFilters(data.opportunities, filters) as unknown as Array<Record<string, unknown>>;
+    case "opportunities": {
+      const index = getChatIndex(data);
+      // Enrich each opp row with the computed dePauta flag and resolved campaign so
+      // aggregate/relate can groupBy: "dePauta" or "campaignResolved" directly.
+      return applyOppFilters(data.opportunities, filters, index).map((o) => ({
+        ...o,
+        dePauta: isDePauta(o, index.pautasByContact),
+        campaignResolved: campaignTitle(resolveCampaignName(o, index.pautaNameByContact)),
+      })) as unknown as Array<Record<string, unknown>>;
+    }
     case "pautas":
       return applyPautaFilters(data.pautas, filters) as unknown as Array<Record<string, unknown>>;
     case "appointments":
@@ -1630,13 +1596,14 @@ function rowsForContacts(
 function applyEntityFilters(
   entity: string,
   rows: Array<Record<string, unknown>>,
-  filters: ToolInput
+  filters: ToolInput,
+  index: ChatIndex
 ): Array<Record<string, unknown>> {
   switch (entity) {
     case "contacts":
       return applyContactFilters(rows as unknown as Contact[], filters) as unknown as Array<Record<string, unknown>>;
     case "opportunities":
-      return applyOppFilters(rows as unknown as Opportunity[], filters) as unknown as Array<Record<string, unknown>>;
+      return applyOppFilters(rows as unknown as Opportunity[], filters, index) as unknown as Array<Record<string, unknown>>;
     case "pautas":
       return applyPautaFilters(rows as unknown as Pauta[], filters) as unknown as Array<Record<string, unknown>>;
     case "appointments":
@@ -1676,7 +1643,7 @@ function relate(input: ToolInput, data: ChatDataset, index: ChatIndex) {
 
   // 3. related rows via index, then 4. apply to-filters
   const related = rowsForContacts(toEntity, contactIds, index);
-  const toRows = applyEntityFilters(toEntity, related, toFilters);
+  const toRows = applyEntityFilters(toEntity, related, toFilters, index);
 
   // 5. aggregate
   const agg = aggregateRows(toRows, groupBy, metric, toEntity, limit);
@@ -1738,15 +1705,20 @@ function applyContactFilters(rows: Contact[], f: ToolInput): Contact[] {
   });
 }
 
-function applyOppFilters(rows: Opportunity[], f: ToolInput): Opportunity[] {
+function applyOppFilters(rows: Opportunity[], f: ToolInput, index: ChatIndex): Opportunity[] {
   const contactIdSet = Array.isArray(f.contactIds) ? new Set(f.contactIds as string[]) : undefined;
   return rows.filter((o) => {
     if (contactIdSet && !contactIdSet.has(o.contactId)) return false;
+    if (typeof f.dePauta === "boolean" && isDePauta(o, index.pautasByContact) !== f.dePauta) return false;
     if (typeof f.pipeline === "string" && !ieq(o.pipelineName, f.pipeline)) return false;
     if (typeof f.stage === "string" && !ieq(o.stage, f.stage)) return false;
     if (typeof f.status === "string" && !ieq(o.status, f.status)) return false;
     if (typeof f.source === "string" && !ieq(o.source, f.source)) return false;
-    if (typeof f.campaign === "string" && !isub(o.campaign, f.campaign)) return false;
+    // Match the campaign filter against BOTH the raw joined campaign and the
+    // resolved name (utmCampaign → "Nombre pauta" CF → utmContent → Pauta record).
+    if (typeof f.campaign === "string" &&
+        !isub(o.campaign, f.campaign) &&
+        !isub(resolveCampaignName(o, index.pautaNameByContact), f.campaign)) return false;
     if (typeof f.adId === "string" && !ieq(o.adId, f.adId)) return false;
     if (typeof f.attributionUrl === "string" && !isub(o.attributionUrl, f.attributionUrl)) return false;
     if (typeof f.adType === "string" && !ieq(o.adType, f.adType)) return false;

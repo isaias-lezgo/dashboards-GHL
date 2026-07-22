@@ -11,6 +11,7 @@ import type {
   Task,
 } from "@/lib/types";
 import type { ChatDataset } from "@/lib/ai-tools";
+import { buildPautaNameByContact } from "@/lib/pauta";
 
 export interface ChatIndex {
   contactById: Map<string, Contact>;
@@ -18,6 +19,10 @@ export interface ChatIndex {
   pautasByContact: Map<string, Pauta[]>;
   apptsByContact: Map<string, Appointment[]>;
   tasksByContact: Map<string, Task[]>;
+  // contactId → first named Pauta's campaign name; last-resort fallback for the
+  // shared resolveCampaignName (see lib/pauta). pautasByContact.has() gives the
+  // "es de pauta" trace directly, so no separate id set is needed.
+  pautaNameByContact: Map<string, string>;
 }
 
 function pushTo<T>(map: Map<string, T[]>, key: string | undefined, val: T): void {
@@ -43,7 +48,9 @@ export function buildChatIndex(data: ChatDataset): ChatIndex {
   const tasksByContact = new Map<string, Task[]>();
   for (const t of data.tasks) pushTo(tasksByContact, t.contactId, t);
 
-  return { contactById, oppsByContact, pautasByContact, apptsByContact, tasksByContact };
+  const pautaNameByContact = buildPautaNameByContact(data.pautas);
+
+  return { contactById, oppsByContact, pautasByContact, apptsByContact, tasksByContact, pautaNameByContact };
 }
 
 // Cache keyed on the contacts array reference (stable within a single agent run),
