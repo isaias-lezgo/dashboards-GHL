@@ -32,7 +32,10 @@ export const SERIES_COLORS = [
 ];
 
 export const PAGE_MARGINS: [number, number, number, number] = [40, 70, 40, 55];
-export const USABLE_WIDTH = 612 - PAGE_MARGINS[0] - PAGE_MARGINS[2]; // 532
+// LETTER in landscape (see buildDocDefinition): 792 × 612 instead of 612 × 792,
+// which leaves 712pt of width and 487pt of height for content.
+export const PAGE_WIDTH = 792;
+export const USABLE_WIDTH = PAGE_WIDTH - PAGE_MARGINS[0] - PAGE_MARGINS[2]; // 712
 
 // ─── Brand rule: never print GoHighLevel / GHL ─────────────────────────────────
 export function sanitizeBrand(text: string): string {

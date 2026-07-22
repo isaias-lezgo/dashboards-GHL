@@ -10,7 +10,11 @@ export interface ReportSection {
   title: string
   /** Fixed one/two-sentence Spanish description of what the chart shows. */
   explanation: string
-  /** Request AI analysis for this section. */
+  /**
+   * Opt OUT of AI analysis. Every section is analyzed by default — the report's
+   * promise is "los mismos gráficos del panel, explicados", so a chart without an
+   * interpretation is the exception, not the rule.
+   */
   ai?: boolean
   /** Data blocks (chart/table/kpis) already in PdfSpec form. */
   blocks: PdfBlock[]
@@ -55,7 +59,7 @@ export function buildAnalyzePayload(input: ReportInput) {
     periodLabel: input.periodLabel,
     kpis: input.kpis,
     sections: input.sections
-      .filter((s) => s.ai)
+      .filter((s) => s.ai !== false)
       .map((s) => ({ id: s.id, title: s.title, data: compactSectionData(s) })),
   }
 }
@@ -96,13 +100,15 @@ export function buildReportSpec(input: ReportInput, ai: ReportAiResult | null): 
     })
   }
 
+  // Each panel chart becomes: title → what it shows → the chart itself → what it
+  // means for this period. The first two are deterministic; the last is the AI's.
   for (const s of input.sections) {
     blocks.push({ t: "heading", text: s.title })
-    blocks.push({ t: "text", text: s.explanation })
+    blocks.push({ t: "text", text: `**Qué muestra:** ${s.explanation}` })
     blocks.push(...s.blocks)
     const analysis = ai?.analyses?.[s.id]
     if (analysis) {
-      blocks.push({ t: "callout", style: "info", text: `Análisis IA: ${analysis}` })
+      blocks.push({ t: "callout", style: "info", text: `Lectura del periodo: ${analysis}` })
     }
   }
 

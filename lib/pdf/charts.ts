@@ -2,10 +2,15 @@ import type { Content, CanvasElement } from "pdfmake/interfaces";
 import type { PdfChartBlock, SimpleSeriesPoint, MultiSeries } from "./types";
 import { C, SERIES_COLORS, USABLE_WIDTH, sanitizeBrand } from "./branding";
 
-const PLOT_H = 180;
+// Landscape widened the plot to ~670pt, so the box grows vertically too — at the
+// old 180 a full-width chart read as a squat 3.7:1 strip.
+const PLOT_H = 220;
 const PAD_LEFT = 34;
 const PAD_TOP = 8;
 const PLOT_W = USABLE_WIDTH - PAD_LEFT - 8;
+// Category-label gutter on horizontal bars. The extra landscape width goes to
+// the labels first (loss reasons, pauta names) — the track is long either way.
+const LABEL_W = 150;
 
 // Softer-than-border tone for gridlines so they read as a quiet guide, and a
 // slightly stronger tone reserved for the single baseline that grounds the plot.
@@ -121,7 +126,7 @@ function barVertical(block: PdfChartBlock): Content {
 function barHorizontal(block: PdfChartBlock): Content {
   const pts = block.series as SimpleSeriesPoint[];
   const max = niceMax(Math.max(0, ...pts.map((p) => p.value)));
-  const labelW = 120;
+  const labelW = LABEL_W;
   const valueW = 34;
   const gap = 8;
   const barH = 13;
@@ -153,6 +158,64 @@ function barHorizontal(block: PdfChartBlock): Content {
     ],
     // Keep short charts on one page; very long ones may still flow.
     unbreakable: pts.length <= 20,
+    margin: [0, 4, 0, 12],
+  };
+}
+
+// ─── stacked horizontal bar (multi-series) ─────────────────────────────────────
+// Same row layout as barHorizontal — long category labels (razones de pérdida,
+// nombres de pauta) get a real column instead of being crushed under a vertical
+// axis — with each track split into its series segments.
+function barHorizontalMulti(block: PdfChartBlock): Content {
+  const cats = block.categories!;
+  const series = block.series as MultiSeries[];
+  const totals = cats.map((_, ci) => series.reduce((s, ser) => s + (ser.values[ci] ?? 0), 0));
+  const max = niceMax(Math.max(1, ...totals));
+  const labelW = LABEL_W;
+  const valueW = 34;
+  const gap = 8;
+  const barH = 13;
+  const trackW = USABLE_WIDTH - labelW - valueW - gap * 2;
+
+  const rows: Content[] = cats.map((cat, ci) => {
+    const segments: CanvasElement[] = [
+      { type: "rect", x: 0, y: 0, w: trackW, h: barH, r: barH / 2, color: C.grisFondo },
+    ];
+    let x = 0;
+    series.forEach((ser, si) => {
+      const v = ser.values[ci] ?? 0;
+      if (v <= 0) return;
+      const w = (v / max) * trackW;
+      segments.push({
+        type: "rect",
+        x,
+        y: 0,
+        // Round only the outer ends so the stack reads as one continuous bar.
+        w: Math.max(0.5, w),
+        h: barH,
+        r: barRadius(w, barH, barH / 2),
+        color: SERIES_COLORS[si % SERIES_COLORS.length],
+      });
+      x += w;
+    });
+    return {
+      columns: [
+        { width: labelW, text: sanitizeBrand(cat), fontSize: 8, color: C.grisMed, lineHeight: 1.1, margin: [0, 2, 0, 0] },
+        { width: "*", canvas: segments },
+        { width: valueW, text: String(totals[ci]), fontSize: 8.5, bold: true, color: C.negroText, alignment: "right", margin: [0, 2, 0, 0] },
+      ],
+      columnGap: gap,
+      margin: [0, 3, 0, 3],
+    } as Content;
+  });
+
+  return {
+    stack: [
+      ...(block.title ? [{ text: sanitizeBrand(block.title), style: "chartTitle" } as Content] : []),
+      ...rows,
+      { ...(legend(series.map((s) => s.name)) as object), margin: [0, 6, 0, 0] } as Content,
+    ],
+    unbreakable: cats.length <= 16,
     margin: [0, 4, 0, 12],
   };
 }
@@ -224,9 +287,11 @@ function barMulti(block: PdfChartBlock): Content {
 function pie(block: PdfChartBlock): Content {
   const pts = block.series as SimpleSeriesPoint[];
   const total = pts.reduce((s, p) => s + Math.max(0, p.value), 0);
-  const cx = 100;
-  const cy = PAD_TOP + 92;
-  const r = 84;
+  // Donut column is fixed-width (see colW) and cx sits at its center, so the
+  // centered total label lands exactly in the hole.
+  const cx = 120;
+  const cy = PAD_TOP + 108;
+  const r = 100;
   const rInner = r * 0.62; // donut hole — roomy enough to hold the total
   const canvas: CanvasElement[] = [];
   let a0 = -Math.PI / 2;
@@ -257,7 +322,7 @@ function pie(block: PdfChartBlock): Content {
   canvas.push({ type: "ellipse", x: cx, y: cy, r1: rInner, r2: rInner, lineColor: GRID, lineWidth: 1 });
   // Total, centered in the hole via relativePosition (pulled out of the flow so
   // it overlays the donut canvas without consuming layout height).
-  const colW = 200;
+  const colW = 240;
   const cursorAfterCanvas = cy + r; // pdfmake canvas height ≈ lowest drawn point
   // Centered across the fixed-width column via `alignment`; pulled out of the
   // flow with relativePosition so it overlays the donut hole.
@@ -300,10 +365,13 @@ function pie(block: PdfChartBlock): Content {
         columns: [
           { width: colW, stack: [{ canvas }, ...centerLabel] },
           {
-            width: "*",
+            // Fixed, not "*": on a landscape page a star column would stretch
+            // the legend to ~470pt and strand each percentage far from its label.
+            width: 300,
             stack: rows,
             margin: [16, legendTop, 0, 0],
           },
+          { width: "*", text: "" },
         ],
       },
     ],
@@ -366,7 +434,9 @@ export function buildChart(block: PdfChartBlock): Content {
   if (block.type === "pie") return pie(block);
   if (block.type === "line") return line(block);
   // bar
-  if (isMulti(block)) return barMulti(block);
+  if (isMulti(block)) {
+    return block.orientation === "h" ? barHorizontalMulti(block) : barMulti(block);
+  }
   if (block.orientation === "h") return barHorizontal(block);
   return barVertical(block);
 }

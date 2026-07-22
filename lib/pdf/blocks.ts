@@ -107,8 +107,16 @@ function table(headers: string[], rows: string[][]): Content {
       r.map((cell) => ({ text: sanitizeBrand(String(cell ?? "")), style: "td", margin: [4, 3, 4, 3] as [number, number, number, number] })),
     ),
   ];
+  // On a 712pt-wide landscape page, all-"*" columns give a numeric column the
+  // same 140pt as the label column — the numbers float and the labels wrap. From
+  // 3 columns on, the first (almost always the label) absorbs the slack and the
+  // rest size to their content.
+  const widths: ("*" | "auto")[] =
+    headers.length >= 3
+      ? headers.map((_, i) => (i === 0 ? "*" : "auto"))
+      : headers.map(() => "*");
   return {
-    table: { headerRows: 1, widths: headers.map(() => "*"), body },
+    table: { headerRows: 1, widths, body },
     layout: {
       fillColor: (rowIndex: number) =>
         rowIndex === 0 ? C.azul : rowIndex % 2 === 0 ? C.grisFondo : null,

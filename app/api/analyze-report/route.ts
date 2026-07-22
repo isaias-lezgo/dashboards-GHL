@@ -25,8 +25,8 @@ Responde ÚNICAMENTE con JSON válido, sin markdown ni texto extra, con esta for
 
 Reglas:
 - "summary": resumen ejecutivo de 3 a 5 oraciones con los hallazgos más importantes del periodo (volumen, conversión, mejores/peores fuentes, riesgos) y una recomendación concreta.
-- Una entrada en "sections" por cada sección recibida, usando su mismo "id".
-- Cada "analysis": 2 a 3 oraciones con el insight más relevante de ESA gráfica: tendencias, concentraciones, caídas de conversión, causas de pérdida. Sé específico con números y porcentajes de los datos. Termina con una implicación o acción cuando aplique.
+- OBLIGATORIO: una entrada en "sections" por CADA sección recibida, usando su mismo "id". Ninguna sección puede quedarse sin análisis: cada gráfica del reporte debe ir explicada.
+- Cada "analysis": 2 a 3 oraciones que expliquen ESA gráfica: qué está pasando en los datos (tendencias, concentraciones, caídas de conversión, causas de pérdida), no qué tipo de gráfica es. Sé específico con números y porcentajes de los datos. Termina con una implicación o acción cuando aplique.
 - Todo en español. Tono profesional y directo.
 - NUNCA menciones "GoHighLevel" ni "GHL" (la plataforma es "Lezgo Suite CRM").
 - No inventes datos que no estén en el payload. Si una sección tiene muy pocos datos, dilo brevemente.`;
@@ -87,7 +87,9 @@ export async function POST(req: Request) {
   try {
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 2500,
+      // Every panel chart is now a section (~13 for marketing, ~8 for ventas),
+      // each needing 2–3 sentences plus the executive summary.
+      max_tokens: 8000,
       system: [
         {
           type: "text",

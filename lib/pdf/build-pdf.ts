@@ -79,6 +79,9 @@ export function buildDocDefinition(spec: PdfSpec): TDocumentDefinitions {
   }
   return {
     pageSize: "LETTER",
+    // Landscape: the charts are the point of these reports, and a 712pt-wide
+    // plot fits far more categories legibly than a portrait 532pt one.
+    pageOrientation: "landscape",
     pageMargins: PAGE_MARGINS,
     defaultStyle: { fontSize: 10, color: C.grisMed },
     styles: STYLES,
