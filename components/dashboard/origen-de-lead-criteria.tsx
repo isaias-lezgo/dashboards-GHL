@@ -21,7 +21,7 @@ const PLATAFORMA_RULES: { label: string; rule: string }[] = [
 const FALLBACK_RULES: { label: string; rule: string }[] = [
   { label: "1. Origen de Lead", rule: 'campo del contacto "Origen de Lead" (Instagram/Facebook/TikTok…)' },
   { label: "2. Campos de la oportunidad", rule: 'Origen de Lead / Tipo de pauta / Nombre pauta — lead del sitio web con "Tipo de pauta = Google Ads" → Google; sitio web orgánico (sin pauta) se queda en Otro en plataforma' },
-  { label: "3. Medio",          rule: "medio de atribución de GHL (facebook, instagram, tiktok…)" },
+  { label: "3. Medio",          rule: "medio de atribución de Lezgo Suite CRM (facebook, instagram, tiktok…)" },
   { label: "4. Tipo de anuncio", rule: "utm_medium / utm_session_source" },
   { label: "5. Campaña",        rule: "etiqueta de campaña (utm_content / utm_campaign)" },
   { label: "6. URL / fuente",   rule: "re-escaneo de la URL y fuente completas" },

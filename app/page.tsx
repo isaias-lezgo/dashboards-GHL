@@ -34,12 +34,22 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 type DashboardTab = "marketing" | "sales" | "conversations"
 
+// Browser-tab title per view. The app is a single route, so the title is set
+// imperatively — `metadata` in layout.tsx can only give one static fallback.
+const TAB_TITLES: Record<DashboardTab, string> = {
+  marketing: "Marketing - Lezgo Suite CRM",
+  sales: "Ventas - Lezgo Suite CRM",
+  conversations: "Asistente IA - Lezgo Suite CRM",
+}
+
 export default function DashboardPage() {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
 
   useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => { document.title = TAB_TITLES[activeTab] }, [activeTab])
 
   const { data, isLoading, isError, progress, locationName, steps, refresh } = useDashboardData({})
   const { messages } = useConversationsData()

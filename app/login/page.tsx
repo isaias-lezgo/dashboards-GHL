@@ -1,7 +1,7 @@
 // app/login/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Client component: can't export `metadata`, so set the browser-tab title here.
+  useEffect(() => { document.title = "Iniciar sesión - Lezgo Suite CRM" }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

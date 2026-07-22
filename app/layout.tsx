@@ -9,8 +9,8 @@ const _geist = Geist({ subsets: ['latin'] })
 const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Sales Dashboard - GHL Enhanced Reporting',
-  description: 'Enhanced dashboard for GoHighLevel: Opportunities, Contacts, Calls & Tasks in one view.',
+  title: 'Dashboard de Ventas - Lezgo Suite CRM',
+  description: 'Dashboard de Lezgo Suite CRM: oportunidades, contactos, citas y tareas en una sola vista.',
 }
 
 export default function RootLayout({
@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {children}

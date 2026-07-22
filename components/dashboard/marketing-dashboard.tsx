@@ -812,10 +812,11 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
     return { pautasByMonthRows: rows, pautasByMonthKeys: keys }
   }, [pautas, pautaReingresoMap])
 
-  const pautaOppCount = useMemo(
-    () => opportunities.filter((o) => isDePauta(o)).length,
+  const pautaOpps = useMemo(
+    () => opportunities.filter((o) => isDePauta(o)),
     [opportunities, isDePauta],
   )
+  const pautaOppCount = pautaOpps.length
 
   // Pautas with no resolvable lead: either the record carries no contactId at all,
   // or it points at a contact that no longer exists. They inflate the pauta count
@@ -836,6 +837,24 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
       pautaItems: pautasSinContacto.map((p) => ({ pauta: p, contact: undefined })),
     })
   }, [pautasSinContacto])
+
+  // Summary-strip drills. Each one shows exactly the rows behind its own number,
+  // so the drawer count always matches the tile.
+  const openAllOpportunitiesDrill = useCallback(
+    () => openDrill("Oportunidades", opportunities),
+    [openDrill, opportunities],
+  )
+  const openPautaOppsDrill = useCallback(
+    () => openDrill("Oportunidades por pauta", pautaOpps),
+    [openDrill, pautaOpps],
+  )
+  // Records mode, not openPautaDrill: the tile counts pauta records (including the
+  // contact-less ones), and openPautaDrill would collapse them to unique leads
+  // whenever the channel chart's toggle happens to be on.
+  const openAllPautasDrill = useCallback(
+    () => openPautaRecordsDrill("Pautas", pautas),
+    [openPautaRecordsDrill, pautas],
+  )
 
   // Table 1: group all opportunities by their GHL source field (normalized)
   // source is the manually-set field in GHL — "tiktok", "Sitio Web", "Referido", numeric FB IDs, etc.
@@ -1273,6 +1292,9 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
         pautaOpportunities={pautaOppCount}
         sinContactoPautas={pautasSinContacto.length}
         onSinContactoClick={openSinContactoDrill}
+        onOpportunitiesClick={openAllOpportunitiesDrill}
+        onPautaOpportunitiesClick={openPautaOppsDrill}
+        onPautasClick={openAllPautasDrill}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

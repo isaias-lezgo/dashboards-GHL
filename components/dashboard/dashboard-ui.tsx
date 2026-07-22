@@ -296,6 +296,47 @@ export function KpiCard({
   )
 }
 
+/** One tile of the marketing summary strip. Rendered as a `div` with button
+ *  semantics rather than a real `<button>`: the Pautas tile nests its own
+ *  "Sin contacto" button, and a button inside a button is invalid HTML. */
+function SummaryTile({
+  label,
+  children,
+  onClick,
+}: {
+  label: string
+  children: ReactNode
+  onClick?: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-card px-4 py-3 shadow-none",
+        onClick &&
+        "cursor-pointer transition-[box-shadow,border-color,background-color] duration-200 hover:border-primary/35 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              onClick()
+            }
+          }
+          : undefined
+      }
+    >
+      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      {children}
+    </div>
+  )
+}
+
 export function MarketingSummaryStrip({
   opportunities,
   pautas,
@@ -304,6 +345,9 @@ export function MarketingSummaryStrip({
   pautaOpportunities,
   sinContactoPautas = 0,
   onSinContactoClick,
+  onOpportunitiesClick,
+  onPautaOpportunitiesClick,
+  onPautasClick,
 }: {
   opportunities: number
   pautas: number
@@ -312,28 +356,25 @@ export function MarketingSummaryStrip({
   pautaOpportunities: number
   sinContactoPautas?: number
   onSinContactoClick?: () => void
+  onOpportunitiesClick?: () => void
+  onPautaOpportunitiesClick?: () => void
+  onPautasClick?: () => void
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Oportunidades
-        </p>
+      <SummaryTile label="Oportunidades" onClick={onOpportunitiesClick}>
         <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
           {opportunities.toLocaleString("es-MX")}
         </p>
-      </div>
+      </SummaryTile>
 
-      <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Oportunidades por pauta
-        </p>
+      <SummaryTile label="Oportunidades por pauta" onClick={onPautaOpportunitiesClick}>
         <p className="mt-0.5 text-2xl font-bold tabular-nums text-primary">
           {pautaOpportunities.toLocaleString("es-MX")}
         </p>
-      </div>
-      <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Pautas</p>
+      </SummaryTile>
+
+      <SummaryTile label="Pautas" onClick={onPautasClick}>
         <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
           {pautas.toLocaleString("es-MX")}
         </p>
@@ -352,9 +393,14 @@ export function MarketingSummaryStrip({
           {sinContactoPautas > 0 && (
             <button
               type="button"
-              onClick={onSinContactoClick}
+              // The tile itself is clickable now; without stopPropagation the pill
+              // would also fire the tile's all-pautas drill and overwrite its own.
+              onClick={(e) => {
+                e.stopPropagation()
+                onSinContactoClick?.()
+              }}
               disabled={!onSinContactoClick}
-              title="Pautas sin contacto vinculado — registros huérfanos en GHL"
+              title="Pautas sin contacto vinculado — registros huérfanos en Lezgo Suite CRM"
               className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-500 transition-colors enabled:hover:border-rose-500/50 enabled:hover:bg-rose-500/20 enabled:cursor-pointer disabled:cursor-default"
             >
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
@@ -363,7 +409,7 @@ export function MarketingSummaryStrip({
             </button>
           )}
         </div>
-      </div>
+      </SummaryTile>
     </div>
   )
 }
