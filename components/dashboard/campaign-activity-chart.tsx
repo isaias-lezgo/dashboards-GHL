@@ -161,7 +161,7 @@ export function CampaignActivityChart({
   isUniqueLead: (p: Pauta) => boolean
   onDrill: (title: string, items: Pauta[]) => void
 }) {
-  const [depth, setDepth] = useState<GroupDepth>(1)
+  const [depth, setDepth] = useState<GroupDepth>("flat")
   const [expanded, setExpanded] = useState(false)
 
   // One pass: the tallies that drive the bars and the record lists the drill
