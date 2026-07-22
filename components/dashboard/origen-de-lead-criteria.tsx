@@ -28,10 +28,10 @@ const FALLBACK_RULES: { label: string; rule: string }[] = [
 ]
 
 const FUENTE_RULES: { label: string; rule: string }[] = [
-  { label: "Paid Social",  rule: "fuente en meta/facebook/instagram/tiktok o medio en paid_social/cpc/cpm" },
-  { label: "Paid Search",  rule: 'fuente/medio en google/bing ads, o campo "Tipo de pauta = Google Ads" (incluye leads del sitio web vía Google Ads)' },
-  { label: "Social Media", rule: "fuente orgánica en redes sociales sin medio de pago" },
-  { label: "CRM UI",       rule: "fuente vacía o ingresada manualmente desde el CRM" },
+  { label: "Publicidad en Meta/TikTok",  rule: "fuente en meta/facebook/instagram/tiktok o medio en paid_social/cpc/cpm" },
+  { label: "Publicidad en Google",       rule: 'fuente/medio en google/bing ads, o campo "Tipo de pauta = Google Ads" (incluye leads del sitio web vía Google Ads)' },
+  { label: "Redes Sociales (Orgánico)",  rule: "fuente orgánica en redes sociales sin medio de pago" },
+  { label: "Manual (CRM)", rule: "fuente vacía o ingresada manualmente desde el CRM" },
   { label: "Orgánico Web", rule: 'origen del sitio web sin pauta (Sitio Web / Formulario Sitio Web / Web…), o fuente "web"/"website"/"landing" o medio "organic"/"referral"' },
   { label: "Otro",         rule: "fuente no clasificada en los anteriores" },
 ]
@@ -59,19 +59,25 @@ export function OrigenDeLeadInfo() {
             <Info className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="left" className="max-w-xs text-xs leading-relaxed space-y-2">
-          <p className="font-semibold text-foreground">Criterios de clasificación</p>
-          <div>
-            <p className="font-medium text-foreground mb-0.5">Plataforma (filas)</p>
-            <RuleList rules={PLATAFORMA_RULES} />
-          </div>
-          <div>
-            <p className="font-medium text-foreground mb-0.5">Fallbacks de plataforma</p>
-            <RuleList rules={FALLBACK_RULES} />
-          </div>
-          <div>
-            <p className="font-medium text-foreground mb-0.5">Fuente de creación (segmentos)</p>
-            <RuleList rules={FUENTE_RULES} />
+        <TooltipContent
+          side="left"
+          collisionPadding={8}
+          className="w-[min(28rem,92vw)] max-w-none p-0 text-xs leading-relaxed"
+        >
+          <div className="max-h-[80vh] space-y-2 overflow-y-auto px-3 py-2">
+            <p className="font-semibold text-foreground">Criterios de clasificación</p>
+            <div>
+              <p className="font-medium text-foreground mb-0.5">Plataforma (filas)</p>
+              <RuleList rules={PLATAFORMA_RULES} />
+            </div>
+            <div>
+              <p className="font-medium text-foreground mb-0.5">Fallbacks de plataforma</p>
+              <RuleList rules={FALLBACK_RULES} />
+            </div>
+            <div>
+              <p className="font-medium text-foreground mb-0.5">Fuente de creación (segmentos)</p>
+              <RuleList rules={FUENTE_RULES} />
+            </div>
           </div>
         </TooltipContent>
       </Tooltip>

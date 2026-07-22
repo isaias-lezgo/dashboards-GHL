@@ -192,7 +192,23 @@ async function fetchAllPautas(onProgress?: (count: number) => void): Promise<Pau
 
     const records = await getAllCustomObjectRecords(stub.key, onProgress);
 
-    const SKIP_PROPERTY_KEYS = new Set(["tipo", "nombre_pauta", "id"]);
+    // The property holding the campaign name isn't consistent across sub-accounts —
+    // each one named its custom-object field differently. Observed so far:
+    //   nombre_pauta        (Lezgo Suite)
+    //   nombre_de_pauta     (Condesa, Grand Center)
+    //   nombre_de_la_pauta  (Plaza Bosques / Meseta)
+    // Try each in order and keep every variant out of the generic `properties` blob
+    // so it isn't duplicated. Append new spellings here as accounts are onboarded.
+    const NOMBRE_PAUTA_KEYS = ["nombre_pauta", "nombre_de_pauta", "nombre_de_la_pauta"];
+    const SKIP_PROPERTY_KEYS = new Set(["tipo", "id", ...NOMBRE_PAUTA_KEYS]);
+
+    const pickNombrePauta = (props: Record<string, unknown>): string => {
+      for (const k of NOMBRE_PAUTA_KEYS) {
+        const v = props[k];
+        if (v !== null && v !== undefined && String(v).trim()) return String(v).trim();
+      }
+      return "";
+    };
 
     return records.map((r) => {
       const properties: Record<string, string> = {};
@@ -206,7 +222,7 @@ async function fetchAllPautas(onProgress?: (count: number) => void): Promise<Pau
       return {
         id: r.id,
         tipo: String(r.properties["tipo"] ?? "") || "Sin tipo",
-        nombrePauta: String(r.properties["nombre_pauta"] ?? "") || "Sin nombre",
+        nombrePauta: pickNombrePauta(r.properties) || "Sin nombre",
         createdAt: r.createdAt ?? new Date().toISOString(),
         contactId: resolveContactIdFromRelations(r.relations),
         properties,

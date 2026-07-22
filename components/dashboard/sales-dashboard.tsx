@@ -53,6 +53,16 @@ import type { ReportInput, ReportSection } from "@/lib/report"
 
 interface SalesDashboardProps {
   opportunities: Opportunity[]
+  /**
+   * Full, date-unfiltered opportunity set, used only as a lookup table when a
+   * drill-down drawer resolves a contact's linked opportunity. An opportunity
+   * can be created outside the window that lands its contact on screen, so the
+   * date filter may drop it from `opportunities` even while its contact is
+   * shown — resolving the join against the filtered slice would then wrongly
+   * show "Sin oportunidad". Charts/KPIs still use the date-filtered
+   * `opportunities`. Defaults to `opportunities`.
+   */
+  allOpportunities?: Opportunity[]
   contacts: Contact[]
   /**
    * Full, date-unfiltered contact set, used only as a lookup table when a
@@ -65,7 +75,21 @@ interface SalesDashboardProps {
   allContacts?: Contact[]
   calls: Call[]
   messages: Message[]
+  /**
+   * Full, date-unfiltered message set, used only as a lookup table when the
+   * detail drawer resolves a contact's conversation. Charts still use the
+   * date-filtered `messages`. Defaults to `messages`.
+   */
+  allMessages?: Message[]
   appointments: Appointment[]
+  /**
+   * Full, date-unfiltered appointment set, used only as a lookup table when the
+   * detail drawer resolves a contact's "Citas". A cita scheduled outside the
+   * active window that lands its contact on screen would otherwise be dropped by
+   * the date filter, wrongly showing "Sin citas registradas". Charts still use
+   * the date-filtered `appointments`. Defaults to `appointments`.
+   */
+  allAppointments?: Appointment[]
   pipelines?: Pipeline[]
   tasks?: Task[]
   pautas?: Pauta[]
@@ -118,10 +142,17 @@ function startOfWeek(input: Date): Date {
   return d
 }
 
-export function SalesDashboard({ opportunities, contacts, allContacts, calls, messages = [], appointments = [], pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, allOpportunities, contacts, allContacts, calls, messages = [], allMessages, appointments = [], allAppointments, pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
   // Lookup table for drawer contact-resolution: the full set when provided,
   // falling back to the date-filtered `contacts` for backward compatibility.
   const lookupContacts = allContacts ?? contacts
+  // Lookup table for drawer opportunity-resolution: the full set when provided,
+  // falling back to the date-filtered `opportunities` for backward compatibility.
+  const lookupOpportunities = allOpportunities ?? opportunities
+  // Lookup tables for the detail drawer (conversation + "Citas"): full sets when
+  // provided, falling back to the date-filtered props for backward compatibility.
+  const lookupMessages = allMessages ?? messages
+  const lookupAppointments = allAppointments ?? appointments
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [apptDrill, setApptDrill] = useState<ApptDrillState>(APPT_DRILL_CLOSED)
   const [matrixBy, setMatrixBy] = useState<"asesor" | "origen">("asesor")
@@ -450,10 +481,38 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
   }, [opportunities, pipelines, matrixBy])
 
   // PDF report spec from the same memos the charts render (computed on click).
+  // One section per card rendered below, in the same order and the same chart
+  // form, so the PDF reads as the panel does — with an explanation added.
   const buildReport = useCallback((): ReportInput => {
     const mxn = (v: number) =>
       v.toLocaleString("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 })
     const sections: ReportSection[] = []
+
+    if (timelineData.chartData.length > 0) {
+      // Daily granularity over a wide filter yields hundreds of buckets; a PDF
+      // axis can't carry those, so plot the most recent 30 and say so.
+      const MAX_BUCKETS = 30
+      const points = timelineData.chartData.slice(-MAX_BUCKETS)
+      const truncated = timelineData.chartData.length > points.length
+      const granLabel =
+        timelineGran === "day" ? "diaria" : timelineGran === "week" ? "semanal" : "mensual"
+      sections.push({
+        id: "timeline",
+        title: "Línea de tiempo de contactos y oportunidades",
+        explanation:
+          `Cuántos contactos y cuántas oportunidades se crearon en cada periodo, con granularidad ${granLabel}. La distancia entre ambas líneas indica qué proporción de los contactos que entran llega a convertirse en oportunidad.` +
+          (truncated ? ` Se grafican los últimos ${points.length} periodos de ${timelineData.chartData.length}.` : ""),
+        blocks: [{
+          t: "chart", type: "line", valueLabel: "Registros",
+          title: `Contactos y oportunidades por periodo (${contacts.length} contactos · ${opportunities.length} oportunidades)`,
+          categories: points.map((p) => p.label),
+          series: [
+            { name: "Contactos", values: points.map((p) => p.contacts) },
+            { name: "Oportunidades", values: points.map((p) => p.opps) },
+          ],
+        }],
+      })
+    }
 
     if (funnelData.length > 0) {
       sections.push({
@@ -461,7 +520,6 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
         title: "Recorrido de la oportunidad",
         explanation:
           "El embudo de ventas por hitos: oportunidades recibidas, contactadas, con cita agendada y ganadas. Cada paso muestra cuántas oportunidades sobreviven a esa etapa del recorrido.",
-        ai: true,
         blocks: [{
           t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
           title: `Embudo (total: ${kpiMetrics.total})`,
@@ -476,7 +534,6 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
         title: "Histórico de oportunidades y conversión a cita",
         explanation:
           "Cohorte mensual: cuántas oportunidades se crearon cada mes y qué porcentaje de ellas llegó a agendar cita y a cerrarse. Permite ver si el volumen y la calidad mejoran o empeoran con el tiempo.",
-        ai: true,
         blocks: [
           {
             t: "chart", type: "line", valueLabel: "Oportunidades",
@@ -499,37 +556,100 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
       })
     }
 
+    if (monthlyFunnel.months.length > 0) {
+      // Panel renders this as etapa × mes; keep that orientation in the PDF.
+      const ms = monthlyFunnel.months
+      sections.push({
+        id: "volumen-mes",
+        title: "Volumen y conversión por mes",
+        explanation:
+          "La misma cohorte mensual vista como tabla: cuántas oportunidades se crearon cada mes, cuántas llegaron a cita y cuántas se ganaron, más las dos tasas de conversión. Cada columna sigue a las oportunidades creadas en ese mes.",
+        blocks: [{
+          t: "table",
+          headers: ["Etapa", ...ms.map((m) => m.label)],
+          rows: [
+            ["Oportunidades creadas", ...ms.map((m) => String(m.leads.length))],
+            ["Llegaron a cita", ...ms.map((m) => String(m.conCita.length))],
+            ["Ganados", ...ms.map((m) => String(m.ganados.length))],
+            ["Tasa Oportunidad → Cita", ...ms.map((m) => `${m.citaRate.toFixed(1)}%`)],
+            ["Tasa Oportunidad → Ganado", ...ms.map((m) => `${m.cierreRate.toFixed(1)}%`)],
+          ],
+        }],
+      })
+    }
+
     if (origenData.length > 0) {
       sections.push({
         id: "origen",
         title: "Origen de oportunidades y conversión a cita",
         explanation:
-          "De qué plataforma proviene cada oportunidad y qué porcentaje de cada origen llega a agendar una cita. Compara el volumen contra la calidad de cada canal.",
-        ai: true,
-        blocks: [{
-          t: "table",
-          headers: ["Plataforma", "Oportunidades", "% del total", "% a cita"],
-          rows: origenData.map((o) => [
-            o.platform,
-            String(o.count),
-            `${o.pct.toFixed(1)}%`,
-            `${o.citaRate.toFixed(1)}%`,
-          ]),
-        }],
+          "De qué plataforma proviene cada oportunidad y qué porcentaje de cada origen llega a agendar una cita. Compara el volumen contra la calidad de cada canal: un origen puede traer muchas oportunidades y aun así convertir poco.",
+        blocks: [
+          {
+            t: "chart", type: "pie", valueLabel: "Oportunidades",
+            title: `Origen de oportunidades (total: ${opportunities.length})`,
+            series: origenData.map((o) => ({ label: o.platform, value: o.count })),
+          },
+          {
+            t: "table",
+            headers: ["Plataforma", "Oportunidades", "% del total", "% a cita"],
+            rows: origenData.map((o) => [
+              o.platform,
+              String(o.count),
+              `${o.pct.toFixed(1)}%`,
+              `${o.citaRate.toFixed(1)}%`,
+            ]),
+          },
+        ],
       })
     }
 
     if (pipelineMatrix && pipelineMatrix.rows.length > 0) {
+      // The panel's matrix can be far wider than a PDF page; keep the heaviest
+      // columns and fold the rest into "Otros" so every opportunity is still counted.
+      const MAX_COLS = 6
+      const keptCols = pipelineMatrix.cols.slice(0, MAX_COLS)
+      const restCols = pipelineMatrix.cols.slice(MAX_COLS)
+      const byLabel = matrixBy === "origen" ? "origen del lead" : "asesor asignado"
       sections.push({
         id: "etapas",
         title: "Estado actual del embudo por etapa",
         explanation:
-          "Cuántas oportunidades hay hoy en cada etapa del pipeline (las abiertas) y cuántas terminaron ganadas, abandonadas o perdidas. Es la fotografía actual de la cartera.",
-        blocks: [{
-          t: "table",
-          headers: ["Etapa / Estado", "Oportunidades"],
-          rows: pipelineMatrix.rows.map((r) => [r.label, String(r.opps.length)]),
-        }],
+          `Cuántas oportunidades hay hoy en cada etapa del pipeline (las abiertas) y cuántas terminaron ganadas, abandonadas o perdidas, cruzadas contra el ${byLabel}. Es la fotografía actual de la cartera: dónde está detenido el inventario de oportunidades y quién o qué canal lo concentra.` +
+          (restCols.length > 0 ? ` Se muestran las ${keptCols.length} columnas de mayor volumen; el resto se agrupa en "Otros".` : ""),
+        blocks: [
+          {
+            t: "chart", type: "bar", stacked: true, orientation: "h", valueLabel: "Oportunidades",
+            title: `Etapa × ${matrixBy === "origen" ? "origen" : "asesor"} (total: ${pipelineMatrix.total})`,
+            categories: pipelineMatrix.rows.map((r) => r.label),
+            series: [
+              ...keptCols.map((c, ci) => ({
+                name: c,
+                values: pipelineMatrix.rows.map((_, ri) => pipelineMatrix.cells[ri][ci].length),
+              })),
+              ...(restCols.length > 0
+                ? [{
+                    name: "Otros",
+                    values: pipelineMatrix.rows.map((_, ri) =>
+                      restCols.reduce((s, _c, i) => s + pipelineMatrix.cells[ri][MAX_COLS + i].length, 0)
+                    ),
+                  }]
+                : []),
+            ],
+          },
+          {
+            t: "table",
+            headers: ["Etapa / Estado", ...keptCols, ...(restCols.length > 0 ? ["Otros"] : []), "Total"],
+            rows: pipelineMatrix.rows.map((r, ri) => [
+              r.label,
+              ...keptCols.map((_c, ci) => String(pipelineMatrix.cells[ri][ci].length)),
+              ...(restCols.length > 0
+                ? [String(restCols.reduce((s, _c, i) => s + pipelineMatrix.cells[ri][MAX_COLS + i].length, 0))]
+                : []),
+              String(r.opps.length),
+            ]),
+          },
+        ],
       })
     }
 
@@ -553,7 +673,6 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
         title: "Principales razones de pérdida",
         explanation:
           "Las razones más frecuentes por las que se pierden oportunidades. Concentra los esfuerzos de mejora donde más ventas se están cayendo.",
-        ai: true,
         blocks: [{
           t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
           title: `Perdidas (total: ${lossGroupsData.totalLost})`,
@@ -578,8 +697,9 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
       sections,
     }
   }, [
-    funnelData, monthlyFunnel, origenData, pipelineMatrix, apptOutcomeData,
-    lossGroupsData, kpiMetrics, appointments.length, periodLabel, locationName,
+    timelineData, timelineGran, funnelData, monthlyFunnel, origenData, pipelineMatrix,
+    matrixBy, apptOutcomeData, lossGroupsData, kpiMetrics, appointments.length,
+    contacts.length, opportunities.length, periodLabel, locationName,
   ])
 
   return (
@@ -1403,10 +1523,10 @@ export function SalesDashboard({ opportunities, contacts, allContacts, calls, me
         contacts={lookupContacts}
         tasks={tasks}
         calls={calls}
-        allOpportunities={opportunities}
+        allOpportunities={lookupOpportunities}
         allPautas={pautas}
-        appointments={appointments}
-        messages={messages}
+        appointments={lookupAppointments}
+        messages={lookupMessages}
         locationId={locationId}
       />
     </DashboardShell>

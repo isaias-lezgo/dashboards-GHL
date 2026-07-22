@@ -93,32 +93,62 @@ controles:
 de este chart está justo en ver la brecha entre ambos, y un toggle que esconde uno de
 los dos la destruye.
 
-**Cuerpo**: lista de filas con barra proporcional, agrupada por familia, dentro de un
-`div` con `overflow-y-auto` — **no** `ScrollArea` de Radix, que rompe el `truncate`
-en paneles angostos.
+**Cuerpo**: lista de filas con barra proporcional, agrupada por familia.
 
 ```
-▸ IW                                        4 campañas · 127 pautas · 98 leads
-  IW - CC - FF - Corregidora - ⟨Julio⟩      ██████████████   52  ·  41
-  IW - CC - FF - Corregidora - ⟨Agosto⟩     ████████         31  ·  28
-  IW - CC - FF - Juriquilla - ⟨Julio⟩       ██████           25  ·  20
+● IW - CC - FF - Corregidora        4 campañas · 127 pautas · 98 leads
+     Enero 2026        ██████████████   52   41
+     Febrero 2026      ████████         31   28
+     Marzo 2026        ██████           25   20
+
+● MKD                               2 campañas · 63 pautas · 55 leads
+     Remarketing - Q3  ██████████       38   30
+     Prospección       ██████           25   25
 ```
 
 Detalles de render:
 
-- El **prefijo de familia va en gris tenue y el sufijo distintivo en el color de
-  texto normal**. Es lo que hace legible el patrón sin que las filas se vean
-  idénticas.
-- Nombre **completo, sin truncar a 30 caracteres** como hace `paidGroupByLabel()`.
-  El sufijo es justo la parte que distingue una campaña de otra dentro de la misma
-  familia; truncar lo destruye.
-- Un color por familia.
+- **El encabezado carga el prefijo compartido; la fila solo lo que la distingue.**
+  El encabezado no muestra la clave de agrupación ("IW") sino el **prefijo común más
+  largo de sus miembros** ("IW - CC - FF - Corregidora"), y cada fila renderiza
+  únicamente el resto ("Enero 2026").
+
+  *Esta decisión reemplazó a la original,* que imprimía el nombre completo en cada
+  fila con el prefijo en gris tenue. Se descartó por dos razones, en orden de
+  importancia:
+
+  1. **El gris era un código sin leyenda.** Quien construyó el dashboard sabe que el
+     gris marca el prefijo compartido; un cliente que abre el reporte no, y nadie va
+     a estar ahí para explicárselo. Un canal visual que necesita explicación no
+     sirve en algo que ve alguien externo. Subir el prefijo al encabezado elimina el
+     código: se lee como un título y su lista.
+  2. Apilaba dos ejes de contraste (color *y* peso tipográfico) sobre cuarenta filas,
+     lo que en modo oscuro parcheaba la lista en un zigzag gris/blanco.
+
+  Caso borde: si el nombre de un miembro **es** exactamente el prefijo compartido, esa
+  fila conserva su nombre completo en vez de renderizar vacía.
+- El nombre completo siempre está disponible en el `title` (tooltip nativo) de la fila.
+- Un color por familia, solo en el punto del encabezado y en la barra. Los buckets
+  "Sin patrón" y "Sin nombre" usan gris neutro: un color de la paleta implicaría que
+  identificamos algo.
 - **Orden**: familias por volumen total desc; campañas dentro de cada familia por
   volumen desc. "Sin patrón" y "Sin nombre" siempre al final, en ese orden.
 - **Barra normalizada contra la campaña más grande de todo el set**, no por familia,
   para que las barras se comparen entre familias.
-- **Sin Top-N.** El objetivo declarado es ver todo centralizado; esconder la cola
-  contradice el propósito. El volumen se maneja con scroll.
+- **Nada se oculta de forma permanente, y la card nunca tiene scroll propio.**
+  Colapsada renderiza los primeros 18 elementos; un botón `Mostrar las N campañas`
+  la expande completa. En ambos estados la card mide su altura natural.
+
+  *Esto reemplazó al `div` con `overflow-y-auto` de la versión original.* Un
+  contenedor con scroll anidado secuestra la rueda del mouse: para llegar a las
+  gráficas de abajo había que recorrer primero las cuarenta campañas. La página debe
+  ser la única con scroll.
+
+  Sigue sin haber Top-N en el sentido de esconder la cola: el botón dice cuántas
+  campañas hay y las revela todas de un clic.
+- Si alguna vez se reintroduce un contenedor con scroll, debe ser un `div` con
+  `overflow-y-auto` y **no** `ScrollArea` de Radix, que rompe el `truncate` en
+  paneles angostos.
 
 ## Segundo dato: leads únicos
 

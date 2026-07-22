@@ -21,8 +21,19 @@ import {
 import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
 import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check, ExternalLink } from "lucide-react"
 import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel, originSignalText, hasGoogleAdsSignal, hasWebsiteSignal } from "@/lib/source-platform"
+import {
+  isPaidTraffic,
+  isDePauta as isDePautaOpp,
+  resolveCampaignName,
+  buildPautaNameByContact,
+  PAID_SOCIAL_SOURCES,
+  PAID_SOCIAL_MEDIUMS,
+  PAID_SEARCH_SOURCES,
+  PAID_SEARCH_MEDIUMS,
+} from "@/lib/pauta"
 import { isWonOpp } from "@/lib/opportunity-status"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
+import { CampaignActivityChart } from "./campaign-activity-chart"
 import { ExportReportButton } from "./export-report-button"
 import type { ReportInput, ReportSection } from "@/lib/report"
 import { OrigenDeLeadInfo } from "./origen-de-lead-criteria"
@@ -35,6 +46,7 @@ import {
   DashboardShell,
   DashboardCard,
   ChartCardHeader,
+  ScopePill,
   ChartCardContent,
   ChartEmpty,
   ChartHint,
@@ -72,6 +84,16 @@ const apptStatusLabel = (s: string) => APPT_STATUS_LABELS[s] ?? s
 
 interface MarketingDashboardProps {
   opportunities: Opportunity[]
+  /**
+   * Full, date-unfiltered opportunity set, used only as a lookup table when the
+   * drill-down drawer resolves a contact's linked opportunity. An opportunity
+   * can be created before (or after) the pauta/contact that lands it in the
+   * active window, so the date filter may drop it from `opportunities` even
+   * while its contact is on screen — resolving the join against the filtered
+   * slice would then wrongly show "Sin oportunidad". Charts/KPIs still use the
+   * date-filtered `opportunities`. Defaults to `opportunities`.
+   */
+  allOpportunities?: Opportunity[]
   contacts: Contact[]
   /**
    * Full, date-unfiltered contact set, used only as a lookup table when the
@@ -83,10 +105,30 @@ interface MarketingDashboardProps {
    */
   allContacts?: Contact[]
   pautas: Pauta[]
+  /**
+   * Full, date-unfiltered pauta set. A pauta's "reingreso" rank is its position
+   * in *its contact's entire* pauta history (2nd, 3rd, … entry), so the ranking
+   * must be computed against every pauta the contact has — not just the ones in
+   * the active date window. Ranking against the filtered slice would relabel a
+   * contact's earlier-than-window first pauta out of view, wrongly counting its
+   * in-window follow-up as a "Primer ingreso". Counts/charts still only *show*
+   * pautas from the filtered `pautas`. Defaults to `pautas`.
+   */
+  allPautas?: Pauta[]
   pipelines?: Pipeline[]
   tasks?: Task[]
   calls?: Call[]
   appointments?: Appointment[]
+  /**
+   * Full, date-unfiltered appointment set, used only as a lookup table when the
+   * detail drawer resolves a contact's "Citas". A cita can be scheduled outside
+   * the active window that lands its contact on screen, so the date filter may
+   * drop it from `appointments` even while its contact is shown — resolving the
+   * join against the filtered slice would then wrongly say "Sin citas
+   * registradas". Charts still use the date-filtered `appointments`. Defaults to
+   * `appointments`.
+   */
+  allAppointments?: Appointment[]
   locationId?: string
   /** Sub-account name, used in the exported report's filename. */
   locationName?: string
@@ -130,29 +172,6 @@ function reingresoLabel(zeroBasedIndex: number): string {
 }
 
 
-const PAID_SOCIAL_SOURCES = ["meta", "facebook", "instagram", "tiktok", "fb", "snapchat", "pinterest"]
-const PAID_SOCIAL_MEDIUMS = ["paid_social", "paidsocial", "paid social", "cpc", "cpm", "paid_search", "paid_ads"]
-
-const PAID_SEARCH_SOURCES = ["google", "bing", "yahoo", "baidu", "duckduckgo"]
-const PAID_SEARCH_MEDIUMS = ["cpc", "ppc", "paid_search", "paidsearch", "google_ads", "sem"]
-
-function isPaidTraffic(opp: Opportunity): boolean {
-  const src = (opp.source ?? "").toLowerCase()
-  const med = (opp.adType ?? "").toLowerCase()
-  return (
-    PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) ||
-    PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m)) ||
-    PAID_SEARCH_SOURCES.some((s) => src.includes(s)) ||
-    PAID_SEARCH_MEDIUMS.some((m) => med.includes(m))
-  )
-}
-
-function isPaidSocial(opp: Opportunity): boolean {
-  const src = (opp.source ?? "").toLowerCase()
-  const med = (opp.adType ?? "").toLowerCase()
-  return PAID_SOCIAL_SOURCES.some((s) => src.includes(s)) || PAID_SOCIAL_MEDIUMS.some((m) => med.includes(m))
-}
-
 const SOCIAL_ORGANIC_SOURCES = ["instagram", "facebook", "twitter", "linkedin", "youtube", "tiktok", "pinterest", "social_media", "social media", "organic_social"]
 
 const SOURCE_CATEGORY_ORDER = ["Paid Social", "Paid Search", "Social Media", "CRM UI", "Orgánico Web", "Otro"]
@@ -164,6 +183,18 @@ const SOURCE_CATEGORY_COLORS: Record<string, string> = {
   "Orgánico Web":  "#10b981",
   "Otro":          "#6b7280",
 }
+
+// Friendly, Spanish display names for the source categories. The keys above stay
+// as the internal data-key/identity (they're generated by sourceCategory() and
+// used as Recharts dataKeys); this map is applied only at render time so charts,
+// legends, tooltips and drill titles read plainly for non-marketers.
+const SOURCE_CATEGORY_LABELS: Record<string, string> = {
+  "Paid Social": "Publicidad en Meta/TikTok",
+  "Paid Search": "Publicidad en Google",
+  "Social Media": "Redes Sociales (Orgánico)",
+  "CRM UI": "Manual (CRM)",
+}
+const catLabel = (cat: string): string => SOURCE_CATEGORY_LABELS[cat] ?? cat
 
 // Manually-created leads carry the CRM-UI fingerprint in the attribution, NOT
 // in `source`: GHL sets utmSessionSource="CRM UI" (→ adType) and medium="manual"
@@ -319,10 +350,26 @@ function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: 
   )
 }
 
-function paidGroupByKey(opp: Opportunity, groupBy: PaidGroupBy): string | null | undefined {
+// Prose form of the active grouping, for the PDF report's per-chart explanation
+// ("dividida por campaña" / "por anuncio"), so the text tracks the toggle.
+function paidGroupByNoun(groupBy: PaidGroupBy): string {
+  if (groupBy === "platform") return "plataforma de origen"
+  if (groupBy === "url") return "URL de atribución"
+  if (groupBy === "id") return "ID de anuncio"
+  return "campaña"
+}
+
+// Campaign-name resolution (opp campaignName → "Nombre pauta" custom field →
+// utmContent → first Pauta record) lives in lib/pauta (resolveCampaignName), shared
+// with the AI tools.
+function paidGroupByKey(
+  opp: Opportunity,
+  groupBy: PaidGroupBy,
+  pautaNameByContact?: Map<string, string>
+): string | null | undefined {
   if (groupBy === "platform") return platformLabel(opp)
   if (groupBy === "url") return opp.attributionUrl
-  if (groupBy === "campaign") return opp.campaignName
+  if (groupBy === "campaign") return resolveCampaignName(opp, pautaNameByContact)
   return opp.adId
 }
 
@@ -412,10 +459,19 @@ function TopNSlider({ value, max, onChange }: { value: number; max: number; onCh
   )
 }
 
-export function MarketingDashboard({ opportunities, contacts, allContacts, pautas, pipelines = [], tasks = [], calls = [], appointments = [], locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, allOpportunities, contacts, allContacts, pautas, allPautas, pipelines = [], tasks = [], calls = [], appointments = [], allAppointments, locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
   // Lookup table for drawer contact-resolution: the full set when provided,
   // falling back to the date-filtered `contacts` for backward compatibility.
   const lookupContacts = allContacts ?? contacts
+  // Lookup table for drawer opportunity-resolution: the full set when provided,
+  // falling back to the date-filtered `opportunities` for backward compatibility.
+  const lookupOpportunities = allOpportunities ?? opportunities
+  // Lookup table for the detail drawer's "Citas": the full set when provided,
+  // falling back to the date-filtered `appointments` for backward compatibility.
+  const lookupAppointments = allAppointments ?? appointments
+  // Reingreso ranking must see every pauta of each contact, not just the ones in
+  // the active date window — fall back to the filtered set when not provided.
+  const rankingPautas = allPautas ?? pautas
   const [drill, setDrill] = useState<DrillState>(DRILL_CLOSED)
   const [hoveredAdType, setHoveredAdType] = useState<number | undefined>(undefined)
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("campaign")
@@ -424,6 +480,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("campaign")
   const [originGroupBy, setOriginGroupBy] = useState<OriginGroupBy>("platform")
   const [onlyReingresos, setOnlyReingresos] = useState(false)
+  const [stageIncludeLost, setStageIncludeLost] = useState(true)
   const [pautaUniqueLeads, setPautaUniqueLeads] = useState(false)
   const [stageTopN, setStageTopN] = useState(30)
   const [lostTopN, setLostTopN] = useState(30)
@@ -435,17 +492,54 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     setDrill({ open: true, title, subtitle, opportunities: items })
   }, [])
 
-  // Drill to the contacts (leads) behind a set of pautas. Resolving to
-  // opportunities here would drastically undercount, since most pauta contacts
-  // never become opportunities — the drawer count must track the bar's count.
-  // Resolve against lookupContacts, NOT the date-filtered `contacts`: pauta
-  // charts are filtered by the pauta's own createdAt, and a pauta from this
-  // period can belong to a contact created before it.
-  const openPautaDrill = useCallback((title: string, pautaItems: Pauta[]) => {
-    const contactIds = new Set(pautaItems.map(p => p.contactId).filter((id): id is string => Boolean(id)))
-    const contactItems = lookupContacts.filter(c => contactIds.has(c.id))
-    setDrill({ open: true, title, opportunities: [], contactItems })
-  }, [lookupContacts])
+  // Map pauta.id → reingresoLabel by ranking each contact's pautas chronologically
+  // over their FULL (unfiltered) history. Defined early because both the pauta
+  // channel chart and its drill-down need it. The map keys every pauta id, so
+  // lookups from the date-filtered slice still resolve.
+  const pautaReingresoMap = useMemo(() => {
+    const byContact = new Map<string, Pauta[]>()
+    for (const p of rankingPautas) {
+      if (!p.contactId) continue
+      const arr = byContact.get(p.contactId) ?? []
+      arr.push(p)
+      byContact.set(p.contactId, arr)
+    }
+    const result = new Map<string, string>()
+    for (const arr of byContact.values()) {
+      arr.sort((a, b) => toUTCDateStr(a.createdAt).localeCompare(toUTCDateStr(b.createdAt)))
+      arr.forEach((p, i) => result.set(p.id, reingresoLabel(i)))
+    }
+    return result
+  }, [rankingPautas])
+
+  // A pauta is a "unique lead" when it's the contact's first-ever pauta (rank 0);
+  // its later pautas are reingresos, not new leads. This is the definition behind
+  // the "Leads únicos" KPI (= pautas − reingresos).
+  const isUniqueLead = useCallback(
+    (p: Pauta) => (pautaReingresoMap.get(p.id) ?? "Primer ingreso") === "Primer ingreso",
+    [pautaReingresoMap]
+  )
+
+  // Every contact id that has at least one Pauta custom-object record, over the
+  // FULL (unfiltered) pauta history — a pauta created outside the active date
+  // window still proves its contact arrived through paid advertising.
+  const pautaContactIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of rankingPautas) if (p.contactId) s.add(p.contactId)
+    return s
+  }, [rankingPautas])
+
+  // contactId → the name of the contact's FIRST named Pauta record. Last-resort
+  // fallback for resolveCampaignName (shared with the AI tools via lib/pauta).
+  const pautaNameByContact = useMemo(() => buildPautaNameByContact(rankingPautas), [rankingPautas])
+
+  // Canonical "es de pauta" predicate for every "por pauta" chart — the union of
+  // "contact linked to a Pauta record" and isPaidTraffic. Shared with the AI tools
+  // via lib/pauta (isDePautaOpp); see that module for the full rationale.
+  const isDePauta = useCallback(
+    (opp: Opportunity) => isDePautaOpp(opp, pautaContactIds),
+    [pautaContactIds]
+  )
 
   // Derive ordered stage list using GHL pipeline order; fall back to alphabetical for unlisted stages
   const stageOrder = useMemo(() => {
@@ -493,6 +587,52 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     return m
   }, [lookupContacts])
 
+  // Drill to the leads behind a set of pautas. Resolving to opportunities here
+  // would drastically undercount, since most pauta contacts never become
+  // opportunities — the drawer count must track the bar's count. Resolve against
+  // lookupContacts (via contactById), NOT the date-filtered `contacts`: pauta
+  // charts are filtered by the pauta's own createdAt, and a pauta from this
+  // period can belong to a contact created before it.
+  const openPautaDrill = useCallback((title: string, pautaItems: Pauta[]) => {
+    if (pautaUniqueLeads) {
+      // Unique-leads mode: the chart counts each contact's first-ever pauta (rank 0),
+      // so keep only those and resolve to their contacts — one row per lead, matching
+      // the bar. A contact's later (reingreso) pautas are excluded here.
+      const leads = pautaItems.filter((p) => p.contactId && isUniqueLead(p))
+      const contactIds = new Set(leads.map(p => p.contactId).filter((id): id is string => Boolean(id)))
+      const contactItems = lookupContacts.filter(c => contactIds.has(c.id))
+      setDrill({ open: true, title, opportunities: [], contactItems })
+    } else {
+      // Records mode: the chart counts pauta records, so show one row per pauta
+      // (contacts may repeat, and contact-less pautas — the "Otro" bucket — still
+      // appear) so the drawer count matches the chart exactly.
+      const items = pautaItems.map(p => ({
+        pauta: p,
+        contact: p.contactId ? contactById.get(p.contactId) : undefined,
+      }))
+      setDrill({ open: true, title, opportunities: [], pautaItems: items })
+    }
+  }, [lookupContacts, contactById, pautaUniqueLeads, isUniqueLead])
+
+  // Always a records-mode drill, mirroring openSinContactoDrill. openPautaDrill
+  // can't be reused here: it branches on pautaUniqueLeads — the toggle belonging
+  // to the channel chart — and would resolve to contacts, so the drawer count
+  // would stop matching this chart's bars depending on an unrelated control.
+  const openPautaRecordsDrill = useCallback(
+    (title: string, pautaItems: Pauta[]) => {
+      setDrill({
+        open: true,
+        title,
+        opportunities: [],
+        pautaItems: pautaItems.map((p) => ({
+          pauta: p,
+          contact: p.contactId ? contactById.get(p.contactId) : undefined,
+        })),
+      })
+    },
+    [contactById],
+  )
+
   // Pautas por canal (tipo) apiladas por plataforma de origen del contacto.
   // pautaUniqueLeads === true counts distinct contacts per tipo×platform (so the
   // tooltip matches the drill drawer exactly); otherwise it counts pauta records.
@@ -500,34 +640,20 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     const byTipo = new Map<string, Map<string, number>>()
     const platformTotals = new Map<string, number>()
 
-    if (pautaUniqueLeads) {
-      // tipo|platform → distinct contactIds
-      const cells = new Map<string, Map<string, Set<string>>>()
-      const perPlatform = new Map<string, Set<string>>()
-      for (const p of pautas) {
+    // Records mode counts every pauta. Unique-leads mode counts only each contact's
+    // FIRST-ever pauta (rank 0) — later pautas are reingresos, not new leads — so the
+    // total matches the "Leads únicos" KPI (pautas − reingresos). Both bucket by
+    // tipo × the contact's origin platform.
+    for (const p of pautas) {
+      if (pautaUniqueLeads) {
         if (!p.contactId) continue
-        const platform = platformFromContact(contactById.get(p.contactId))
-        if (!cells.has(p.tipo)) cells.set(p.tipo, new Map())
-        const byPlatform = cells.get(p.tipo)!
-        if (!byPlatform.has(platform)) byPlatform.set(platform, new Set())
-        byPlatform.get(platform)!.add(p.contactId)
-        if (!perPlatform.has(platform)) perPlatform.set(platform, new Set())
-        perPlatform.get(platform)!.add(p.contactId)
+        if (!isUniqueLead(p)) continue
       }
-      for (const [tipo, byPlatform] of cells) {
-        const m = new Map<string, number>()
-        for (const [platform, ids] of byPlatform) m.set(platform, ids.size)
-        byTipo.set(tipo, m)
-      }
-      for (const [platform, ids] of perPlatform) platformTotals.set(platform, ids.size)
-    } else {
-      for (const p of pautas) {
-        const platform = platformFromContact(p.contactId ? contactById.get(p.contactId) : undefined)
-        if (!byTipo.has(p.tipo)) byTipo.set(p.tipo, new Map())
-        const m = byTipo.get(p.tipo)!
-        m.set(platform, (m.get(platform) ?? 0) + 1)
-        platformTotals.set(platform, (platformTotals.get(platform) ?? 0) + 1)
-      }
+      const platform = platformFromContact(p.contactId ? contactById.get(p.contactId) : undefined)
+      if (!byTipo.has(p.tipo)) byTipo.set(p.tipo, new Map())
+      const m = byTipo.get(p.tipo)!
+      m.set(platform, (m.get(platform) ?? 0) + 1)
+      platformTotals.set(platform, (platformTotals.get(platform) ?? 0) + 1)
     }
 
     // Standardized "Origen de lead" legend: always present the full canonical
@@ -544,7 +670,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       .sort((a, b) => sumRow(b) - sumRow(a))
     const pautasByTipoTotal = rows.reduce((s, r) => s + sumRow(r), 0)
     return { pautasByTipoRows: rows, pautasByTipoPlatforms: platforms, pautasByTipoTotal }
-  }, [pautas, contactById, pautaUniqueLeads])
+  }, [pautas, contactById, pautaUniqueLeads, isUniqueLead])
 
   // Attribution (URL or Ad ID) × Etapa del Pipeline (stacked bar: X = stage, Y = opp count, color = attribution key).
   const { pautaByStageRows, pautaByStageKeys, pautaByStageKeyCount } = useMemo(() => {
@@ -553,8 +679,9 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     for (const stage of stageOrder) perStage.set(stage, new Map())
 
     for (const opp of opportunities) {
-      if (opp.status === "lost") continue
-      const rawKey = paidGroupByKey(opp, stageGroupBy)
+      if (!isDePauta(opp)) continue
+      if (!stageIncludeLost && opp.status === "lost") continue
+      const rawKey = paidGroupByKey(opp, stageGroupBy, pautaNameByContact)
       if (!rawKey) continue
       const stageMap = perStage.get(opp.stage)
       if (!stageMap) continue
@@ -578,7 +705,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       .filter((row) => keys.some((k) => (row[k] as number) > 0))
 
     return { pautaByStageRows: rows, pautaByStageKeys: keys, pautaByStageKeyCount }
-  }, [opportunities, stageOrder, stageGroupBy, stageTopN])
+  }, [opportunities, stageOrder, stageGroupBy, stageTopN, stageIncludeLost, isDePauta, pautaNameByContact])
 
   const stageCampaignCut = campaignPrefixCut(pautaByStageKeys, stageGroupBy)
   const pautaByStageConfig = Object.fromEntries(
@@ -599,7 +726,8 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
 
     for (const opp of opportunities) {
       if (opp.status !== "lost") continue
-      const rawKey = paidGroupByKey(opp, lostGroupBy)
+      if (!isDePauta(opp)) continue
+      const rawKey = paidGroupByKey(opp, lostGroupBy, pautaNameByContact)
       if (!rawKey) continue
       const reason = opp.lostReason || "Sin razón"
       if (!perReason.has(reason)) perReason.set(reason, new Map())
@@ -626,7 +754,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       .filter((row) => keys.some((k) => (row[k] as number) > 0))
 
     return { lostByReasonRows: rows, lostByReasonKeys: keys, lostByReasonKeyCount }
-  }, [opportunities, lostGroupBy, lostTopN])
+  }, [opportunities, lostGroupBy, lostTopN, pautaNameByContact, isDePauta])
 
   const lostCampaignCut = campaignPrefixCut(lostByReasonKeys, lostGroupBy)
   const lostByReasonConfig = Object.fromEntries(
@@ -641,26 +769,10 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     0
   )
 
-  // Map pauta.id → reingresoLabel by sorting each contact's pautas chronologically.
-  const pautaReingresoMap = useMemo(() => {
-    const byContact = new Map<string, Pauta[]>()
-    for (const p of pautas) {
-      if (!p.contactId) continue
-      const arr = byContact.get(p.contactId) ?? []
-      arr.push(p)
-      byContact.set(p.contactId, arr)
-    }
-    const result = new Map<string, string>()
-    for (const arr of byContact.values()) {
-      arr.sort((a, b) => toUTCDateStr(a.createdAt).localeCompare(toUTCDateStr(b.createdAt)))
-      arr.forEach((p, i) => result.set(p.id, reingresoLabel(i)))
-    }
-    return result
-  }, [pautas])
-
+  // Count only pautas in the active date window whose full-history rank is 2nd+.
   const reingresoCount = useMemo(
-    () => Array.from(pautaReingresoMap.values()).filter((v) => v !== "Primer ingreso").length,
-    [pautaReingresoMap]
+    () => pautas.filter((p) => (pautaReingresoMap.get(p.id) ?? "Primer ingreso") !== "Primer ingreso").length,
+    [pautas, pautaReingresoMap]
   )
 
   // Pautas grouped by calendar month (YYYY-MM), stacked by reingreso number.
@@ -700,10 +812,30 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     return { pautasByMonthRows: rows, pautasByMonthKeys: keys }
   }, [pautas, pautaReingresoMap])
 
-  const paidSocialLeadCount = useMemo(
-    () => opportunities.filter((o) => isPaidSocial(o)).length,
-    [opportunities],
+  const pautaOppCount = useMemo(
+    () => opportunities.filter((o) => isDePauta(o)).length,
+    [opportunities, isDePauta],
   )
+
+  // Pautas with no resolvable lead: either the record carries no contactId at all,
+  // or it points at a contact that no longer exists. They inflate the pauta count
+  // without ever producing a lead, so surface them for cleanup in GHL. Same test
+  // the drill drawer uses to render its "Pauta sin contacto vinculado" rows.
+  const pautasSinContacto = useMemo(
+    () => pautas.filter((p) => !p.contactId || !contactById.has(p.contactId)),
+    [pautas, contactById],
+  )
+
+  // Always a records-mode drill: in unique-leads mode openPautaDrill resolves to
+  // contacts, and these pautas have none — the drawer would come back empty.
+  const openSinContactoDrill = useCallback(() => {
+    setDrill({
+      open: true,
+      title: "Pautas sin contacto vinculado",
+      opportunities: [],
+      pautaItems: pautasSinContacto.map((p) => ({ pauta: p, contact: undefined })),
+    })
+  }, [pautasSinContacto])
 
   // Table 1: group all opportunities by their GHL source field (normalized)
   // source is the manually-set field in GHL — "tiktok", "Sitio Web", "Referido", numeric FB IDs, etc.
@@ -775,39 +907,62 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
   }, [appointments])
 
   // Panel 4a — Paid traffic leads with at least one appointment
-  const { paidTrafficWithAppt, apptKeyCount } = useMemo(() => {
+  const { paidTrafficWithAppt, apptKeyCount, apptStageKeys } = useMemo(() => {
     const filteredAppts = apptStatusFilter === "all"
       ? appointments
       : appointments.filter((a) => a.status === apptStatusFilter)
     const apptContactIds = new Set(filteredAppts.map((a) => a.contactId))
     const counts = new Map<string, number>()
+    // rawKey → stage → count, so each pauta bar can be split by pipeline stage
+    const perKeyStage = new Map<string, Map<string, number>>()
+    const stagesPresent = new Set<string>()
     for (const o of opportunities) {
-      if (!isPaidTraffic(o)) continue
+      if (!isDePauta(o)) continue
       if (!apptContactIds.has(o.contactId)) continue
-      const rawKey = paidGroupByKey(o, apptGroupBy)
+      const rawKey = paidGroupByKey(o, apptGroupBy, pautaNameByContact)
       if (!rawKey) continue
       counts.set(rawKey, (counts.get(rawKey) ?? 0) + 1)
+      const stage = o.stage || "Sin etapa"
+      stagesPresent.add(stage)
+      let stageMap = perKeyStage.get(rawKey)
+      if (!stageMap) { stageMap = new Map(); perKeyStage.set(rawKey, stageMap) }
+      stageMap.set(stage, (stageMap.get(stage) ?? 0) + 1)
     }
     const allEntries = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
     const apptKeyCount = allEntries.length
     const prefixCut = campaignPrefixCut(allEntries.map(([k]) => k), apptGroupBy)
     const sliced = apptTopN >= apptKeyCount ? allEntries : allEntries.slice(0, Math.round(apptTopN))
+    // Stage series in pipeline order, restricted to stages actually present
+    const apptStageKeys = [
+      ...stageOrder.filter((s) => stagesPresent.has(s)),
+      ...Array.from(stagesPresent).filter((s) => !stageOrder.includes(s)),
+    ]
     return {
-      paidTrafficWithAppt: sliced.map(([rawKey, count]) => ({
-        rawKey,
-        label: paidGroupByLabel(rawKey, apptGroupBy, prefixCut),
-        count,
-      })),
+      paidTrafficWithAppt: sliced.map(([rawKey, count]) => {
+        const stageMap = perKeyStage.get(rawKey)
+        const row: Record<string, string | number> = {
+          rawKey,
+          label: paidGroupByLabel(rawKey, apptGroupBy, prefixCut),
+          count,
+        }
+        for (const s of apptStageKeys) row[s] = stageMap?.get(s) ?? 0
+        return row
+      }),
       apptKeyCount,
+      apptStageKeys,
     }
-  }, [opportunities, appointments, apptGroupBy, apptTopN, apptStatusFilter])
+  }, [opportunities, appointments, apptGroupBy, apptTopN, apptStatusFilter, isDePauta, pautaNameByContact, stageOrder])
+
+  const apptStageConfig = Object.fromEntries(
+    apptStageKeys.map((k, i) => [k, { label: k, color: CHART_PALETTE[i % CHART_PALETTE.length] }])
+  )
 
   // Panel 4b — Won deals from paid traffic, grouped by URL or Ad ID
   const { wonPaidTraffic, wonKeyCount } = useMemo(() => {
     const counts = new Map<string, { count: number; value: number }>()
     for (const o of opportunities) {
-      if (!isPaidTraffic(o) || !isWonOpp(o)) continue
-      const rawKey = paidGroupByKey(o, wonGroupBy)
+      if (!isDePauta(o) || !isWonOpp(o)) continue
+      const rawKey = paidGroupByKey(o, wonGroupBy, pautaNameByContact)
       if (!rawKey) continue
       const prev = counts.get(rawKey) ?? { count: 0, value: 0 }
       counts.set(rawKey, { count: prev.count + 1, value: prev.value + o.value })
@@ -825,7 +980,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       })),
       wonKeyCount,
     }
-  }, [opportunities, wonGroupBy, wonTopN])
+  }, [opportunities, wonGroupBy, wonTopN, isDePauta, pautaNameByContact])
 
   // Won opportunities: bars by the standardized "Origen de lead" platform
   // (full PLATFORM_ORDER on the x-axis), stacked by Fuente de creación segments
@@ -869,7 +1024,6 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         title: "Oportunidades por fuente",
         explanation:
           "Muestra de qué plataforma proviene cada oportunidad (Facebook, Instagram, TikTok, etc.), desglosada por la fuente de creación del registro en el CRM. Sirve para ver qué canales generan más leads.",
-        ai: true,
         blocks: [{
           t: "chart", type: "bar", stacked: true, valueLabel: "Oportunidades",
           title: `Oportunidades por plataforma de origen (total: ${opportunities.length})`,
@@ -909,7 +1063,6 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         title: "Pautas creadas por mes y reingresos",
         explanation:
           "Evolución mensual de las pautas creadas, separando el primer ingreso de cada contacto de sus reingresos posteriores. Permite ver la tendencia de volumen y cuánto del tráfico es recurrente.",
-        ai: true,
         blocks: [{
           t: "chart", type: "bar", stacked: true, valueLabel: "Pautas",
           title: `Pautas por mes (reingresos: ${reingresoCount})`,
@@ -927,56 +1080,37 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         id: "pauta-etapa",
         title: "Oportunidades de pauta por etapa del pipeline",
         explanation:
-          "Dónde están hoy las oportunidades que vienen de pauta dentro del pipeline de ventas (sin contar las perdidas). Muestra qué tan profundo avanza el tráfico pagado en el embudo.",
+          `Dónde están hoy las oportunidades que vienen de pauta dentro del pipeline de ventas${stageIncludeLost ? "" : " (sin contar las perdidas)"}, con cada barra dividida por ${paidGroupByNoun(stageGroupBy)}. Muestra qué tan profundo avanza el tráfico pagado en el embudo y qué campañas sostienen cada etapa.`,
         blocks: [{
-          t: "chart", type: "bar", valueLabel: "Oportunidades",
-          title: `Oportunidades activas de pauta por etapa (total: ${pautaByStageTotal})`,
-          series: pautaByStageRows.map((r) => ({
-            label: String(r.stage),
-            value: pautaByStageKeys.reduce((s, k) => s + ((r[k] as number) || 0), 0),
+          t: "chart", type: "bar", stacked: true, valueLabel: "Oportunidades",
+          title: `Oportunidades de pauta por etapa${stageIncludeLost ? "" : " (sin perdidas)"} (total: ${pautaByStageTotal})`,
+          categories: pautaByStageRows.map((r) => String(r.stage)),
+          series: pautaByStageKeys.map((k) => ({
+            name: pautaByStageConfig[k]?.label ?? k,
+            values: pautaByStageRows.map((r) => (r[k] as number) ?? 0),
           })),
         }],
       })
     }
 
     if (lostByReasonRows.length > 0) {
+      const rowTotal = (r: Record<string, string | number>) =>
+        lostByReasonKeys.reduce((s, k) => s + ((r[k] as number) || 0), 0)
+      const lostSorted = [...lostByReasonRows].sort((a, b) => rowTotal(b) - rowTotal(a))
       sections.push({
         id: "perdidas",
         title: "Oportunidades perdidas por razón de pérdida",
         explanation:
-          "Las razones registradas al marcar como perdida una oportunidad de pauta. Identifica los motivos principales por los que se cae el tráfico pagado.",
-        ai: true,
+          `Las razones registradas al marcar como perdida una oportunidad de pauta, con cada barra dividida por ${paidGroupByNoun(lostGroupBy)}. Identifica los motivos principales por los que se cae el tráfico pagado y si una razón se concentra en una campaña concreta.`,
         blocks: [{
-          t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
+          t: "chart", type: "bar", stacked: true, orientation: "h", valueLabel: "Oportunidades",
           title: `Perdidas por razón (total: ${lostByReasonTotal})`,
-          series: lostByReasonRows
-            .map((r) => ({
-              label: String(r.reason),
-              value: lostByReasonKeys.reduce((s, k) => s + ((r[k] as number) || 0), 0),
-            }))
-            .sort((a, b) => b.value - a.value),
-        }],
-      })
-    }
-
-    if (originRows.length > 0) {
-      sections.push({
-        id: "rendimiento",
-        title: "Rendimiento por origen",
-        explanation:
-          "Tabla comparativa por origen del lead: cuántos leads generó, cuántos se ganaron, el porcentaje de cierre, el valor ganado y el ticket promedio. Es la vista de retorno por canal.",
-        ai: true,
-        blocks: [{
-          t: "table",
-          headers: ["Origen", "Leads", "Ganados", "% Cierre", "Valor ganado", "Ticket prom."],
-          rows: originRows.slice(0, 12).map((r) => [
-            r.label,
-            String(r.total),
-            String(r.wonCount),
-            `${r.closeRate.toFixed(1)}%`,
-            r.wonValue > 0 ? mxn(r.wonValue) : "—",
-            r.avgTicket > 0 ? mxn(r.avgTicket) : "—",
-          ]),
+          // Heaviest reason first — the PDF has no hover, so ordering carries the ranking.
+          categories: lostSorted.map((r) => String(r.reason)),
+          series: lostByReasonKeys.map((k) => ({
+            name: lostByReasonConfig[k]?.label ?? k,
+            values: lostSorted.map((r) => (r[k] as number) ?? 0),
+          })),
         }],
       })
     }
@@ -1017,10 +1151,15 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         id: "citas-pauta",
         title: "Citas por pauta",
         explanation:
-          "Leads de tráfico pagado que llegaron a agendar al menos una cita, agrupados por pauta. Mide qué campañas generan leads que avanzan a una reunión real.",
+          `Leads de tráfico pagado que llegaron a agendar al menos una cita, agrupados por ${paidGroupByNoun(apptGroupBy)} y divididos por la etapa del pipeline en la que están hoy${apptStatusFilter === "all" ? "" : ` (citas con estatus "${apptStatusFilter}")`}. Mide qué campañas generan leads que avanzan a una reunión real y qué tanto avanzan después.`,
         blocks: [{
-          t: "chart", type: "bar", orientation: "h", valueLabel: "Leads con cita",
-          series: paidTrafficWithAppt.slice(0, 12).map((r) => ({ label: r.label, value: r.count })),
+          t: "chart", type: "bar", stacked: true, orientation: "h", valueLabel: "Leads con cita",
+          title: `Citas por pauta (top ${Math.min(12, paidTrafficWithAppt.length)} de ${apptKeyCount})`,
+          categories: paidTrafficWithAppt.slice(0, 12).map((r) => String(r.label)),
+          series: apptStageKeys.map((s) => ({
+            name: s,
+            values: paidTrafficWithAppt.slice(0, 12).map((r) => (r[s] as number) ?? 0),
+          })),
         }],
       })
     }
@@ -1030,32 +1169,67 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         id: "ganadas-pauta",
         title: "Oportunidades ganadas por pauta",
         explanation:
-          "Ventas cerradas que se originaron en tráfico pagado, con su valor monetario, agrupadas por pauta. Es el cierre del ciclo: qué campañas terminan en ingresos.",
-        blocks: [{
-          t: "table",
-          headers: ["Pauta", "Ganadas", "Valor"],
-          rows: wonPaidTraffic.slice(0, 12).map((r) => [r.label, String(r.count), mxn(r.value)]),
-        }],
+          `Ventas cerradas que se originaron en tráfico pagado, agrupadas por ${paidGroupByNoun(wonGroupBy)}. Es el cierre del ciclo: qué campañas terminan en ingresos. La tabla añade el valor monetario de cada grupo.`,
+        blocks: [
+          {
+            t: "chart", type: "bar", valueLabel: "Ganadas",
+            title: `Ganadas de tráfico pagado (top ${Math.min(12, wonPaidTraffic.length)} de ${wonKeyCount})`,
+            series: wonPaidTraffic.slice(0, 12).map((r) => ({ label: r.label, value: r.count })),
+          },
+          {
+            t: "table",
+            headers: ["Pauta", "Ganadas", "Valor"],
+            rows: wonPaidTraffic.slice(0, 12).map((r) => [r.label, String(r.count), mxn(r.value)]),
+          },
+        ],
       })
     }
 
-    const wonRows = wonBySource
-      .map((r) => ({
-        label: String(r.platform),
-        value: SOURCE_CATEGORY_ORDER.reduce((s, c) => s + ((r[c] as number) || 0), 0),
-      }))
-      .filter((r) => r.value > 0)
-    if (wonRows.length > 0) {
+    // Same two dimensions as "Oportunidades por fuente" (plataforma × fuente de
+    // creación), so the two charts can be read against each other.
+    const wonPlatforms = wonBySource.filter((r) =>
+      SOURCE_CATEGORY_ORDER.some((c) => ((r[c] as number) || 0) > 0)
+    )
+    if (wonPlatforms.length > 0) {
+      const wonCats = SOURCE_CATEGORY_ORDER.filter((c) =>
+        wonPlatforms.some((r) => ((r[c] as number) || 0) > 0)
+      )
       sections.push({
         id: "ganadas-fuente",
         title: "Oportunidades ganadas por fuente",
         explanation:
-          "Ventas cerradas según la plataforma de origen del lead. Muestra qué canales no solo traen volumen sino que convierten en clientes.",
-        ai: true,
+          "Ventas cerradas según la plataforma de origen del lead, desglosadas por la fuente de creación del registro en el CRM. Comparada contra «Oportunidades por fuente», muestra qué canales no solo traen volumen sino que convierten en clientes.",
         blocks: [{
-          t: "chart", type: "bar", valueLabel: "Ganadas",
+          t: "chart", type: "bar", stacked: true, valueLabel: "Ganadas",
           title: `Ganadas por plataforma (total: ${wonTotal})`,
-          series: wonRows,
+          categories: wonPlatforms.map((r) => String(r.platform)),
+          series: wonCats.map((c) => ({
+            name: c,
+            values: wonPlatforms.map((r) => (r[c] as number) ?? 0),
+          })),
+        }],
+      })
+    }
+
+    // Last in the panel, last here — it closes the report with the per-channel
+    // return on everything the sections above described.
+    if (originRows.length > 0) {
+      sections.push({
+        id: "rendimiento",
+        title: "Rendimiento por origen",
+        explanation:
+          `Tabla comparativa por ${originGroupBy === "platform" ? "origen del lead" : originGroupBy === "id" ? "ID de anuncio" : "URL de atribución"}: cuántos leads generó, cuántos se ganaron, el porcentaje de cierre, el valor ganado y el ticket promedio. Es la vista de retorno por canal: dónde se justifica la inversión.`,
+        blocks: [{
+          t: "table",
+          headers: ["Origen", "Leads", "Ganados", "% Cierre", "Valor ganado", "Ticket prom."],
+          rows: originRows.slice(0, 12).map((r) => [
+            r.label,
+            String(r.total),
+            String(r.wonCount),
+            `${r.closeRate.toFixed(1)}%`,
+            r.wonValue > 0 ? mxn(r.wonValue) : "—",
+            r.avgTicket > 0 ? mxn(r.avgTicket) : "—",
+          ]),
         }],
       })
     }
@@ -1067,7 +1241,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
       periodLabel,
       kpis: [
         { label: "Oportunidades", value: String(opportunities.length) },
-        { label: "Por pauta (paid social)", value: String(paidSocialLeadCount) },
+        { label: "Oportunidades por pauta", value: String(pautaOppCount) },
         { label: "Pautas", value: String(pautas.length) },
         { label: "Leads únicos", value: String(pautas.length - reingresoCount) },
         { label: "Reingresos", value: String(reingresoCount) },
@@ -1078,9 +1252,11 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
     leadsByCategory, pautasByTipoRows, pautasByTipoPlatforms, pautasByTipoTotal,
     pautasByMonthRows, pautasByMonthKeys, pautaByStageRows, pautaByStageKeys, pautaByStageTotal,
     lostByReasonRows, lostByReasonKeys, lostByReasonTotal, originRows, leadsByAdId,
-    leadsByPlatformUrl, paidTrafficWithAppt, wonPaidTraffic, wonBySource, wonTotal,
-    opportunities.length, paidSocialLeadCount, pautas.length, reingresoCount, periodLabel,
-    locationName,
+    leadsByPlatformUrl, paidTrafficWithAppt, apptKeyCount, apptStageKeys,
+    wonPaidTraffic, wonKeyCount, wonBySource, wonTotal,
+    opportunities.length, pautaOppCount, pautas.length, reingresoCount, periodLabel,
+    locationName, originGroupBy, stageIncludeLost, stageGroupBy, pautaByStageConfig,
+    lostGroupBy, lostByReasonConfig, apptGroupBy, apptStatusFilter, wonGroupBy,
   ])
 
   return (
@@ -1094,7 +1270,9 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         pautas={pautas.length}
         uniquePautas={pautas.length - reingresoCount}
         reingresoPautas={reingresoCount}
-        paidSocialLeads={paidSocialLeadCount}
+        pautaOpportunities={pautaOppCount}
+        sinContactoPautas={pautasSinContacto.length}
+        onSinContactoClick={openSinContactoDrill}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1199,7 +1377,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                             {entry.breakdown.map((seg) => (
                               <div
                                 key={seg.category}
-                                title={`${seg.category}: ${seg.count}`}
+                                title={`${catLabel(seg.category)}: ${seg.count}`}
                                 className="cursor-pointer hover:brightness-125 transition-[filter]"
                                 style={{
                                   width: `${entry.total > 0 ? (seg.count / entry.total) * 100 : 0}%`,
@@ -1229,7 +1407,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     openDrill(
-                                      `${entry.platform} · ${seg.category}`,
+                                      `${entry.platform} · ${catLabel(seg.category)}`,
                                       opportunities.filter(
                                         (o) => platformLabel(o) === entry.platform && sourceCategory(o) === seg.category
                                       )
@@ -1237,7 +1415,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                                   }}
                                 >
                                   <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: seg.color }} />
-                                  {seg.category} {seg.count}
+                                  {catLabel(seg.category)} {seg.count}
                                 </button>
                               ))}
                             </div>
@@ -1327,6 +1505,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
           </ChartCardContent>
         </DashboardCard>
       </div>
+
+      <CampaignActivityChart
+        pautas={pautas}
+        isUniqueLead={isUniqueLead}
+        onDrill={openPautaRecordsDrill}
+      />
 
       <DashboardCard>
         <ChartCardHeader
@@ -1429,11 +1613,20 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
 
       <DashboardCard>
         <ChartCardHeader
-          title="Oportunidades de Pauta por Etapa del Pipeline (Sin oportunidades perdidas)"
+          title={`Oportunidades de Pauta por Etapa del Pipeline${stageIncludeLost ? "" : " (Sin oportunidades perdidas)"}`}
           total={pautaByStageTotal}
           icon={Layers}
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setStageIncludeLost((v) => !v)}
+                className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Oportunidades perdidas
+                <span className={`relative inline-flex h-3.5 w-6 shrink-0 rounded-full transition-colors duration-200 ${stageIncludeLost ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+                  <span className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-transform duration-200 ${stageIncludeLost ? "translate-x-2.5" : "translate-x-0.5"}`} />
+                </span>
+              </button>
               <TopNSlider value={stageTopN} max={pautaByStageKeyCount} onChange={setStageTopN} />
               <GroupByToggle value={stageGroupBy} onChange={setStageGroupBy} />
             </div>
@@ -1486,8 +1679,10 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           if (!count) return
                           const stage = data.stage as string
                           const items = opportunities.filter((o) => {
+                            if (!isDePauta(o)) return false
                             if (o.stage !== stage) return false
-                            return paidGroupByKey(o, stageGroupBy) === key
+                            if (!stageIncludeLost && o.status === "lost") return false
+                            return paidGroupByKey(o, stageGroupBy, pautaNameByContact) === key
                           })
                           const label = paidGroupByLabel(key, stageGroupBy, stageCampaignCut)
                           openDrill(
@@ -1509,7 +1704,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         </ChartCardContent>
       </DashboardCard>
 
-      <DashboardCard>
+      <DashboardCard tone="lost">
         <ChartCardHeader
           title="Oportunidades Perdidas por Razón de Pérdida"
           total={lostByReasonTotal}
@@ -1566,8 +1761,9 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           const reason = data.reason as string
                           const items = opportunities.filter((o) => {
                             if (o.status !== "lost") return false
+                            if (!isDePauta(o)) return false
                             if ((o.lostReason || "Sin razón") !== reason) return false
-                            return paidGroupByKey(o, lostGroupBy) === key
+                            return paidGroupByKey(o, lostGroupBy, pautaNameByContact) === key
                           })
                           const label = paidGroupByLabel(key, lostGroupBy, lostCampaignCut)
                           openDrill(
@@ -1596,6 +1792,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
             title="Oportunidades por ID de Anuncio"
             total={leadsByAdId.reduce((s, e) => s + e.count, 0)}
             icon={Tag}
+            actions={
+              <ScopePill
+                label="META · Form + WhatsApp"
+                tooltip="Solo pautas de META. El ID de anuncio aplica tanto a pautas de formulario como de WhatsApp."
+              />
+            }
           />
           <ChartCardContent>
             {leadsByAdId.length === 0 ? (
@@ -1650,6 +1852,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
               leadsByPlatformUrl.ig.reduce((s, e) => s + e.count, 0)
             }
             icon={BarChart3}
+            actions={
+              <ScopePill
+                label="META · Solo WhatsApp"
+                tooltip="Solo pautas de META. La URL solo aplica a pautas de WhatsApp, no de formulario."
+              />
+            }
           />
           <ChartCardContent>
             {leadsByPlatformUrl.fb.length === 0 && leadsByPlatformUrl.ig.length === 0 ? (
@@ -1754,7 +1962,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         <DashboardCard>
           <ChartCardHeader
             title="Citas por pauta"
-            total={paidTrafficWithAppt.reduce((s, e) => s + e.count, 0)}
+            total={paidTrafficWithAppt.reduce((s, e) => s + (e.count as number), 0)}
             icon={Calendar}
             actions={
               <div className="flex flex-wrap items-center gap-2">
@@ -1785,9 +1993,9 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
             ) : (
               <>
                 <ChartContainer
-                  config={{ count: { label: "Con cita", color: BRAND_AMBER } }}
+                  config={apptStageConfig}
                   className="aspect-auto"
-                  style={{ height: 300 }}
+                  style={{ height: 360 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -1799,7 +2007,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                         dataKey="label"
                         tick={{ ...CHART_TICK }}
                         tickLine={false}
-                        axisLine={false} 
+                        axisLine={false}
                         interval={0}
                         angle={-40}
                         textAnchor="end"
@@ -1812,36 +2020,52 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           />
                         }
                       />
-                      <Bar
-                        dataKey="count"
-                        radius={[6, 6, 0, 0]}
-                        name="Con cita"
-                        maxBarSize={48}
-                        cursor="pointer"
-                        onClick={(data: any) => {
-                          const rawKey = data.rawKey as string
-                          // Mirror the bar's status filter so the drawer count tracks the bar.
-                          const filteredAppts = apptStatusFilter === "all"
-                            ? appointments
-                            : appointments.filter((a) => a.status === apptStatusFilter)
-                          const apptContactIds = new Set(filteredAppts.map((a) => a.contactId))
-                          openDrill(
-                            `Tráfico pagado con cita: ${data.label}`,
-                            opportunities.filter((o) => {
-                              if (!isPaidTraffic(o) || !apptContactIds.has(o.contactId)) return false
-                              return paidGroupByKey(o, apptGroupBy) === rawKey
+                      <Legend
+                        verticalAlign="top"
+                        align="left"
+                        wrapperStyle={{ fontSize: 10, paddingBottom: 8, lineHeight: "18px" }}
+                        iconSize={8}
+                        formatter={(value: string) => (
+                          <span style={{ color: "#374151", marginRight: 4 }} title={value}>
+                            {value.length > 24 ? value.slice(0, 24) + "…" : value}
+                          </span>
+                        )}
+                      />
+                      {apptStageKeys.map((stage, i) => (
+                        <Bar
+                          key={stage}
+                          dataKey={stage}
+                          stackId="a"
+                          fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                          radius={i === apptStageKeys.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                          maxBarSize={48}
+                          cursor="pointer"
+                          onClick={(data: any) => {
+                            const count = data[stage] as number
+                            if (!count) return
+                            const rawKey = data.rawKey as string
+                            // Mirror the bar's status filter so the drawer count tracks the segment.
+                            const filteredAppts = apptStatusFilter === "all"
+                              ? appointments
+                              : appointments.filter((a) => a.status === apptStatusFilter)
+                            const apptContactIds = new Set(filteredAppts.map((a) => a.contactId))
+                            const items = opportunities.filter((o) => {
+                              if (!isDePauta(o) || !apptContactIds.has(o.contactId)) return false
+                              if ((o.stage || "Sin etapa") !== stage) return false
+                              return paidGroupByKey(o, apptGroupBy, pautaNameByContact) === rawKey
                             })
-                          )
-                        }}
-                      >
-                        {paidTrafficWithAppt.map((entry, i) => (
-                          <Cell key={entry.rawKey} fill={chartPaletteColor(i)} />
-                        ))}
-                      </Bar>
+                            openDrill(
+                              `${data.label} · ${stage}`,
+                              items,
+                              `${items.length} oportunidad${items.length !== 1 ? "es" : ""} en ${stage}`
+                            )
+                          }}
+                        />
+                      ))}
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
-                <ChartHint>Leads de paid social + paid search que tienen al menos una cita agendada</ChartHint>
+                <ChartHint>Leads de publicidad pagada (Meta/TikTok + Google) con cita, apilados por etapa del pipeline · clic en un segmento para ver oportunidades</ChartHint>
               </>
             )}
           </ChartCardContent>
@@ -1851,7 +2075,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
 
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <DashboardCard>
+      <DashboardCard tone="won">
           <ChartCardHeader
             title="Oportunidades ganadas por pauta"
             total={wonPaidTraffic.reduce((s, e) => s + e.count, 0)}
@@ -1914,8 +2138,8 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           openDrill(
                             `Ganados de tráfico pagado: ${data.label}`,
                             opportunities.filter((o) => {
-                              if (!isPaidTraffic(o) || !isWonOpp(o)) return false
-                              return paidGroupByKey(o, wonGroupBy) === rawKey
+                              if (!isDePauta(o) || !isWonOpp(o)) return false
+                              return paidGroupByKey(o, wonGroupBy, pautaNameByContact) === rawKey
                             })
                           )
                         }}
@@ -1927,12 +2151,12 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
-                <ChartHint>Oportunidades ganadas (won) de paid social + paid search · tooltip muestra valor total</ChartHint>
+                <ChartHint>Oportunidades ganadas (won) de publicidad pagada (Meta/TikTok + Google) · tooltip muestra valor total</ChartHint>
               </>
             )}
           </ChartCardContent>
         </DashboardCard>
-      <DashboardCard>
+      <DashboardCard tone="won">
         <ChartCardHeader
           title="Oportunidades Ganadas por Fuente"
           total={wonTotal}
@@ -1946,7 +2170,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
             <>
               <ChartContainer
                 config={Object.fromEntries(
-                  SOURCE_CATEGORY_ORDER.map((k) => [k, { label: k, color: SOURCE_CATEGORY_COLORS[k] ?? BRAND_AMBER }])
+                  SOURCE_CATEGORY_ORDER.map((k) => [k, { label: catLabel(k), color: SOURCE_CATEGORY_COLORS[k] ?? BRAND_AMBER }])
                 )}
                 className="aspect-auto"
                 style={{ height: 300 }}
@@ -1968,7 +2192,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                     <ChartTooltip content={<NonZeroTooltipContent labelFormatter={(_: unknown, p: any) => p?.[0]?.payload?.platform ?? String(_)} />} />
                     <Legend
                       wrapperStyle={{ fontSize: 11, paddingTop: 32 }}
-                      formatter={(value) => <span style={{ color: "#374151" }}>{value}</span>}
+                      formatter={(value) => <span style={{ color: "#374151" }}>{catLabel(String(value))}</span>}
                     />
                     {SOURCE_CATEGORY_ORDER.map((key, i) => (
                       <Bar
@@ -1983,7 +2207,7 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
                           const count = data[key] as number
                           if (!count) return
                           openDrill(
-                            `Ganadas: ${data.platform} · ${key}`,
+                            `Ganadas: ${data.platform} · ${catLabel(key)}`,
                             opportunities.filter((o) => isWonOpp(o) && platformLabel(o) === data.platform && sourceCategory(o) === key)
                           )
                         }}
@@ -2096,9 +2320,9 @@ export function MarketingDashboard({ opportunities, contacts, allContacts, pauta
         contacts={lookupContacts}
         tasks={tasks}
         calls={calls}
-        allOpportunities={opportunities}
-        allPautas={pautas}
-        appointments={appointments}
+        allOpportunities={lookupOpportunities}
+        allPautas={rankingPautas}
+        appointments={lookupAppointments}
         locationId={locationId}
       />
     </DashboardShell>

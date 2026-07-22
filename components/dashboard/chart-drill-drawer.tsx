@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { DetailDrawer } from "./detail-drawer"
 import type { Opportunity, Contact, Task, Call, Pauta, Appointment, Message } from "@/lib/types"
 import { isWonOpp } from "@/lib/opportunity-status"
+import { pautaContactName, pautaContactPhone } from "@/lib/pauta"
 import { DollarSign, User, Tag, ChevronRight, TrendingUp, Phone, Mail } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
@@ -44,6 +45,14 @@ export interface DrillState {
   opportunities: Opportunity[]
   members?: string[]
   contactItems?: Contact[]
+  /**
+   * One entry per pauta RECORD (contacts may repeat, and `contact` is undefined
+   * when the pauta has no resolvable contact). Used by the "Pautas por canal"
+   * drill in records mode so the drawer count matches the chart's pauta-record
+   * count exactly — deduping to contacts (contactItems) would drop repeats and
+   * contact-less pautas, which is the unique-leads behaviour instead.
+   */
+  pautaItems?: { pauta: Pauta; contact?: Contact }[]
 }
 
 export const DRILL_CLOSED: DrillState = { open: false, title: "", opportunities: [] }
@@ -80,11 +89,14 @@ export function ChartDrillDrawer({
 
   const showMembers = (drill.members?.length ?? 0) > 0
   const showContacts = !showMembers && (drill.contactItems?.length ?? 0) > 0
+  const showPautas = !showMembers && !showContacts && (drill.pautaItems?.length ?? 0) > 0
   const count = showMembers
     ? (drill.members?.length ?? 0)
     : showContacts
       ? (drill.contactItems?.length ?? 0)
-      : drill.opportunities.length
+      : showPautas
+        ? (drill.pautaItems?.length ?? 0)
+        : drill.opportunities.length
 
   return (
     <>
@@ -114,6 +126,13 @@ export function ChartDrillDrawer({
             ) : showContacts ? (
               <ContactList
                 contacts={drill.contactItems!}
+                allOpportunities={allOpportunities}
+                onSelectOpp={(id) => { setSelectedOppId(id); setSelectedContactId(null); setDetailOpen(true) }}
+                onSelectContact={(id) => { setSelectedContactId(id); setSelectedOppId(null); setDetailOpen(true) }}
+              />
+            ) : showPautas ? (
+              <PautaList
+                items={drill.pautaItems!}
                 allOpportunities={allOpportunities}
                 onSelectOpp={(id) => { setSelectedOppId(id); setSelectedContactId(null); setDetailOpen(true) }}
                 onSelectContact={(id) => { setSelectedContactId(id); setSelectedOppId(null); setDetailOpen(true) }}
@@ -294,6 +313,120 @@ function ContactList({
                   <Tag className="h-3 w-3 shrink-0" />
                   <span className="truncate">{opp?.campaign ?? c.campaign}</span>
                 </span>
+              )}
+            </div>
+          </motion.button>
+        )
+      })}
+    </>
+  )
+}
+
+function PautaList({
+  items,
+  allOpportunities,
+  onSelectOpp,
+  onSelectContact,
+}: {
+  items: { pauta: Pauta; contact?: Contact }[]
+  allOpportunities: Opportunity[]
+  onSelectOpp: (id: string) => void
+  onSelectContact: (id: string) => void
+}) {
+  return (
+    <>
+      {items.map(({ pauta, contact }, i) => {
+        // No resolvable contact: still render the record so the drawer count
+        // matches the chart's pauta-record count. Nothing to drill into.
+        if (!contact) {
+          // No lead to drill into, but the pauta itself recorded the name and phone
+          // at capture time — show them so the person is still reachable and the
+          // broken record is identifiable in GHL for cleanup.
+          const nombre = pautaContactName(pauta)
+          const telefono = pautaContactPhone(pauta)
+          return (
+            <motion.div
+              key={pauta.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.18 }}
+              className="w-full rounded-xl border border-dashed border-border bg-card/50 p-4"
+            >
+              <div className="flex items-center gap-1.5 min-w-0 mb-1.5">
+                <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className={`text-sm font-semibold truncate ${nombre ? "text-foreground" : "text-muted-foreground"}`}>
+                  {nombre ?? "Sin nombre"}
+                </span>
+                <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                  sin contacto
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground truncate pl-5">
+                {[
+                  telefono,
+                  pauta.tipo,
+                  pauta.createdAt ? new Date(pauta.createdAt).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </motion.div>
+          )
+        }
+
+        const opp = allOpportunities
+          .filter((o) => o.contactId === contact.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+
+        return (
+          <motion.button
+            key={pauta.id}
+            type="button"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.18 }}
+            onClick={() => opp ? onSelectOpp(opp.id) : onSelectContact(contact.id)}
+            className="group w-full text-left rounded-xl border border-border bg-card p-4 transition-all cursor-pointer hover:border-primary/40 hover:bg-accent/30"
+          >
+            {/* Top row */}
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                  {contact.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {opp && (
+                  <Badge variant="outline" className={`text-[10px] ${STATUS_STYLES[opp.status] ?? ""}`}>
+                    {opp.status}
+                  </Badge>
+                )}
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+
+            {/* Email */}
+            <p className="text-xs text-muted-foreground mb-2.5 truncate pl-5">
+              {contact.email || contact.phone || "Sin datos de contacto"}
+            </p>
+
+            {/* Stage (from opp) + value */}
+            <div className="flex items-center justify-between gap-2">
+              {opp ? (
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${STAGE_CLASSES[opp.stage] ?? "bg-muted text-muted-foreground"}`}>
+                  {opp.stage}
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground">
+                  Sin oportunidad
+                </span>
+              )}
+              {opp && opp.value > 0 && (
+                <div className="flex items-center gap-0.5 text-xs font-semibold text-foreground">
+                  <DollarSign className="h-3 w-3 text-muted-foreground" />
+                  {opp.value.toLocaleString("es-MX")}
+                </div>
               )}
             </div>
           </motion.button>

@@ -263,13 +263,16 @@ export default function DashboardPage() {
         {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}
+            allOpportunities={data?.opportunities ?? []}
             contacts={contacts}
             allContacts={data?.contacts ?? []}
             pautas={pautas}
+            allPautas={data?.pautas ?? []}
             pipelines={data?.pipelines ?? []}
             tasks={tasks}
             calls={calls}
             appointments={appointments}
+            allAppointments={data?.appointments ?? []}
             locationId={data?.locationId ?? ""}
             locationName={locationName ?? undefined}
             periodLabel={periodLabel}
@@ -278,11 +281,14 @@ export default function DashboardPage() {
         {activeTab === "sales" && (
           <SalesDashboard
             opportunities={opportunities}
+            allOpportunities={data?.opportunities ?? []}
             contacts={contacts}
             allContacts={data?.contacts ?? []}
             calls={calls}
             messages={filteredMessages}
+            allMessages={messages}
             appointments={appointments}
+            allAppointments={data?.appointments ?? []}
             pipelines={data?.pipelines ?? []}
             tasks={tasks}
             pautas={pautas}

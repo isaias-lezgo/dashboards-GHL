@@ -2,10 +2,11 @@
 
 import type { ComponentProps, ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
-import { Facebook, Instagram, Globe } from "lucide-react"
+import { AlertTriangle, Facebook, Instagram, Globe, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartTooltipContent } from "@/components/ui/chart"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 /** Tooltip wrapper that hides zero-value series and sorts by value descending. */
 type NonZeroTooltipProps = ComponentProps<typeof ChartTooltipContent>
@@ -91,19 +92,64 @@ export function TotalBadge({ value, className }: { value: number | string; class
   )
 }
 
+/**
+ * Small explanatory pill for a chart header: a short scope label + an info icon
+ * whose tooltip carries the full rule. Drop it into ChartCardHeader's `actions`
+ * slot so it renders just left of the Total badge.
+ */
+export function ScopePill({ label, tooltip }: { label: string; tooltip: ReactNode }) {
+  return (
+    <TooltipProvider delayDuration={100}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-[11px] font-medium tracking-wide text-primary/90 transition-colors hover:bg-primary/10"
+          >
+            {label}
+            <Info className="h-3 w-3 opacity-70" aria-hidden />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-[16rem] text-xs leading-relaxed">
+          {tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export function DashboardShell({ children }: { children: ReactNode }) {
   return <div className="flex flex-col gap-5 px-4 pb-8 sm:px-6">{children}</div>
 }
+
+/**
+ * Outcome tint for a card holding a won/lost chart. The lightness of every value
+ * tracks the `--card` / `--border` tokens of its mode, so a tinted card sits at
+ * the same elevation as a neutral one — only the hue changes.
+ *
+ * The fills are deliberately much fainter in dark mode (6% vs ~55% saturation):
+ * against a dark surface a tinted fill reads far louder than the same tint on
+ * white, so matching the two by the numbers overshoots. The borders carry most
+ * of the cue in dark mode. Tuned by eye — don't "normalize" the pairs.
+ */
+const CARD_TONES = {
+  won: "border-[hsl(152_32%_82%)] bg-[hsl(152_55%_97%)] dark:border-[hsl(158_12%_21%)] dark:bg-[hsl(158_6%_13%)]",
+  lost: "border-[hsl(352_45%_86%)] bg-[hsl(352_70%_97.5%)] dark:border-[hsl(352_13%_22%)] dark:bg-[hsl(352_6%_13.5%)]",
+} as const
+
+export type CardTone = keyof typeof CARD_TONES
 
 export function DashboardCard({
   children,
   className,
   interactive,
+  tone,
   onClick,
 }: {
   children: ReactNode
   className?: string
   interactive?: boolean
+  tone?: CardTone
   onClick?: () => void
 }) {
   return (
@@ -112,6 +158,7 @@ export function DashboardCard({
         "shadow-none",
         interactive &&
         "cursor-pointer transition-[box-shadow,border-color,background-color] duration-200 hover:border-primary/35 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)]",
+        tone && CARD_TONES[tone],
         className,
       )}
       onClick={onClick}
@@ -254,13 +301,17 @@ export function MarketingSummaryStrip({
   pautas,
   uniquePautas,
   reingresoPautas,
-  paidSocialLeads,
+  pautaOpportunities,
+  sinContactoPautas = 0,
+  onSinContactoClick,
 }: {
   opportunities: number
   pautas: number
   uniquePautas: number
   reingresoPautas: number
-  paidSocialLeads: number
+  pautaOpportunities: number
+  sinContactoPautas?: number
+  onSinContactoClick?: () => void
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -278,7 +329,7 @@ export function MarketingSummaryStrip({
           Oportunidades por pauta
         </p>
         <p className="mt-0.5 text-2xl font-bold tabular-nums text-primary">
-          {paidSocialLeads.toLocaleString("es-MX")}
+          {pautaOpportunities.toLocaleString("es-MX")}
         </p>
       </div>
       <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-none">
@@ -296,6 +347,21 @@ export function MarketingSummaryStrip({
             Reingresos{" "}
             <span className="font-semibold text-amber-600">{reingresoPautas.toLocaleString("es-MX")}</span>
           </span>
+          {/* Only when there's something wrong to report — a zero here is the healthy
+              state and doesn't deserve permanent real estate. */}
+          {sinContactoPautas > 0 && (
+            <button
+              type="button"
+              onClick={onSinContactoClick}
+              disabled={!onSinContactoClick}
+              title="Pautas sin contacto vinculado — registros huérfanos en GHL"
+              className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-500 transition-colors enabled:hover:border-rose-500/50 enabled:hover:bg-rose-500/20 enabled:cursor-pointer disabled:cursor-default"
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+              Sin contacto{" "}
+              <span className="font-semibold">{sinContactoPautas.toLocaleString("es-MX")}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
