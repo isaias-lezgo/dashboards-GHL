@@ -89,8 +89,9 @@ controles:
   ordenada por volumen, y cada fila conserva el color de su familia y el prefijo en
   gris. El patrón se sigue viendo, solo que sin headers ni reagrupación. En este modo
   el header omite el conteo de familias.
-- **Leads únicos**: toggle que muestra u oculta el segundo número. Mismo patrón que
-  el toggle ya existente en "Pautas por canal de contacto".
+**No lleva toggle de "Leads únicos".** Los dos números se muestran siempre; el valor
+de este chart está justo en ver la brecha entre ambos, y un toggle que esconde uno de
+los dos la destruye.
 
 **Cuerpo**: lista de filas con barra proporcional, agrupada por familia, dentro de un
 `div` con `overflow-y-auto` — **no** `ScrollArea` de Radix, que rompe el `truncate`
@@ -122,12 +123,27 @@ Detalles de render:
 ## Segundo dato: leads únicos
 
 La barra mide **pautas** (con reingresos). Al lado se muestra el conteo de
-**contactos únicos** (`contactId` distintos) de esa campaña.
+**leads únicos** de esa campaña.
+
+"Lead único" **reutiliza la definición que ya existe en el dashboard**: el callback
+`isUniqueLead()` de `marketing-dashboard.tsx`, que marca una pauta como lead único
+cuando es la **primera pauta histórica de ese contacto** (rango 0 en
+`pautaReingresoMap`); las posteriores son reingresos. Esta es la definición detrás del
+KPI "Leads únicos" (= pautas − reingresos).
+
+Deliberadamente **no** se usa "contactos distintos por campaña", que era la
+formulación inicial. Los dos números difieren — un contacto cuya primera pauta fue de
+otra campaña contaría como distinto aquí pero no como lead único — y tener dos
+definiciones de "lead único" en el mismo dashboard es una trampa. El componente recibe
+`isUniqueLead` como prop en vez de reimplementarlo.
+
+Las pautas sin `contactId` cuentan como pauta pero **no** como lead único. Hace falta
+el guard explícito: `pautaReingresoMap` solo indexa pautas con contacto, así que
+`isUniqueLead()` devuelve `true` por defecto para una pauta huérfana. Mismo guard que
+usa el chart "Pautas por canal de contacto".
 
 La brecha entre ambos números indica de un vistazo qué campaña está recirculando a
 la misma gente en vez de traer gente nueva.
-
-Las pautas sin `contactId` cuentan como pauta pero no como lead único.
 
 ## Drill-down
 
@@ -136,8 +152,15 @@ Regla del proyecto: gráfica nueva → drawer.
 - Clic en una **fila de campaña** → `ChartDrillDrawer` con las pautas de esa campaña.
 - Clic en el **header de familia** → drawer con todas las pautas de la familia.
 
-Se reutiliza el flujo `openPautaDrill` que ya existe en `marketing-dashboard.tsx`;
-el componente nuevo lo recibe como prop en vez de manejar su propio estado de drawer.
+**No se reutiliza `openPautaDrill`.** Ese callback se bifurca según el estado global
+`pautaUniqueLeads` (el toggle del chart de canales): con el toggle encendido resuelve a
+contactos, no a pautas. Como este chart siempre mide registros, el drawer mostraría un
+conteo distinto al de la barra dependiendo de un toggle de *otra* gráfica.
+
+En su lugar, `marketing-dashboard.tsx` expone un callback nuevo,
+`openPautaRecordsDrill`, que siempre abre en modo registros. Ya existe precedente:
+`openSinContactoDrill` hace exactamente eso, y por la misma razón. El componente lo
+recibe como prop en vez de manejar su propio estado de drawer.
 
 ## Ubicación del código
 
