@@ -1,0 +1,177 @@
+# Campañas activas por pauta — diseño
+
+Fecha: 2026-07-21
+Dashboard: Marketing
+
+## Problema
+
+El dashboard de Marketing tiene cuatro gráficas agrupadas "por campaña"
+(ganadas, citas, etapa, perdidas), pero ninguna responde la pregunta de arranque:
+**qué campañas están corriendo ahora y cuánto volumen trae cada una**.
+
+El caso de uso real: algunos clientes trabajan con dos agencias de marketing a la
+vez. No existe ningún campo en GHL que diga a qué agencia pertenece una campaña —
+ni en el objeto Pauta ni en la oportunidad. La única señal es **el patrón del
+nombre de la campaña**: cada agencia nombra sus pautas con su propio prefijo.
+
+De ahí sale el requisito central: la gráfica debe hacer ese patrón *visible*, para
+que la persona infiera la agencia. Es lo contrario de lo que hacen las gráficas
+actuales — `campaignPrefixCut()` en `marketing-dashboard.tsx` borra a propósito el
+prefijo compartido para que las barras no se vean idénticas. Aquí el prefijo es
+justamente lo que se quiere leer.
+
+## Unidad de medida
+
+El registro **`Pauta`**, no la oportunidad.
+
+Un registro de Pauta equivale a una entrada del lead, así que los **reingresos ya
+cuentan solos**: si un contacto vuelve a entrar por la misma campaña, genera un
+segundo registro. No hace falta lógica adicional de reingreso.
+
+Campos usados de `Pauta` (`lib/types.ts`):
+
+- `nombrePauta` — el nombre de la campaña.
+- `contactId` — para el conteo de leads únicos. Opcional.
+- `createdAt` — ya lo aplica el filtro de fechas global, no se vuelve a usar.
+
+## Definición de "campaña activa"
+
+**Una campaña está activa si tiene al menos una Pauta dentro del filtro de fechas
+global** que ya controla el resto del dashboard.
+
+GHL no expone gasto ni el estado del ad set en Meta, así que no hay forma de saber
+si una campaña sigue pautada. Se descartó introducir un umbral de recencia propio
+(«último lead en los últimos N días»): sería un concepto nuevo que explicar, y el
+filtro de fechas que ya existe responde la pregunta al seleccionar un rango
+reciente.
+
+Consecuencia: el componente recibe las pautas **ya filtradas**, igual que el resto
+de los componentes de dashboard. No filtra por su cuenta.
+
+## Detección de familias
+
+Función pura nueva en `lib/pauta.ts`, junto a `resolveCampaignName()`, que ya es la
+fuente de verdad de nombres de campaña.
+
+Algoritmo:
+
+1. Partir `nombrePauta` por los separadores ` - `, `|`, `_`, `/`.
+2. Tomar los primeros **N** tokens como clave de familia, donde N es la profundidad
+   seleccionada en la UI.
+3. Agrupar las campañas por esa clave.
+4. **Una familia con un solo miembro se colapsa al bucket "Sin patrón".** Sin esta
+   regla, un conjunto de nombres heterogéneos produce una familia por campaña y el
+   agrupamiento no aporta nada.
+
+Casos borde:
+
+- Nombre sin ningún separador → cae a "Sin patrón". Es honesto; es preferible a
+  inventar una familia.
+- Profundidad 2 cuando ningún nombre tiene 2 tokens → el resultado equivale a plano.
+  No es un error.
+- `nombrePauta === "Sin nombre"` (el valor que pone `app/api/dashboard/route.ts`
+  cuando la propiedad viene vacía) → bucket propio, renderizado al final. No se
+  mezcla con "Sin patrón", porque significan cosas distintas: uno es "no sé cómo se
+  llama", el otro es "se llama algo que no encaja en ninguna familia".
+
+## UI
+
+Card nueva en el dashboard de Marketing, titulada **"Campañas activas por pauta"**.
+
+**Header** (`ChartCardHeader`): resumen `N campañas · N familias · N pautas`, más dos
+controles:
+
+- **Profundidad de agrupación**: `1 · 2 · Plano`. Ajusta N en vivo. Existe porque la
+  detección automática se puede equivocar (dos agencias que comparten el primer
+  token, nombres sin separador). Sigue el patrón visual de `GroupByToggle`.
+
+  **"Plano"** desactiva el *agrupamiento* pero no la *detección*: deja una sola lista
+  ordenada por volumen, y cada fila conserva el color de su familia y el prefijo en
+  gris. El patrón se sigue viendo, solo que sin headers ni reagrupación. En este modo
+  el header omite el conteo de familias.
+- **Leads únicos**: toggle que muestra u oculta el segundo número. Mismo patrón que
+  el toggle ya existente en "Pautas por canal de contacto".
+
+**Cuerpo**: lista de filas con barra proporcional, agrupada por familia, dentro de un
+`div` con `overflow-y-auto` — **no** `ScrollArea` de Radix, que rompe el `truncate`
+en paneles angostos.
+
+```
+▸ IW                                        4 campañas · 127 pautas · 98 leads
+  IW - CC - FF - Corregidora - ⟨Julio⟩      ██████████████   52  ·  41
+  IW - CC - FF - Corregidora - ⟨Agosto⟩     ████████         31  ·  28
+  IW - CC - FF - Juriquilla - ⟨Julio⟩       ██████           25  ·  20
+```
+
+Detalles de render:
+
+- El **prefijo de familia va en gris tenue y el sufijo distintivo en el color de
+  texto normal**. Es lo que hace legible el patrón sin que las filas se vean
+  idénticas.
+- Nombre **completo, sin truncar a 30 caracteres** como hace `paidGroupByLabel()`.
+  El sufijo es justo la parte que distingue una campaña de otra dentro de la misma
+  familia; truncar lo destruye.
+- Un color por familia.
+- **Orden**: familias por volumen total desc; campañas dentro de cada familia por
+  volumen desc. "Sin patrón" y "Sin nombre" siempre al final, en ese orden.
+- **Barra normalizada contra la campaña más grande de todo el set**, no por familia,
+  para que las barras se comparen entre familias.
+- **Sin Top-N.** El objetivo declarado es ver todo centralizado; esconder la cola
+  contradice el propósito. El volumen se maneja con scroll.
+
+## Segundo dato: leads únicos
+
+La barra mide **pautas** (con reingresos). Al lado se muestra el conteo de
+**contactos únicos** (`contactId` distintos) de esa campaña.
+
+La brecha entre ambos números indica de un vistazo qué campaña está recirculando a
+la misma gente en vez de traer gente nueva.
+
+Las pautas sin `contactId` cuentan como pauta pero no como lead único.
+
+## Drill-down
+
+Regla del proyecto: gráfica nueva → drawer.
+
+- Clic en una **fila de campaña** → `ChartDrillDrawer` con las pautas de esa campaña.
+- Clic en el **header de familia** → drawer con todas las pautas de la familia.
+
+Se reutiliza el flujo `openPautaDrill` que ya existe en `marketing-dashboard.tsx`;
+el componente nuevo lo recibe como prop en vez de manejar su propio estado de drawer.
+
+## Ubicación del código
+
+- `lib/pauta.ts` — la detección de familias (función pura). Va aquí porque el archivo
+  ya es el dueño de la resolución de nombres de campaña y solo tiene ~128 líneas.
+- `components/dashboard/campaign-activity-chart.tsx` — **archivo nuevo**.
+  `marketing-dashboard.tsx` ya tiene 2 304 líneas; agregar otra gráfica inline lo
+  empeora. El componente recibe `pautas` (ya filtradas), `contacts` y el callback de
+  drill como props, igual que el resto de los componentes de dashboard.
+
+## Estados vacíos
+
+- Sin pautas en el rango → `ChartEmpty` con "Sin pautas en el periodo seleccionado."
+- Con pautas pero todas "Sin nombre" → la lista se renderiza con el bucket
+  "Sin nombre" solamente. No es un estado de error.
+
+## Fuera de alcance
+
+- **Reporte PDF** (`lib/report.ts`, `lib/pdf/charts.ts`). La gráfica no entra al
+  reporte en este cambio. Primero se valida en el dashboard; agregarla al PDF en el
+  mismo paso duplica la superficie de cambio y el riesgo de romper el reporte. Se
+  puede agregar después como cambio propio.
+- Cualquier mapeo de agencia configurado por cliente. La inferencia la hace la
+  persona a partir del patrón visible.
+- Datos de gasto o estado de campaña de Meta. No están disponibles vía GHL.
+
+## Verificación
+
+- `npx tsc --noEmit` — obligatorio: `next build` ignora errores de TypeScript
+  (ver `next.config.mjs`), así que un build verde no prueba nada.
+- Levantar la app contra un sub-account real que tenga dos patrones de nombre
+  distintos, y confirmar: las familias se detectan, el control de profundidad
+  reagrupa en vivo, y el drill abre con las pautas correctas.
+
+**No se agrega script `verify:*`.** Esos están reservados para los tres módulos puros
+donde un bug silencioso sería una fuga de datos entre clientes (`lib/clients.ts`,
+`lib/auth.ts`, `lib/ghl-limiter.ts`). Esto es lógica de presentación.
