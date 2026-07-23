@@ -2,7 +2,7 @@
 
 import type { ComponentProps, ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
-import { AlertTriangle, Facebook, Instagram, Globe, Info } from "lucide-react"
+import { AlertTriangle, Facebook, Instagram, Globe, Info, Target, Megaphone, Layers3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartTooltipContent } from "@/components/ui/chart"
@@ -301,19 +301,29 @@ export function KpiCard({
  *  "Sin contacto" button, and a button inside a button is invalid HTML. */
 function SummaryTile({
   label,
+  icon: Icon,
+  tone = "default",
   children,
   onClick,
 }: {
   label: string
+  icon?: LucideIcon
+  tone?: "default" | "accent"
   children: ReactNode
   onClick?: () => void
 }) {
+  const accent = tone === "accent"
   return (
     <div
       className={cn(
-        "rounded-xl border border-border bg-card px-4 py-3 shadow-none",
+        "flex flex-col rounded-xl border px-4 py-3.5",
+        // The "accent" tile carries a restrained amber wash — this is the one
+        // metric the eye should land on first (DESIGN.md: amber marks where
+        // attention belongs). The others stay flat white.
+        accent ? "border-primary/25 bg-primary/[0.05]" : "border-border bg-card",
         onClick &&
-        "cursor-pointer transition-[box-shadow,border-color,background-color] duration-200 hover:border-primary/35 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        "cursor-pointer transition-[box-shadow,border-color] duration-200 hover:shadow-[0_1px_3px_rgba(21,27,40,0.08),0_1px_2px_rgba(21,27,40,0.06)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        onClick && (accent ? "hover:border-primary/45" : "hover:border-primary/35"),
       )}
       onClick={onClick}
       role={onClick ? "button" : undefined}
@@ -329,9 +339,17 @@ function SummaryTile({
           : undefined
       }
     >
-      <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+          {label}
+        </p>
+        {Icon && (
+          <Icon
+            className={cn("h-4 w-4 shrink-0", accent ? "text-primary/70" : "text-muted-foreground/45")}
+            aria-hidden
+          />
+        )}
+      </div>
       {children}
     </div>
   )
@@ -360,25 +378,39 @@ export function MarketingSummaryStrip({
   onPautaOpportunitiesClick?: () => void
   onPautasClick?: () => void
 }) {
+  // Share of all opportunities that came from paid advertising — the single
+  // stat that makes the amber tile more than a raw count.
+  const pautaShare =
+    opportunities > 0 ? Math.round((pautaOpportunities / opportunities) * 100) : 0
+
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <SummaryTile label="Oportunidades" onClick={onOpportunitiesClick}>
-        <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
+      <SummaryTile label="Oportunidades" icon={Target} onClick={onOpportunitiesClick}>
+        <p className="mt-2 text-[28px] font-bold leading-none tabular-nums text-foreground">
           {opportunities.toLocaleString("es-MX")}
         </p>
       </SummaryTile>
 
-      <SummaryTile label="Oportunidades por pauta" onClick={onPautaOpportunitiesClick}>
-        <p className="mt-0.5 text-2xl font-bold tabular-nums text-primary">
+      <SummaryTile
+        label="Oportunidades por pauta"
+        icon={Megaphone}
+        tone="accent"
+        onClick={onPautaOpportunitiesClick}
+      >
+        <p className="mt-2 text-[28px] font-bold leading-none tabular-nums text-primary">
           {pautaOpportunities.toLocaleString("es-MX")}
+        </p>
+        <p className="mt-2 text-[11px] tabular-nums text-muted-foreground">
+          <span className="font-semibold text-primary">{pautaShare}%</span> del total de
+          oportunidades
         </p>
       </SummaryTile>
 
-      <SummaryTile label="Pautas" onClick={onPautasClick}>
-        <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
+      <SummaryTile label="Pautas" icon={Layers3} onClick={onPautasClick}>
+        <p className="mt-2 text-[28px] font-bold leading-none tabular-nums text-foreground">
           {pautas.toLocaleString("es-MX")}
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-muted-foreground">
           <span>
             Leads únicos{" "}
             <span className="font-semibold text-foreground">{uniquePautas.toLocaleString("es-MX")}</span>

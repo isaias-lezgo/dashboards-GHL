@@ -473,6 +473,27 @@ export async function getPipelines(): Promise<GHLPipelinesResponse> {
   return ghlFetch<GHLPipelinesResponse>("/opportunities/pipelines");
 }
 
+// A lost-reason catalog entry. `lostReasonId` on an opportunity is one of these
+// `_id`s; the human-readable `name` is what GHL's own "Lost reason:" UI shows.
+export interface GHLLostReason {
+  _id: string;
+  name: string;
+  locationId?: string;
+}
+
+export interface GHLLostReasonsResponse {
+  lostReasons: GHLLostReason[];
+}
+
+// The location's lost-reason catalog (id→name). Sub-accounts that record the
+// loss motive via GHL's native field use this; accounts that don't have a
+// catalog return an empty list, and the transform falls back to a custom field.
+export async function getLostReasons(): Promise<GHLLostReasonsResponse> {
+  // ghlFetch auto-appends ?locationId=… (camelCase) — exactly what this
+  // endpoint requires — because the path carries no :locationId placeholder.
+  return ghlFetch<GHLLostReasonsResponse>("/opportunities/lost-reason");
+}
+
 // ============ CONVERSATIONS / MESSAGES ============
 
 export interface GHLConversation {

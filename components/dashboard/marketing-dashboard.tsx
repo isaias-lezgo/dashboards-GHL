@@ -329,10 +329,25 @@ const PAID_GROUP_OPTIONS: { v: PaidGroupBy; label: string }[] = [
   { v: "platform", label: "Origen" },
 ]
 
-function GroupByToggle({ value, onChange }: { value: PaidGroupBy; onChange: (v: PaidGroupBy) => void }) {
+// Subset used by charts that only make sense split two ways (campaign vs origin),
+// e.g. the lost-reasons stack — high-cardinality URL/ID modes don't apply there.
+const CAMPAIGN_ORIGIN_OPTIONS: { v: PaidGroupBy; label: string }[] = [
+  { v: "campaign", label: "Campaña" },
+  { v: "platform", label: "Origen" },
+]
+
+function GroupByToggle({
+  value,
+  onChange,
+  options = PAID_GROUP_OPTIONS,
+}: {
+  value: PaidGroupBy
+  onChange: (v: PaidGroupBy) => void
+  options?: { v: PaidGroupBy; label: string }[]
+}) {
   return (
     <div className="flex items-center overflow-hidden rounded border border-border/50 text-[10px] font-medium">
-      {PAID_GROUP_OPTIONS.map((opt, i) => (
+      {options.map((opt, i) => (
         <button
           key={opt.v}
           onClick={(e) => { e.stopPropagation(); onChange(opt.v) }}
@@ -478,11 +493,13 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
   const [apptGroupBy, setApptGroupBy] = useState<PaidGroupBy>("campaign")
   const [wonGroupBy, setWonGroupBy] = useState<PaidGroupBy>("campaign")
   const [stageGroupBy, setStageGroupBy] = useState<PaidGroupBy>("campaign")
+  const [lostGroupBy, setLostGroupBy] = useState<PaidGroupBy>("campaign")
   const [originGroupBy, setOriginGroupBy] = useState<OriginGroupBy>("platform")
   const [onlyReingresos, setOnlyReingresos] = useState(false)
   const [stageIncludeLost, setStageIncludeLost] = useState(true)
   const [pautaUniqueLeads, setPautaUniqueLeads] = useState(false)
   const [stageTopN, setStageTopN] = useState(30)
+  const [lostTopN, setLostTopN] = useState(Infinity)
   const [apptTopN, setApptTopN] = useState(Infinity)
   const [wonTopN, setWonTopN] = useState(Infinity)
   const [apptStatusFilter, setApptStatusFilter] = useState<string>("all")
@@ -719,25 +736,58 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
     0
   )
 
-  // Lost pauta opportunities counted by their recorded lost reason. Campaign is a
-  // high-cardinality dimension, so it does NOT go in this chart — it lives in the
-  // drill-down. One solid bar per reason, sorted heaviest-first.
-  const lostByReasonRows = useMemo(() => {
-    const byReason = new Map<string, number>()
+  // Lost pauta opportunities: one bar per recorded lost reason (Y axis), each bar
+  // stacked by the active dimension (campaign or origin, per the lostGroupBy
+  // toggle). Reasons stay sorted heaviest-first; segment keys are ranked by total
+  // volume so colors are stable and the legend reads top-down. `total` on each row
+  // preserves the per-reason count for the PDF report (which has no toggle).
+  const { lostByReasonRows, lostByReasonKeys, lostByReasonKeyCount } = useMemo(() => {
+    const reasonTotals = new Map<string, number>()
+    const perReason = new Map<string, Map<string, number>>()
+    const segTotals = new Map<string, number>()
+
     for (const opp of opportunities) {
       if (opp.status !== "lost") continue
       if (!isDePauta(opp)) continue
       const reason = opp.lostReason || "Sin razón"
-      byReason.set(reason, (byReason.get(reason) ?? 0) + 1)
+      const segKey = paidGroupByKey(opp, lostGroupBy, pautaNameByContact)
+      if (!segKey) continue
+      reasonTotals.set(reason, (reasonTotals.get(reason) ?? 0) + 1)
+      if (!perReason.has(reason)) perReason.set(reason, new Map())
+      const segMap = perReason.get(reason)!
+      segMap.set(segKey, (segMap.get(segKey) ?? 0) + 1)
+      segTotals.set(segKey, (segTotals.get(segKey) ?? 0) + 1)
     }
-    return Array.from(byReason.entries())
-      .map(([reason, count]) => ({ reason, count }))
-      .sort((a, b) => b.count - a.count)
-  }, [opportunities, isDePauta])
 
-  const lostByReasonConfig = { count: { label: "Oportunidades", color: BRAND_AMBER } }
+    const allKeys = Array.from(segTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name)
+    const keyCount = allKeys.length
+    const keys = lostTopN >= keyCount ? allKeys : allKeys.slice(0, Math.round(lostTopN))
 
-  const lostByReasonTotal = lostByReasonRows.reduce((s, r) => s + r.count, 0)
+    const rows = Array.from(reasonTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([reason, total]) => {
+        const segMap = perReason.get(reason)!
+        const row: Record<string, string | number> = { reason, total }
+        for (const k of keys) row[k] = segMap.get(k) ?? 0
+        return row
+      })
+      // Drop reasons whose entire volume fell outside the shown segment keys.
+      .filter((row) => keys.some((k) => (row[k] as number) > 0))
+
+    return { lostByReasonRows: rows, lostByReasonKeys: keys, lostByReasonKeyCount: keyCount }
+  }, [opportunities, isDePauta, lostGroupBy, lostTopN, pautaNameByContact])
+
+  const lostCampaignCut = campaignPrefixCut(lostByReasonKeys, lostGroupBy)
+  const lostByReasonConfig = Object.fromEntries(
+    lostByReasonKeys.map((k, i) => [
+      k,
+      { label: paidGroupByLabel(k, lostGroupBy, lostCampaignCut), color: lostGroupBy === "platform" ? (PLATFORM_COLORS[k] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length] },
+    ])
+  )
+
+  const lostByReasonTotal = lostByReasonRows.reduce((s, r) => s + (r.total as number), 0)
 
   // Count only pautas in the active date window whose full-history rank is 2nd+.
   const reingresoCount = useMemo(
@@ -1074,10 +1124,10 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
           t: "chart", type: "bar", orientation: "h", valueLabel: "Oportunidades",
           title: `Perdidas por razón (total: ${lostByReasonTotal})`,
           // Rows already sorted heaviest-first — the PDF has no hover, so ordering carries the ranking.
-          categories: lostByReasonRows.map((r) => r.reason),
+          categories: lostByReasonRows.map((r) => r.reason as string),
           series: [{
             name: "Oportunidades",
-            values: lostByReasonRows.map((r) => r.count),
+            values: lostByReasonRows.map((r) => r.total as number),
           }],
         }],
       })
@@ -1680,6 +1730,12 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
           title="Oportunidades Perdidas por Razón de Pérdida"
           total={lostByReasonTotal}
           icon={TrendingDown}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <TopNSlider value={lostTopN} max={lostByReasonKeyCount} onChange={setLostTopN} />
+              <GroupByToggle value={lostGroupBy} onChange={setLostGroupBy} options={CAMPAIGN_ORIGIN_OPTIONS} />
+            </div>
+          }
         />
         <ChartCardContent>
           {lostByReasonRows.length === 0 ? (
@@ -1689,7 +1745,7 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
               <ChartContainer
                 config={lostByReasonConfig}
                 className="aspect-auto"
-                style={{ height: Math.min(560, Math.max(220, lostByReasonRows.length * 48 + 48)) }}
+                style={{ height: Math.min(760, Math.max(260, lostByReasonRows.length * 44 + 96)) }}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -1711,31 +1767,53 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
                       tickFormatter={(v: string) => (v.length > 26 ? v.slice(0, 26) + "…" : v)}
                     />
                     <ChartTooltip content={<NonZeroTooltipContent />} />
-                    <Bar
-                      dataKey="count"
-                      fill={BRAND_AMBER}
-                      radius={[0, 4, 4, 0]}
-                      maxBarSize={40}
-                      cursor="pointer"
-                      onClick={(data: any) => {
-                        const reason = data.reason as string
-                        const items = opportunities.filter(
-                          (o) => o.status === "lost" && isDePauta(o) && (o.lostReason || "Sin razón") === reason,
-                        )
-                        openDrill(
-                          reason,
-                          items,
-                          `${items.length} oportunidad${items.length !== 1 ? "es" : ""} perdida${items.length !== 1 ? "s" : ""} — ${reason}`,
-                        )
-                      }}
-                    >
-                      <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: CHART_TICK.fill }} />
-                    </Bar>
+                    <Legend
+                      wrapperStyle={{ fontSize: 10, paddingTop: 12, lineHeight: "20px" }}
+                      iconSize={8}
+                      formatter={(value: string) => (
+                        <span style={{ color: "#374151", marginRight: 4 }} title={value}>
+                          {paidGroupByLabel(value, lostGroupBy, lostCampaignCut).slice(0, 24)}
+                        </span>
+                      )}
+                    />
+                    {lostByReasonKeys.map((key, i) => (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        stackId="a"
+                        fill={lostGroupBy === "platform" ? (PLATFORM_COLORS[key] ?? CHART_PALETTE[i % CHART_PALETTE.length]) : CHART_PALETTE[i % CHART_PALETTE.length]}
+                        radius={i === lostByReasonKeys.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
+                        maxBarSize={40}
+                        cursor="pointer"
+                        onClick={(data: any) => {
+                          const count = data[key] as number
+                          if (!count) return
+                          const reason = data.reason as string
+                          const items = opportunities.filter(
+                            (o) =>
+                              o.status === "lost" &&
+                              isDePauta(o) &&
+                              (o.lostReason || "Sin razón") === reason &&
+                              paidGroupByKey(o, lostGroupBy, pautaNameByContact) === key,
+                          )
+                          const segLabel = paidGroupByLabel(key, lostGroupBy, lostCampaignCut)
+                          openDrill(
+                            `${reason} · ${segLabel}`,
+                            items,
+                            `${items.length} oportunidad${items.length !== 1 ? "es" : ""} perdida${items.length !== 1 ? "s" : ""} — ${reason} · ${segLabel}`,
+                          )
+                        }}
+                      >
+                        {i === lostByReasonKeys.length - 1 && (
+                          <LabelList dataKey="total" position="right" style={{ fontSize: 11, fill: CHART_TICK.fill }} />
+                        )}
+                      </Bar>
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
               <ChartHint>
-                Ordenado por # de oportunidades · haz clic en una razón para ver las oportunidades y su campaña
+                {`Cada barra es una razón de pérdida, apilada por ${paidGroupByHint(lostGroupBy)} · ${lostTopN >= lostByReasonKeyCount ? "todo" : `top ${lostTopN}`} · haz clic en un segmento para ver las oportunidades`}
               </ChartHint>
             </>
           )}

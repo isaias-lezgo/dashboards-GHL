@@ -4,6 +4,7 @@ import {
   getPipelines,
   getUsers,
   getCustomFields,
+  getLostReasons,
   getCustomObjects,
   getAllCustomObjectRecords,
   getCalendarEvents,
@@ -83,6 +84,44 @@ function cfString(v: string | string[] | undefined): string | undefined {
   return v || undefined;
 }
 
+// Name variants a sub-account might give the custom field that stores the loss
+// motive. Ordered fallback, mirroring resolveCampaignName() in lib/pauta.ts —
+// accounts name this differently ("Motivo de Perdido" vs "Razón de Perdido"),
+// with/without accents. Only consulted when the native lost reason is absent.
+const LOST_REASON_CF_NAMES = [
+  "Motivo de Perdido",
+  "Motivo de perdido",
+  "Motivo de Pérdida",
+  "Motivo de pérdida",
+  "Razón de Perdido",
+  "Razón de perdido",
+  "Razón de Pérdida",
+  "Razón de pérdida",
+  "Razon de Perdido",
+  "Razon de perdido",
+] as const;
+
+// Resolve an opportunity's loss reason. Precedence:
+//   1. GHL's native lost reason — `lostReasonId` looked up in the location's
+//      lost-reason catalog. This is what GHL's own "Lost reason:" UI shows and
+//      is populated by the client sub-accounts (Condesa, Grand Center, …).
+//   2. A custom field, under any of the LOST_REASON_CF_NAMES aliases, for
+//      accounts that record the motive in a field instead of the native one.
+// Only meaningful when status is "lost".
+function resolveLostReason(
+  lostReasonId: string | undefined,
+  lostReasonMap: Map<string, string>,
+  customFieldsResolved: Record<string, string | string[]>
+): string | undefined {
+  const native = lostReasonId ? lostReasonMap.get(lostReasonId) : undefined;
+  if (native) return native;
+  for (const name of LOST_REASON_CF_NAMES) {
+    const cf = cfString(customFieldsResolved[name]);
+    if (cf) return cf;
+  }
+  return undefined;
+}
+
 // Spread all GHL fields through; add computed fields on top.
 function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>): Contact {
   const customFieldsResolved = resolveCustomFields(ghl.customFields, customFieldMap);
@@ -113,7 +152,8 @@ function transformContact(ghl: GHLContact, customFieldMap: Map<string, string>):
 function transformOpportunity(
   ghl: GHLOpportunity,
   pipelines: Map<string, { name: string; stages: Map<string, string> }>,
-  customFieldMap: Map<string, string>
+  customFieldMap: Map<string, string>,
+  lostReasonMap: Map<string, string>
 ): Opportunity {
   const pipeline = pipelines.get(ghl.pipelineId);
   const stageName = pipeline?.stages.get(ghl.pipelineStageId) || "Unknown";
@@ -136,7 +176,7 @@ function transformOpportunity(
     attributionMedium: attr?.medium || attr?.utmSessionSource || undefined,
     lostReason:
       ghl.status === "lost"
-        ? cfString(customFieldsResolved["Motivo de Perdido"])
+        ? resolveLostReason(ghl.lostReasonId, lostReasonMap, customFieldsResolved)
         : undefined,
     ...(Object.keys(customFieldsResolved).length > 0 ? { customFieldsResolved } : {}),
   };
@@ -349,11 +389,12 @@ export async function GET() {
             });
 
           // Fetch pipelines, users, lost reasons, and custom field definitions first (fast, no pagination)
-          const [pipelinesResult, usersResult, customFieldsResult] =
+          const [pipelinesResult, usersResult, customFieldsResult, lostReasonsResult] =
             await Promise.allSettled([
               getPipelines(),
               getUsers(),
               getCustomFields(),
+              getLostReasons(),
             ]);
 
           send({ type: "progress", message: "Cargando pipelines y configuración…" });
@@ -361,11 +402,18 @@ export async function GET() {
           const pipelinesRaw = pipelinesResult.status === "fulfilled" ? pipelinesResult.value : { pipelines: [] };
           const usersRaw = usersResult.status === "fulfilled" ? usersResult.value : { users: [] };
           const customFieldsRaw = customFieldsResult.status === "fulfilled" ? customFieldsResult.value : { customFields: [] };
+          const lostReasonsRaw = lostReasonsResult.status === "fulfilled" ? lostReasonsResult.value : { lostReasons: [] };
 
           // Build custom field id→name lookup
           const customFieldMap = new Map<string, string>();
           for (const cf of customFieldsRaw.customFields) {
             customFieldMap.set(cf.id, cf.name);
+          }
+
+          // Build native lost-reason id→name lookup (empty for accounts without a catalog)
+          const lostReasonMap = new Map<string, string>();
+          for (const lr of lostReasonsRaw.lostReasons) {
+            lostReasonMap.set(lr._id, lr.name);
           }
 
           // Build pipeline lookup map
@@ -456,7 +504,7 @@ export async function GET() {
 
           // Transform opportunities
           const opportunities: Opportunity[] = opportunitiesRaw.map((o) => {
-            const opp = transformOpportunity(o, pipelineMap, customFieldMap);
+            const opp = transformOpportunity(o, pipelineMap, customFieldMap, lostReasonMap);
             if (opp.assignedTo && userMap.has(opp.assignedTo)) {
               opp.assignedTo = userMap.get(opp.assignedTo);
             }

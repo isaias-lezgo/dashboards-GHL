@@ -93,7 +93,7 @@ export interface Opportunity {
   origin?: string
   lastActivity?: string
   lostReasonId?: string
-  lostReason?: string   // computed: from the "Motivo de Perdido" opportunity custom field (lostReasonId is always null in this location)
+  lostReason?: string   // computed (resolveLostReason): native lostReasonId → the location's lost-reason catalog, else a "Motivo/Razón de Perdido" custom field
   customFields?: Array<{ id: string; key?: string; value?: string; fieldValue?: string; fieldValueString?: string; type?: string }>
   // computed: name→value resolved custom fields. Multi-option/checkbox fields
   // keep their array shape; single-value fields are stored as a plain string.
