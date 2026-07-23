@@ -6,6 +6,8 @@ import {
   executeExportCsv,
   type ChatDataset,
 } from "@/lib/ai-tools";
+import { executeUploadedTableTool } from "@/lib/attachment-tools";
+import type { UploadedTable } from "@/lib/attachments";
 import {
   fetchContactMessages,
   fetchConversationThreads,
@@ -33,7 +35,20 @@ export interface ToolResultBlock {
   content: string;
   is_error?: boolean;
 }
-export type AnyBlock = TextBlock | ToolUseBlock | ToolResultBlock;
+export interface ImageBlock {
+  type: "image";
+  source: { type: "base64"; media_type: string; data: string };
+}
+export interface DocumentBlock {
+  type: "document";
+  source: { type: "base64"; media_type: "application/pdf"; data: string };
+}
+export type AnyBlock =
+  | TextBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ImageBlock
+  | DocumentBlock;
 
 export interface ApiMessage {
   role: "user" | "assistant";
@@ -60,6 +75,13 @@ export interface PendingQuestion {
 export type AnswerPayload =
   | { values: string[]; labels?: string[] }
   | { text: string };
+
+// What the composer hands to send(): content blocks to append to the user
+// message, plus any tabular files to register for the query/join tools.
+export interface ReadyAttachment {
+  blocks: Array<ImageBlock | DocumentBlock | TextBlock>;
+  tables?: UploadedTable[];
+}
 
 interface TurnUsage {
   inputTokens: number;
@@ -107,7 +129,7 @@ export interface AgentLoopReturn {
   error: string | null;
   totalCost: number;
   totalTools: number;
-  send: (text: string) => void;
+  send: (text: string, attachments?: ReadyAttachment[]) => void;
   stop: () => void;
   reset: () => void;
   runWithMessages: (msgs: UIMessage[]) => void;
@@ -135,6 +157,7 @@ export function useAgentLoop({
 
   const stopRef = useRef(false);
   const messagesRef = useRef<UIMessage[]>([]);
+  const uploadedTablesRef = useRef<UploadedTable[]>([]);
   // Always use the latest callback without re-creating runWithMessages
   const onToolExecutedRef = useRef(onToolExecuted);
   onToolExecutedRef.current = onToolExecuted;
@@ -250,6 +273,17 @@ export function useAgentLoop({
                   };
                 } else if (tu.name === "create_pdf") {
                   result = await downloadPdf(tu.input);
+                } else if (
+                  tu.name === "list_uploaded_files" ||
+                  tu.name === "query_uploaded_table" ||
+                  tu.name === "join_uploaded_table"
+                ) {
+                  result = executeUploadedTableTool(
+                    tu.name,
+                    tu.input,
+                    uploadedTablesRef.current,
+                    dataset
+                  );
                 } else {
                   result = executeTool(tu.name, tu.input, dataset);
                 }
@@ -387,7 +421,7 @@ export function useAgentLoop({
   );
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, attachments?: ReadyAttachment[]) => {
       if (busy) return;
       // If a clarifying question is open, route the typed text as its answer so
       // the pending ask_user tool_use gets a matching tool_result.
@@ -395,10 +429,18 @@ export function useAgentLoop({
         answer({ text });
         return;
       }
-      const userMsg: UIMessage = {
-        role: "user",
-        blocks: [{ type: "text", text }],
-      };
+      // Register any tabular files so the query/join tools can see them.
+      const newTables = (attachments ?? []).flatMap((a) => a.tables ?? []);
+      if (newTables.length > 0) {
+        uploadedTablesRef.current = [...uploadedTablesRef.current, ...newTables];
+      }
+      // Attachment blocks come FIRST, then the visible text.
+      const attachmentBlocks = (attachments ?? []).flatMap((a) => a.blocks);
+      const blocks: AnyBlock[] = [...attachmentBlocks];
+      if (text) blocks.push({ type: "text", text });
+      if (blocks.length === 0) return;
+
+      const userMsg: UIMessage = { role: "user", blocks };
       const next = [...messagesRef.current, userMsg];
       setMessages(next);
       messagesRef.current = next;
@@ -420,6 +462,7 @@ export function useAgentLoop({
     setTotalTools(0);
     setPendingQuestion(null);
     pauseStashRef.current = null;
+    uploadedTablesRef.current = [];
   }, []);
 
   return {
