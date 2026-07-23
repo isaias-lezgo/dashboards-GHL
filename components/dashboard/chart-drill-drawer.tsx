@@ -13,7 +13,9 @@ import { DetailDrawer } from "./detail-drawer"
 import type { Opportunity, Contact, Task, Call, Pauta, Appointment, Message } from "@/lib/types"
 import { isWonOpp } from "@/lib/opportunity-status"
 import { pautaContactName, pautaContactPhone } from "@/lib/pauta"
-import { DollarSign, User, Tag, ChevronRight, TrendingUp, Phone, Mail } from "lucide-react"
+import { buildDrillExport } from "@/lib/drill-export"
+import { triggerDownload } from "@/lib/download"
+import { DollarSign, User, Tag, ChevronRight, TrendingUp, Phone, Mail, Download } from "lucide-react"
 
 const STAGE_CLASSES: Record<string, string> = {
   "Primera Cita":            "bg-blue-100 text-blue-700",
@@ -98,6 +100,16 @@ export function ChartDrillDrawer({
         ? (drill.pautaItems?.length ?? 0)
         : drill.opportunities.length
 
+  const handleExport = () => {
+    const result = buildDrillExport(drill, contacts)
+    if (!result) return
+    triggerDownload({
+      content: "﻿" + result.csvContent, // BOM so Excel reads UTF-8 (acentos)
+      filename: result.filename,
+      mimeType: "text/csv;charset=utf-8",
+    })
+  }
+
   return (
     <>
       <Sheet open={drill.open} onOpenChange={(o) => onDrillChange({ ...drill, open: o })}>
@@ -112,10 +124,19 @@ export function ChartDrillDrawer({
             {drill.subtitle && (
               <p className="text-xs text-muted-foreground mt-0.5">{drill.subtitle}</p>
             )}
-            <div className="mt-2.5 flex items-center gap-2">
+            <div className="mt-2.5 flex items-center justify-between gap-2">
               <Badge variant="secondary" className="rounded-full text-xs font-semibold tabular-nums">
                 {count.toLocaleString()} registro{count !== 1 ? "s" : ""}
               </Badge>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={count === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Exportar
+              </button>
             </div>
           </div>
 
