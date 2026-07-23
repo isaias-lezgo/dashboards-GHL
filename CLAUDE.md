@@ -6,19 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Development
-npm run dev        # Start Next.js dev server (localhost:3000)
-npm run build      # Production build (TypeScript errors are ignored — see next.config.mjs)
-npm run start      # Serve production build
-npm run lint       # Run ESLint
+pnpm dev        # Start Next.js dev server (localhost:3000)
+pnpm build      # Production build (TypeScript errors are ignored — see next.config.mjs)
+pnpm start      # Serve production build
+pnpm lint       # Run ESLint
 
 # Multi-client
-npm run add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
-                   # Non-interactive: npm run add-client -- --name "X" --location <id> --token pit-…
+pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
+                #   Non-interactive: pnpm add-client --name "X" --location <id> --token pit-…
 
 # Verification (see below — there is no test framework)
-npm run verify:clients   # lib/clients.ts   — roster parsing + password lookup
-npm run verify:auth      # lib/auth.ts      — session token; incl. the cookie-tamper rejection
-npm run verify:limiter   # lib/ghl-limiter.ts — per-location isolation
+pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
+pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-tamper rejection
+pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation
+pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabular parse/query/join
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
@@ -32,7 +33,15 @@ Gotcha when writing these scripts: this package is CommonJS (no `"type": "module
 so `tsx` compiles to CJS where **top-level `await` fails**. Wrap async work in a
 `main()` and call `main().catch(...)` — see the existing scripts.
 
-Installing anything needs `npm install --legacy-peer-deps`.
+**Package manager: pnpm.** This repo is managed with pnpm (`packageManager: pnpm@11.x`
+in `package.json`), and the Vercel deploy runs `pnpm install --frozen-lockfile` against
+`pnpm-lock.yaml`. **Install and add dependencies with `pnpm install` / `pnpm add <pkg>`
+— never `npm install`.** Running `npm install` writes `package-lock.json` but leaves
+`pnpm-lock.yaml` stale, which makes the Vercel build fail with
+`ERR_PNPM_OUTDATED_LOCKFILE`. If a lockfile ever drifts, run `pnpm install
+--lockfile-only` to resync only the lockfile (no `node_modules` churn), then commit it.
+A tracked `package-lock.json` lingers from before the switch; it is **not** the source
+of truth — ignore it.
 
 ## Environment Variables
 
