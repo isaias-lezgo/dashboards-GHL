@@ -49,6 +49,7 @@ import {
   type ApptDrillState,
 } from "./appointment-drill-drawer"
 import { ExportReportButton } from "./export-report-button"
+import { DecisionCycleTable, buildDecisionCycle } from "./decision-cycle-table"
 import type { ReportInput, ReportSection } from "@/lib/report"
 
 interface SalesDashboardProps {
@@ -578,6 +579,38 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
       })
     }
 
+    {
+      // Same data the panel's "Ciclo de Decisión" table renders.
+      const cycle = buildDecisionCycle(opportunities, lookupContacts, lookupAppointments)
+      if (cycle.rows.length > 0 && cycle.stats.fastest && cycle.stats.longest) {
+        const MAX_ROWS = 25
+        const shown = cycle.rows.slice(0, MAX_ROWS)
+        const truncated = cycle.rows.length > shown.length
+        const fmt = (iso: string | null) =>
+          iso ? new Date(iso).toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "—"
+        sections.push({
+          id: "ciclo",
+          title: "Ciclo de decisión (oportunidades ganadas)",
+          explanation:
+            `Cuántos días transcurren desde que se crea la oportunidad hasta que se gana/aparta, por cada oportunidad ganada del periodo. Promedio general: ${cycle.stats.promedio} días · más rápido: ${cycle.stats.fastest.dias} (${cycle.stats.fastest.cliente}) · más largo: ${cycle.stats.longest.dias} (${cycle.stats.longest.cliente}).` +
+            (truncated ? ` Se listan las ${shown.length} de cierre más rápido de ${cycle.rows.length} ganadas.` : ""),
+          blocks: [{
+            t: "table",
+            headers: ["Cliente", "Asesor", "Llegó", "Visitó", "Apartó", "Días", "Origen"],
+            rows: shown.map((r) => [
+              r.cliente,
+              r.asesor,
+              fmt(r.llego),
+              fmt(r.visito),
+              fmt(r.aparto),
+              String(r.dias),
+              r.origen,
+            ]),
+          }],
+        })
+      }
+    }
+
     if (origenData.length > 0) {
       sections.push({
         id: "origen",
@@ -700,6 +733,7 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
     timelineData, timelineGran, funnelData, monthlyFunnel, origenData, pipelineMatrix,
     matrixBy, apptOutcomeData, lossGroupsData, kpiMetrics, appointments.length,
     contacts.length, opportunities.length, periodLabel, locationName,
+    opportunities, lookupContacts, lookupAppointments,
   ])
 
   return (
@@ -1193,6 +1227,15 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
           )}
         </ChartCardContent>
       </DashboardCard>
+
+      {/* ── Ciclo de Decisión ──────────────────────── */}
+      <SectionHeader title="Ciclo de Decisión" />
+      <DecisionCycleTable
+        opportunities={opportunities}
+        contacts={lookupContacts}
+        appointments={lookupAppointments}
+        onOpenOpps={openDrill}
+      />
 
       {/* ── Origen de Oportunidades ────────────────── */}
       <SectionHeader title="Origen de Oportunidades" />
