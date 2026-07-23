@@ -96,11 +96,18 @@ export async function POST(req: Request) {
 
   try {
     const tz = body.userTimezone ?? "America/Mexico_City";
-    const today = new Date().toLocaleDateString("es-MX", {
+    const now = new Date();
+    const today = now.toLocaleDateString("es-MX", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: tz,
+    });
+    const time = now.toLocaleTimeString("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
       timeZone: tz,
     });
 
@@ -120,7 +127,7 @@ export async function POST(req: Request) {
         },
         {
           type: "text",
-          text: `Hoy es ${today}.`,
+          text: `Fecha y hora actuales: ${today}, ${time} (zona horaria ${tz}). Usa esto para resolver referencias relativas como "hoy", "ayer", "esta semana", "esta mañana" o "ahora".`,
         },
       ],
       tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
