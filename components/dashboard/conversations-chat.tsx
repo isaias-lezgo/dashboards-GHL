@@ -19,6 +19,10 @@ import {
   UserRound,
   ListChecks,
   FileText,
+  Paperclip,
+  X,
+  FileSpreadsheet,
+  Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,11 +32,21 @@ import type { ChatDataset } from "@/lib/ai-tools";
 import type { Contact } from "@/lib/types";
 import { buildDatasetSummary } from "@/lib/ai-context";
 import {
+  formatTableSummaryText,
+  PDF_TEXT_PREFIX,
+  TABLE_SUMMARY_PREFIX,
+  type ProcessedAttachment,
+  type UploadedTable,
+} from "@/lib/attachments";
+import {
   useAgentLoop,
   type UIMessage,
   type TextBlock,
   type ToolUseBlock,
   type ToolResultBlock,
+  type ReadyAttachment,
+  type ImageBlock,
+  type DocumentBlock,
 } from "@/hooks/use-agent-loop";
 import { triggerDownload } from "@/lib/download";
 import {
@@ -147,6 +161,84 @@ const SUGGESTIONS: Suggestion[] = [
   },
 ];
 
+// ─── Attachments ──────────────────────────────────────────────────────────────
+
+const MAX_IMAGE = 5 * 1024 * 1024;
+
+const IMAGE_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+function fileExt(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
+}
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    r.readAsDataURL(file);
+  });
+}
+
+// A pending attachment shown as a chip while/after processing.
+interface Attachment {
+  id: string;
+  filename: string;
+  icon: "image" | "pdf" | "table";
+  status: "processing" | "ready" | "error";
+  error?: string;
+  ready?: ReadyAttachment;
+}
+
+// Turn a processed-file response into content blocks + tables for send().
+function toReadyAttachment(results: ProcessedAttachment[]): ReadyAttachment {
+  const blocks: Array<ImageBlock | DocumentBlock | TextBlock> = [];
+  const tables: UploadedTable[] = [];
+  for (const r of results) {
+    if (r.kind === "pdf_text") {
+      blocks.push({
+        type: "text",
+        text: `${PDF_TEXT_PREFIX} — ${r.filename} (${r.pageCount} págs):\n${r.text}`,
+      });
+    } else if (r.kind === "pdf_visual") {
+      blocks.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: r.dataBase64 },
+      });
+    } else {
+      const fileId = crypto.randomUUID();
+      tables.push({
+        fileId,
+        filename: r.filename,
+        sheetName: r.sheetName,
+        schema: r.schema,
+        rowCount: r.rowCount,
+        rows: r.rows,
+      });
+      blocks.push({
+        type: "text",
+        text: formatTableSummaryText({
+          fileId,
+          filename: r.filename,
+          sheetName: r.sheetName,
+          rowCount: r.rowCount,
+          schema: r.schema,
+          stats: r.stats,
+          sampleRows: r.sampleRows,
+        }),
+      });
+    }
+  }
+  return { blocks, tables };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ConversationsChat({
@@ -154,6 +246,60 @@ export function ConversationsChat({
   locationId,
 }: ConversationsChatProps) {
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const processFile = useCallback(async (file: File) => {
+    const id = crypto.randomUUID();
+    const kind = fileExt(file.name);
+    const icon: Attachment["icon"] = IMAGE_TYPES[kind] ? "image" : kind === "pdf" ? "pdf" : "table";
+    setAttachments((prev) => [...prev, { id, filename: file.name, icon, status: "processing" }]);
+
+    const fail = (msg: string) =>
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "error", error: msg } : a)),
+      );
+    const done = (ready: ReadyAttachment) =>
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "ready", ready } : a)),
+      );
+
+    try {
+      const mediaType = IMAGE_TYPES[kind];
+      if (mediaType) {
+        if (file.size > MAX_IMAGE) return fail("La imagen supera 5 MB");
+        const data = await readAsBase64(file);
+        done({ blocks: [{ type: "image", source: { type: "base64", media_type: mediaType, data } }] });
+        return;
+      }
+      if (kind !== "pdf" && kind !== "csv" && kind !== "xlsx" && kind !== "xls") {
+        return fail(`Tipo no soportado: .${kind}`);
+      }
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/attachments/process", { method: "POST", body: form });
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        return fail(e.error || `Error ${res.status}`);
+      }
+      const { results } = (await res.json()) as { results: ProcessedAttachment[] };
+      done(toReadyAttachment(results));
+    } catch (err) {
+      fail(err instanceof Error ? err.message : "Error al procesar");
+    }
+  }, []);
+
+  const addFiles = useCallback(
+    (files: FileList | File[]) => {
+      for (const f of Array.from(files)) void processFile(f);
+    },
+    [processFile],
+  );
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
   const [panelState, setPanelState] = useState<PanelState>({ mode: "idle" });
   const prevSummaryRef = useRef<Extract<PanelState, { mode: "summary" }> | null>(null);
   const [chartDrill, setChartDrill] = useState<DrillState>(DRILL_CLOSED);
@@ -315,13 +461,20 @@ export function ConversationsChat({
 
   const handleSend = useCallback(() => {
     const text = input.trim();
-    if (!text || busy) return;
+    const ready = attachments
+      .filter((a) => a.status === "ready" && a.ready)
+      .map((a) => a.ready!) as ReadyAttachment[];
+    const anyProcessing = attachments.some((a) => a.status === "processing");
+    if (busy || anyProcessing) return;
+    if (!text && ready.length === 0) return;
     setInput("");
-    send(text);
-  }, [input, busy, send]);
+    setAttachments([]);
+    send(text, ready);
+  }, [input, attachments, busy, send]);
 
   const handleReset = useCallback(() => {
     reset();
+    setAttachments([]);
     setPanelState({ mode: "idle" });
     prevSummaryRef.current = null;
   }, [reset]);
@@ -461,29 +614,113 @@ export function ConversationsChat({
         </div>
 
         {/* Input bar */}
-        <div className="border-t border-border px-4 py-4 sm:px-5">
+        <div
+          className="border-t border-border px-4 py-4 sm:px-5"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+          }}
+        >
+          {dragOver && (
+            <div className="mb-2 rounded-lg border border-dashed border-primary/50 bg-primary/5 px-3 py-2 text-center text-[11px] text-muted-foreground">
+              Suelta el archivo aquí
+            </div>
+          )}
+          {attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachments.map((a) => (
+                <div
+                  key={a.id}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]",
+                    a.status === "error"
+                      ? "border-destructive/40 bg-destructive/10 text-destructive"
+                      : "border-border bg-muted/40",
+                  )}
+                >
+                  {a.icon === "image" ? (
+                    <ImageIcon className="h-3 w-3" />
+                  ) : a.icon === "pdf" ? (
+                    <FileText className="h-3 w-3" />
+                  ) : (
+                    <FileSpreadsheet className="h-3 w-3" />
+                  )}
+                  <span className="max-w-[140px] truncate">{a.filename}</span>
+                  {a.status === "processing" && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {a.status === "error" && <span title={a.error}>· error</span>}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(a.id)}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Quitar archivo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.xlsx,.xls"
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) addFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
           <Textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={(e) => {
+              const imgs = Array.from(e.clipboardData.files).filter((f) =>
+                f.type.startsWith("image/"),
+              );
+              if (imgs.length) {
+                e.preventDefault();
+                addFiles(imgs);
+              }
+            }}
             placeholder="¿Qué quieres saber?"
             rows={2}
             className="min-h-[52px] w-full resize-none text-sm"
             disabled={busy}
           />
           <div className="mt-2.5 flex items-center justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleReset}
-              disabled={busy || messages.length === 0}
-              className="h-7 gap-1.5 px-2.5 text-[10px] text-muted-foreground hover:text-foreground"
-            >
-              <RefreshCcw className="h-3 w-3" />
-              Reiniciar
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                disabled={busy || messages.length === 0}
+                className="h-7 gap-1.5 px-2.5 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Reiniciar
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={busy}
+                className="h-7 gap-1.5 px-2.5 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <Paperclip className="h-3 w-3" />
+                Adjuntar
+              </Button>
+            </div>
             <div className="flex items-center gap-1.5">
               {busy && (
                 <Button
@@ -501,7 +738,11 @@ export function ConversationsChat({
                 type="button"
                 size="sm"
                 onClick={handleSend}
-                disabled={busy || !input.trim()}
+                disabled={
+                  busy ||
+                  attachments.some((a) => a.status === "processing") ||
+                  (!input.trim() && !attachments.some((a) => a.status === "ready"))
+                }
                 className="h-7 gap-1.5 px-3 text-[10px]"
               >
                 {busy ? (
@@ -593,6 +834,23 @@ function ConvMessageBubble({
   const textBlocks = message.blocks.filter(
     (b): b is TextBlock => b.type === "text"
   );
+  // Attachment-derived blocks: images/documents, plus text blocks the composer
+  // generated for tabular/PDF attachments (recognized by their stable prefix).
+  // These render as compact chips, never as message bubbles.
+  const isAttachmentText = (t: string) =>
+    t.startsWith(TABLE_SUMMARY_PREFIX) || t.startsWith(PDF_TEXT_PREFIX);
+  const attachmentChips: Array<{ key: string; icon: "image" | "pdf" | "table"; label: string }> = [];
+  for (const [i, b] of message.blocks.entries()) {
+    if (b.type === "image") attachmentChips.push({ key: `a-${i}`, icon: "image", label: "Imagen" });
+    else if (b.type === "document") attachmentChips.push({ key: `a-${i}`, icon: "pdf", label: "PDF" });
+    else if (b.type === "text" && isAttachmentText(b.text))
+      attachmentChips.push({
+        key: `a-${i}`,
+        icon: b.text.startsWith(PDF_TEXT_PREFIX) ? "pdf" : "table",
+        label: b.text.startsWith(PDF_TEXT_PREFIX) ? "PDF" : "Datos",
+      });
+  }
+  const visibleTextBlocks = textBlocks.filter((b) => !isAttachmentText(b.text));
   const toolUseBlocks = message.blocks.filter(
     (b): b is ToolUseBlock => b.type === "tool_use"
   );
@@ -628,7 +886,26 @@ function ConvMessageBubble({
         isUser ? "items-end" : "items-start"
       )}
     >
-      {textBlocks.map((b, i) => (
+      {attachmentChips.length > 0 && (
+        <div className={cn("flex flex-wrap gap-1.5", isUser ? "justify-end" : "justify-start")}>
+          {attachmentChips.map((c) => (
+            <div
+              key={c.key}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground"
+            >
+              {c.icon === "image" ? (
+                <ImageIcon className="h-3 w-3" />
+              ) : c.icon === "pdf" ? (
+                <FileText className="h-3 w-3" />
+              ) : (
+                <FileSpreadsheet className="h-3 w-3" />
+              )}
+              <span>{c.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {visibleTextBlocks.map((b, i) => (
         <div
           key={`t-${i}`}
           className={cn(

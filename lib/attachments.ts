@@ -136,6 +136,13 @@ export function buildTableSummary(
   return { schema, stats, sampleRows: rows.slice(0, sampleSize) };
 }
 
+// Stable prefixes for the attachment-derived text blocks. The chat transcript
+// uses these to recognize an attachment text block and render it as a compact
+// chip instead of dumping the whole summary/extracted text as a message bubble.
+// Keep them in sync with the text the formatters below produce.
+export const TABLE_SUMMARY_PREFIX = "Archivo tabular adjunto";
+export const PDF_TEXT_PREFIX = "Documento PDF adjunto";
+
 // Format a compact Spanish summary block for the model. This is what goes into
 // the user message as a text block — NOT the full rows.
 export function formatTableSummaryText(t: {
@@ -148,7 +155,7 @@ export function formatTableSummaryText(t: {
   sampleRows: Array<Record<string, unknown>>;
 }): string {
   const header =
-    `Archivo tabular adjunto — fileId: "${t.fileId}" · ${t.filename}` +
+    `${TABLE_SUMMARY_PREFIX} — fileId: "${t.fileId}" · ${t.filename}` +
     (t.sheetName ? ` · hoja "${t.sheetName}"` : "") +
     ` · ${t.rowCount} filas.`;
   const cols = t.schema.map((c) => `${c.name} (${c.type})`).join(", ");
