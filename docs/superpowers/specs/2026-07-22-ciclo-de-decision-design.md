@@ -115,9 +115,9 @@ Se agrega una sección espejo en `buildReport` de `sales-dashboard.tsx`, constru
 - `explanation`: describe qué mide (días desde que la oportunidad se creó hasta que se
   apartó/ganó) y menciona promedio, más rápido y más largo.
 - Un bloque `table` con encabezados `["Cliente", "Asesor", "Llegó", "Visitó", "Apartó", "Días", "Origen"]`.
-- Se limita a un máximo razonable de filas para el PDF (p. ej. las 25 más relevantes o
-  todas si son pocas); si se truncan, decirlo en el `explanation`. Confirmar el corte al
-  implementar según cuántas ganadas suele haber.
+- Se limita a **25 filas** en el PDF, conservando el mismo orden (ascendente por días);
+  si hay más de 25 ganadas, se muestran las primeras 25 y se indica el truncamiento en el
+  `explanation` (p. ej. "Se listan las 25 de cierre más rápido de N ganadas.").
 - `max_tokens` del análisis es fijo (8000) y ventas pasa de ~8 a ~9 secciones: cabe sin
   cambios en `app/api/analyze-report/route.ts`. No se toca esa ruta.
 
