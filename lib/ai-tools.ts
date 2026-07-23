@@ -13,6 +13,7 @@ import type {
 } from "@/lib/types";
 import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
 import { isDePauta, resolveCampaignName } from "@/lib/pauta";
+import { buildCsv } from "@/lib/csv";
 
 export interface ChatDataset {
   contacts: Contact[];
@@ -608,6 +609,56 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "list_uploaded_files",
+    description:
+      "Lists the tabular files (CSV/Excel) the user has attached in this conversation, with their fileId, filename, row count and column schema. Call this first when the user refers to 'el archivo', 'el Excel', 'el CSV' or 'los datos que subí' and you need the fileId to query it. Images and PDFs are already visible in the message and are NOT listed here.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "query_uploaded_table",
+    description:
+      "Queries the FULL rows of one attached tabular file (not just the sample shown in the message). Use for any question about the file's own content: filtering, counting, summing, averaging, grouping, or listing rows. Get the fileId from list_uploaded_files or from the attachment summary in the message.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fileId: { type: "string", description: "The file to query (from list_uploaded_files)." },
+        filter: {
+          type: "object",
+          additionalProperties: true,
+          description:
+            "Optional exact-match filters, keyed by column name: { \"Estado\": \"Activo\" }. Case-insensitive equality on the string form of each cell. Multiple keys are AND'd.",
+        },
+        groupBy: { type: "string", description: "Optional column to group by. Omit for a single total." },
+        metric: { type: "string", enum: ["count", "sum", "avg"], description: "Aggregation. Default count. sum/avg require metricColumn." },
+        metricColumn: { type: "string", description: "Numeric column for sum/avg." },
+        columns: { type: "array", items: { type: "string" }, description: "Optional projection for the returned sample rows." },
+        limit: { type: "number", description: "Max sample rows / groups to return (default 25, max 100)." },
+      },
+      required: ["fileId"],
+    },
+  },
+  {
+    name: "join_uploaded_table",
+    description:
+      "Cross-references a column of an attached tabular file against the CRM's contacts or opportunities, in ONE call. Use for questions like 'de estos emails del Excel, cuáles ya son contactos' or 'estos teléfonos, cuáles no están en el CRM'. Returns matched/unmatched counts and a capped sample. Resolve names via search_contacts if you need to display them.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fileId: { type: "string", description: "The attached file (from list_uploaded_files)." },
+        tableColumn: { type: "string", description: "Column in the file to match on (e.g. 'email', 'telefono')." },
+        entity: { type: "string", enum: ["contacts", "opportunities"], description: "CRM entity to match against." },
+        entityField: {
+          type: "string",
+          description:
+            "Field on the CRM entity to match. Contacts: 'email' | 'phone' | 'name' | 'id'. Opportunities: 'name' | 'contactId' | 'id'.",
+        },
+        mode: { type: "string", enum: ["matched", "unmatched", "both"], description: "Which table rows to report. Default 'both'." },
+        limit: { type: "number", description: "Max sample rows per bucket (default 25, max 100)." },
+      },
+      required: ["fileId", "tableColumn", "entity", "entityField"],
+    },
+  },
+  {
     name: "ask_user",
     description:
       "Hace UNA pregunta de opción múltiple al usuario y PAUSA hasta que responda. Úsalo SOLO cuando un término sea genuinamente ambiguo entre rutas de datos distintas que darían respuestas materialmente diferentes y el contexto no lo aclare (ver la sección 'Cuándo preguntar' del prompt). Llama esta herramienta SOLA (sin otras herramientas en el mismo turno). NO la uses para ambigüedades triviales ni si el usuario ya especificó la ruta — en esos casos elige el valor por defecto y dilo en una línea.",
@@ -960,26 +1011,6 @@ const CSV_COLUMNS: Record<string, string[]> = {
   pautas: ["id", "tipo", "nombrePauta", "contactId", "createdAt"],
   tasks: ["id", "title", "status", "dueDate", "assignedToName", "contactId", "contactName", "createdAt"],
 };
-
-function csvCell(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  let str: string;
-  if (Array.isArray(val)) str = (val as unknown[]).join("|");
-  else if (typeof val === "object") str = JSON.stringify(val);
-  else str = String(val);
-  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function buildCsv(headers: string[], rows: Array<Record<string, unknown>>): string {
-  const lines: string[] = [headers.map(csvCell).join(",")];
-  for (const row of rows) {
-    lines.push(headers.map((h) => csvCell(row[h])).join(","));
-  }
-  return lines.join("\r\n");
-}
 
 export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsvResult {
   const entity = String(input.entity ?? "");

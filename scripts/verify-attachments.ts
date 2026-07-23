@@ -3,7 +3,10 @@ import {
   inferColumnType,
   buildTableSummary,
   formatTableSummaryText,
+  type UploadedTable,
 } from "../lib/attachments";
+import { executeUploadedTableTool } from "../lib/attachment-tools";
+import type { ChatDataset } from "../lib/ai-tools";
 
 function main() {
   // inferColumnType
@@ -45,7 +48,76 @@ function main() {
   const samplePart = text.slice(text.indexOf("Muestra"));
   assert.equal((samplePart.match(/"email"/g) ?? []).length, 2);
 
-  console.log("verify-attachments (Task 1): OK");
+  // ─── uploaded-table tools ────────────────────────────────────────────────────
+  const table: UploadedTable = {
+    fileId: "F1",
+    filename: "ventas.csv",
+    schema: [
+      { name: "email", type: "text" },
+      { name: "monto", type: "number" },
+      { name: "estado", type: "text" },
+    ],
+    rowCount: 3,
+    rows: [
+      { email: "a@x.com", monto: "100", estado: "activo" },
+      { email: "b@x.com", monto: "300", estado: "activo" },
+      { email: "c@x.com", monto: "200", estado: "baja" },
+    ],
+  };
+  const tables = [table];
+  const emptyData = {
+    contacts: [
+      { id: "1", email: "a@x.com" },
+      { id: "2", email: "b@x.com" },
+    ],
+    opportunities: [],
+    pautas: [],
+    appointments: [],
+    messages: [],
+    tasks: [],
+    calls: [],
+  } as unknown as ChatDataset;
+
+  // list
+  const listed = executeUploadedTableTool("list_uploaded_files", {}, tables, emptyData) as { files: unknown[] };
+  assert.equal(listed.files.length, 1);
+
+  // query: grouped sum
+  const grouped = executeUploadedTableTool(
+    "query_uploaded_table",
+    { fileId: "F1", groupBy: "estado", metric: "sum", metricColumn: "monto" },
+    tables,
+    emptyData
+  ) as { groups: Array<{ key: string; count: number; sum: number }> };
+  const activo = grouped.groups.find((g) => g.key === "activo");
+  assert.ok(activo && activo.count === 2 && activo.sum === 400);
+
+  // query: filter + total
+  const filtered = executeUploadedTableTool(
+    "query_uploaded_table",
+    { fileId: "F1", filter: { estado: "baja" } },
+    tables,
+    emptyData
+  ) as { rowCount: number };
+  assert.equal(filtered.rowCount, 1);
+
+  // join: matched vs unmatched against contacts.email
+  const joined = executeUploadedTableTool(
+    "join_uploaded_table",
+    { fileId: "F1", tableColumn: "email", entity: "contacts", entityField: "email", mode: "both" },
+    tables,
+    emptyData
+  ) as { matchedCount: number; unmatchedCount: number };
+  assert.equal(joined.matchedCount, 2); // a@, b@
+  assert.equal(joined.unmatchedCount, 1); // c@
+
+  // unknown fileId
+  const missing = executeUploadedTableTool("query_uploaded_table", { fileId: "nope" }, tables, emptyData) as {
+    error?: string;
+  };
+  assert.ok(missing.error);
+
+  console.log("verify-attachments (Tasks 1-2): OK");
 }
 
 main();
