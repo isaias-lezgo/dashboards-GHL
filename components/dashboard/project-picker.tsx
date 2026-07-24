@@ -2,8 +2,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowRight, LogOut, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Loader2, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface PickerProject {
@@ -11,25 +10,17 @@ export interface PickerProject {
   name: string
 }
 
-// Logo assets live in public/logos/, named after the project id.
+// Logo assets live in public/logos/<project-id>.<ext>.
 //
-// `tone` is the chip background each logo was DESIGNED for, and it is not
-// cosmetic: five of these are dark ink on transparency and vanish on a dark
-// surface, while Plaza Bosques ships a WHITE wordmark and vanishes on a light
-// one. The chip pins each logo to the background it needs, so the picker stays
-// readable in both light and dark theme without touching the source files.
+// `tone` is the plate colour each logo was DESIGNED for, and it is not cosmetic:
+// five of these are dark ink on transparency and vanish on a dark surface, while
+// Plaza Bosques ships a WHITE wordmark and vanishes on a light one. The plate IS
+// the project's surface here, so it carries the logo's own background rather than
+// nesting a chip inside a card.
 //
-// `shape` matches the chip to the asset. All six are currently horizontal wordmark
-// lockups and want the wide chip. A bare square mark stranded in a wide chip looks
-// like a mistake, so those take `shape: "square"`; the chip narrows while the SLOT
-// around it keeps a constant width, so every project name still starts at the same x.
-//
-// A project with no entry here simply renders without a chip — adding one to the
-// roster must never break the picker.
-const LOGOS: Record<
-  string,
-  { src: string; tone: "light" | "dark"; shape?: "square" }
-> = {
+// A project with no entry renders as a wordmark plate — adding one to the roster
+// must never break the picker.
+const LOGOS: Record<string, { src: string; tone: "light" | "dark" }> = {
   "lezgo-suite": { src: "/logos/lezgo-suite.png", tone: "light" },
   condesa: { src: "/logos/condesa.png", tone: "light" },
   "plaza-bosques": { src: "/logos/plaza-bosques.png", tone: "dark" },
@@ -37,6 +28,15 @@ const LOGOS: Record<
   balvanera: { src: "/logos/balvanera.png", tone: "light" },
   yconia: { src: "/logos/yconia.png", tone: "light" },
 }
+
+// DESIGN.md tokens. Amber marks where attention belongs — here that is the plate
+// you are about to open, so it appears on hover, focus and the pending state, and
+// nowhere else.
+const AMBER = "#F59B1B"
+const INK_NAVY = "#151B28"
+
+// ease-out-quint: fast commit, soft landing. Product register keeps it brief.
+const EASE = "cubic-bezier(0.22,1,0.36,1)"
 
 export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
   const [pending, setPending] = useState<string | null>(null)
@@ -57,7 +57,7 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
       }
       // A full page load, not a router push. A soft navigation would leave the
       // previous project's contacts and chat history mounted in the cached React
-      // tree — the same reason the logout button does this.
+      // tree — the same reason logout does this.
       window.location.href = "/"
     } catch {
       setPending(null)
@@ -65,86 +65,110 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col justify-center px-6 py-16">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">Proyectos Lezgo</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Elige el proyecto que quieres revisar.</p>
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto w-full max-w-5xl px-6 py-14 sm:py-20">
+        <header className="flex items-baseline justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            Proyectos Lezgo
+          </h1>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" })
+              window.location.href = "/login"
+            }}
+            className="flex shrink-0 items-center gap-1.5 rounded text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F59B1B] focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Cerrar sesión
+          </button>
+        </header>
 
         {projects.length === 0 ? (
-          <p className="mt-10 text-sm text-destructive">
-            No hay proyectos configurados. Revisa DASHBOARD_CLIENTS.
-          </p>
+          <div className="mt-16 max-w-md">
+            <p className="text-sm font-medium text-foreground">No hay proyectos configurados.</p>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Agrega uno a <code className="rounded bg-muted px-1 py-0.5 text-xs">DASHBOARD_CLIENTS</code>{" "}
+              con <code className="rounded bg-muted px-1 py-0.5 text-xs">pnpm add-client</code> y vuelve a desplegar.
+            </p>
+          </div>
         ) : (
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          <ul className="mt-10 grid grid-cols-2 gap-x-5 gap-y-7 sm:mt-12 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-9">
             {projects.map((p) => {
               const logo = LOGOS[p.id]
+              const isPending = pending === p.id
+              const busy = pending !== null
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  disabled={pending !== null}
-                  onClick={() => open(p.id)}
-                  className={cn(
-                    "group flex items-center gap-5 rounded-xl border border-border bg-card",
-                    "px-5 py-5 text-left transition-colors duration-200",
-                    "hover:border-foreground/25 hover:bg-accent",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    "disabled:pointer-events-none disabled:opacity-50",
-                  )}
-                >
-                  {logo && (
-                    // Constant-width slot: the chip inside may be square or wide, but
-                    // every project name still starts at the same x across the grid.
-                    <span className="flex w-28 shrink-0 justify-start">
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => open(p.id)}
+                    aria-busy={isPending}
+                    className={cn(
+                      "group block w-full text-left",
+                      "focus-visible:outline-none",
+                      // Only the clicked plate keeps full presence; the rest recede
+                      // so the pending one reads as the one thing happening.
+                      busy && !isPending && "opacity-40",
+                      "disabled:cursor-default",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        // The plate IS the surface: no card wrapping a chip.
+                        "flex aspect-[16/10] items-center justify-center rounded-xl p-5 sm:p-6",
+                        // Ring and shadow are both box-shadow under the hood, so one
+                        // transition covers the amber attention state and the lift.
+                        "transition-[transform,box-shadow] duration-200",
+                        isPending
+                          ? "ring-2 ring-[#F59B1B]"
+                          : "ring-1 ring-black/[0.08] dark:ring-white/[0.14]",
+                        // Amber marks the plate you are about to open, and nothing else.
+                        !busy &&
+                          "group-hover:-translate-y-0.5 group-hover:ring-[#F59B1B]/70 group-hover:shadow-lg group-hover:shadow-black/[0.07] dark:group-hover:shadow-black/40",
+                        "group-focus-visible:ring-2 group-focus-visible:ring-[#F59B1B]",
+                      )}
+                      style={{
+                        transitionTimingFunction: EASE,
+                        backgroundColor: logo?.tone === "dark" ? INK_NAVY : "oklch(0.99 0.004 85)",
+                      }}
+                    >
+                      {logo ? (
+                        // Plain <img>, not next/image: fixed-size marks that need no
+                        // srcset, and one is an SVG, which the next/image optimizer
+                        // refuses without dangerouslyAllowSVG. alt="" because the
+                        // project name is rendered directly below.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logo.src} alt="" className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <span className="text-center text-sm font-semibold" style={{ color: INK_NAVY }}>
+                          {p.name}
+                        </span>
+                      )}
+                    </span>
+
+                    <span className="mt-2.5 flex items-center gap-1.5">
                       <span
                         className={cn(
-                          "flex h-16 items-center justify-center rounded-lg p-2.5",
-                          logo.shape === "square" ? "w-16" : "w-28",
-                          // The ring is on EVERY chip, not just the dark one. Without it
-                          // the fill that matches the current theme's card goes invisible
-                          // and that one logo reads as a mistake — white chips vanish in
-                          // light theme, the dark chip vanishes in dark theme. A constant
-                          // outline makes all six read as one system with different fills.
-                          "ring-1 ring-black/10 dark:ring-white/15",
-                          logo.tone === "dark" ? "bg-[#151B28]" : "bg-white",
+                          "truncate text-sm font-medium transition-colors duration-200",
+                          isPending ? "" : "text-foreground/85 group-hover:text-foreground",
                         )}
+                        style={isPending ? { color: AMBER } : undefined}
                       >
-                        {/* Plain <img>, not next/image: these are fixed-size decorative
-                            marks that need no srcset, and one is an SVG, which the
-                            next/image optimizer refuses without dangerouslyAllowSVG.
-                            alt="" because the project name sits right beside it. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={logo.src} alt="" className="max-h-full max-w-full object-contain" />
+                        {p.name}
                       </span>
+                      {isPending && (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" style={{ color: AMBER }} />
+                      )}
                     </span>
-                  )}
-                  <span className="min-w-0 flex-1 text-lg font-medium text-foreground">{p.name}</span>
-                  {pending === p.id ? (
-                    <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
-                  ) : (
-                    <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-                  )}
-                </button>
+                  </button>
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
-      </main>
-
-      <footer className="border-t border-border px-6 py-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          onClick={async () => {
-            await fetch("/api/auth/logout", { method: "POST" })
-            window.location.href = "/login"
-          }}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Cerrar sesión
-        </Button>
-      </footer>
+      </div>
     </div>
   )
 }

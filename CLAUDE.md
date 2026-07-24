@@ -149,21 +149,26 @@ Two cookies, two questions:
    `project-picker.tsx` or `dashboard-app.tsx`. The picker receives only
    `{ id, name }` per project — **never `ghlToken` or `locationId`**, which would
    put credentials in the browser bundle.
-   Project logos live in `public/logos/<project-id>.<ext>` and are mapped in the
-   `LOGOS` const inside `project-picker.tsx`. Two fields there are **not cosmetic**:
-   - `tone` — most logos are dark ink on transparency and need a light chip, but
-     Plaza Bosques ships a white wordmark and is invisible on anything but a dark
-     one. Every chip also carries a constant ring; without it, whichever fill
-     matches the current theme's card disappears and that one logo reads as a bug.
-   - `shape` — all six are currently horizontal wordmark lockups and use the wide
-     chip. A bare square mark looks stranded in a wide chip, so those take
-     `shape: "square"`: the chip narrows, but the slot around it keeps a constant
-     width so every project name still starts at the same x.
+   The picker is a **brand wall**: one plate per project carrying that logo's own
+   background, with the name below it. The plate IS the surface — an earlier
+   version nested a logo chip inside a card, which is the "nested cards" ban and
+   also made every project weigh the same.
 
-   When adding an asset, check three things that have each bitten this picker: is
-   it CMYK (browsers render 4-component JPEGs inconsistently — convert to RGB), does
-   it carry baked-in whitespace (trim it, or the logo renders tiny inside the chip),
-   and which background was it designed for (see `tone`).
+   Logos live in `public/logos/<project-id>.<ext>`, mapped in the `LOGOS` const in
+   `project-picker.tsx`. `tone` is **not cosmetic**: most logos are dark ink on
+   transparency and need a light plate, but Plaza Bosques ships a white wordmark
+   and is invisible on anything but a dark one.
+
+   Amber (`#F59B1B`) appears on hover, focus and pending — nowhere else. Per
+   DESIGN.md's north star it marks where attention belongs, so decorating with it
+   would destroy the signal.
+
+   Three things have each bitten this picker when adding an asset:
+   - **CMYK** — browsers render 4-component JPEGs inconsistently. Convert to RGB.
+   - **Baked-in background or whitespace** — trim it and key the background to
+     transparent. A hard white rectangle shows as a seam against the plate, which
+     is tinted warm rather than pure `#fff`.
+   - **Which background it was designed for** — see `tone`.
 
    A project with no `LOGOS` entry renders without a chip rather than breaking.
 4. `POST /api/project/select` validates the id against the roster before signing.

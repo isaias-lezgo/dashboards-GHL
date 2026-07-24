@@ -61,7 +61,7 @@ components:
     padding: "2px 10px"
 ---
 
-# Design System: GHL CRM Dashboard
+# Design System: Proyectos Lezgo Dashboard
 
 ## 1. Overview
 
