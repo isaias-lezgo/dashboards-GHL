@@ -149,12 +149,17 @@ Two cookies, two questions:
    `{ id, name }` per project — **never `ghlToken` or `locationId`**, which would
    put credentials in the browser bundle.
    Project logos live in `public/logos/<project-id>.<ext>` and are mapped in the
-   `LOGOS` const inside `project-picker.tsx`. Each entry carries a `tone`, which is
-   **not cosmetic**: most logos are dark ink on transparency and need a light chip,
-   but Plaza Bosques ships a white wordmark and is invisible on anything but a dark
-   one. Every chip also carries a constant ring — without it, whichever fill matches
-   the current theme's card disappears and that one logo reads as a bug. A project
-   with no `LOGOS` entry renders without a chip rather than breaking.
+   `LOGOS` const inside `project-picker.tsx`. Two fields there are **not cosmetic**:
+   - `tone` — most logos are dark ink on transparency and need a light chip, but
+     Plaza Bosques ships a white wordmark and is invisible on anything but a dark
+     one. Every chip also carries a constant ring; without it, whichever fill
+     matches the current theme's card disappears and that one logo reads as a bug.
+   - `shape` — five assets are horizontal wordmark lockups; Lezgo Suite is a bare
+     square mark (no horizontal lockup of it exists) and looks stranded in a wide
+     chip, so it gets `shape: "square"`. The chip narrows, but the slot around it
+     keeps a constant width so every project name starts at the same x.
+
+   A project with no `LOGOS` entry renders without a chip rather than breaking.
 4. `POST /api/project/select` validates the id against the roster before signing.
    `POST /api/project/clear` drops the selection, keeping the gate.
 5. Middleware verifies **only** `dash_access`. It deliberately does not resolve the
