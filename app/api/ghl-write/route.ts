@@ -8,7 +8,7 @@ import {
   updateCustomFieldDef,
   getCustomFields,
 } from "@/lib/ghl-client";
-import { mergePicklistOptions } from "@/lib/custom-field-merge";
+import { mergePicklistOptions, dedupeOptions } from "@/lib/custom-field-merge";
 
 export const runtime = "nodejs";
 
@@ -95,7 +95,10 @@ export async function POST(req: Request) {
           name: String(p.name),
           dataType: String(p.dataType),
           model: p.objectKey === "opportunity" ? "opportunity" : "contact",
-          picklistOptions: Array.isArray(p.options) ? p.options.map(String) : undefined,
+          // Dedup: GHL acepta opciones duplicadas tal cual al crear.
+          picklistOptions: Array.isArray(p.options)
+            ? dedupeOptions(p.options.map(String))
+            : undefined,
         });
         return NextResponse.json({ ok: 1, failed: 0, failures: [], field });
       } catch (e) {

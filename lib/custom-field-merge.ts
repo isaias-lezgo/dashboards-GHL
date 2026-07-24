@@ -4,6 +4,25 @@
 const norm = (s: string) => s.trim().toLowerCase();
 
 /**
+ * Quita opciones duplicadas (case-insensitive, ignorando espacios al borde),
+ * conservando la primera aparición con su texto original. Se aplica al CREAR un
+ * campo, donde GHL acepta duplicados tal cual — al editar, mergePicklistOptions
+ * ya deduplica.
+ */
+export function dedupeOptions(options: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const opt of options) {
+    const clean = String(opt).trim();
+    if (!clean) continue;
+    if (seen.has(norm(clean))) continue;
+    seen.add(norm(clean));
+    out.push(clean);
+  }
+  return out;
+}
+
+/**
  * Fusiona opciones nuevas sobre las existentes SIN borrar ninguna existente.
  * GHL reemplaza el arreglo completo al editar, así que enviamos existentes +
  * nuevas. Devuelve error si no hay nada nuevo que agregar (no-op) o si toAdd

@@ -8,6 +8,7 @@ import {
   type ChatDataset,
 } from "@/lib/ai-tools";
 import { executeUploadedTableTool } from "@/lib/attachment-tools";
+import { dedupeOptions } from "@/lib/custom-field-merge";
 import type { UploadedTable } from "@/lib/attachments";
 import {
   fetchContactMessages,
@@ -263,7 +264,8 @@ export function useAgentLoop({
 
       if (tu.name === "create_custom_field") {
         const p = tu.input as Record<string, unknown>;
-        const opts = Array.isArray(p.options) ? (p.options as string[]) : [];
+        // La tarjeta muestra las opciones YA deduplicadas — es lo que se creará.
+        const opts = Array.isArray(p.options) ? dedupeOptions((p.options as string[]).map(String)) : [];
         return {
           toolUseId: tu.id,
           action: tu.name,

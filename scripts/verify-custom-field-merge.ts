@@ -4,9 +4,17 @@ import assert from "node:assert/strict";
 import {
   mergePicklistOptions,
   validateFieldValueUpdates,
+  dedupeOptions,
 } from "../lib/custom-field-merge";
 
 async function main() {
+  // --- dedupeOptions: quita duplicados exactos y por casing/espacios, conserva
+  //     la primera aparición con su texto original.
+  assert.deepEqual(dedupeOptions(["opciones1", "opciones4", "opciones4"]), ["opciones1", "opciones4"]);
+  assert.deepEqual(dedupeOptions(["Golf", "golf", " golf "]), ["Golf"]);
+  assert.deepEqual(dedupeOptions(["a", "", "  ", "b"]), ["a", "b"]);
+  assert.deepEqual(dedupeOptions(["x", "y", "z"]), ["x", "y", "z"]);
+
   // --- La fusión agrega sin borrar y preserva orden.
   const m1 = mergePicklistOptions(["Show", "No show"], ["Cancelada"]);
   assert.ok("merged" in m1);
