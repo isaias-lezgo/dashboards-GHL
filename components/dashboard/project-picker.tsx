@@ -83,7 +83,7 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="force-light min-h-screen bg-background">
       <div className="mx-auto w-full max-w-5xl px-6 py-14 sm:py-20">
         <header className="flex items-center justify-between gap-4 border-b border-border pb-5">
           <h1 className="flex items-center gap-3 text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">
@@ -148,7 +148,7 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
                         "shadow-[0_1px_2px_rgba(21,27,40,0.04),0_10px_24px_-16px_rgba(21,27,40,0.28)]",
                         isPending
                           ? "ring-2 ring-[#F59B1B]"
-                          : "ring-1 ring-black/[0.08] dark:ring-white/[0.14]",
+                          : "ring-1 ring-black/[0.08]",
                         // Amber marks the plate you are about to open, and nothing else.
                         !busy &&
                           "group-hover:-translate-y-1 group-hover:ring-[#F59B1B]/70 group-hover:shadow-[0_2px_4px_rgba(21,27,40,0.05),0_18px_36px_-18px_rgba(21,27,40,0.4)]",
