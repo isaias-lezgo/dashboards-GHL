@@ -6,23 +6,32 @@ import assert from "node:assert/strict";
 
 process.env.DASHBOARD_AUTH_SECRET = "test-secret-do-not-use-in-prod";
 
-import { signToken, verifyToken } from "../lib/auth";
+import { signToken, verifyToken, ACCESS_COOKIE, PROJECT_COOKIE, ACCESS_PAYLOAD } from "../lib/auth";
 
 const HOUR = 60 * 60 * 1000;
 
 async function main() {
-  // --- round trip: the client id survives sign → verify
+  // --- round trip: an arbitrary payload survives sign → verify.
+  // The payload is a project id on dash_project and the literal "ok" on dash_access.
   const token = await signToken("yconia", Date.now() + HOUR);
   assert.equal(await verifyToken(token), "yconia");
 
-  // --- the token is dot-delimited: clientId.expiry.signature
-  assert.equal(token.split(".").length, 3, "token must have exactly 3 segments");
-  assert.ok(token.startsWith("yconia."), "client id must be the first segment");
+  const access = await signToken("ok", Date.now() + HOUR);
+  assert.equal(await verifyToken(access), "ok");
 
-  // --- THE ISOLATION GUARANTEE: swapping the client id invalidates the signature.
-  // This is the assertion that stops client A from reading client B's data.
+  // --- the token is dot-delimited: payload.expiry.signature
+  assert.equal(token.split(".").length, 3, "token must have exactly 3 segments");
+  assert.ok(token.startsWith("yconia."), "payload must be the first segment");
+
+  // --- THE ISOLATION GUARANTEE: swapping the payload invalidates the signature.
+  // On dash_project this is what stops a hand-edited cookie from pointing at
+  // another project; on dash_access it stops a forged "ok" from being minted.
   const [, expiry, sig] = token.split(".");
-  assert.equal(await verifyToken(`condesa.${expiry}.${sig}`), null, "tampered client id must be rejected");
+  assert.equal(await verifyToken(`condesa.${expiry}.${sig}`), null, "tampered project id must be rejected");
+  assert.equal(await verifyToken(`ok.${expiry}.${sig}`), null, "project token must not pass as an access token");
+
+  const [, aExpiry, aSig] = access.split(".");
+  assert.equal(await verifyToken(`yconia.${aExpiry}.${aSig}`), null, "access token must not pass as a project token");
 
   // --- other tampering
   assert.equal(await verifyToken(`yconia.${expiry}.deadbeef`), null, "bad signature rejected");
@@ -31,6 +40,8 @@ async function main() {
   // --- expiry is enforced
   const expired = await signToken("yconia", Date.now() - 1000);
   assert.equal(await verifyToken(expired), null, "expired token rejected");
+  const expiredAccess = await signToken("ok", Date.now() - 1000);
+  assert.equal(await verifyToken(expiredAccess), null, "expired access token rejected");
 
   // --- malformed input
   assert.equal(await verifyToken(undefined), null);
@@ -38,13 +49,17 @@ async function main() {
   assert.equal(await verifyToken("garbage"), null);
   assert.equal(await verifyToken("only.two"), null);
   assert.equal(await verifyToken("a.b.c.d"), null);
-  assert.equal(await verifyToken(`.${expiry}.${sig}`), null, "empty client id rejected");
+  assert.equal(await verifyToken(`.${expiry}.${sig}`), null, "empty payload rejected");
 
-  // --- two clients get distinguishable tokens
+  // --- two projects get distinguishable tokens
   const a = await signToken("yconia", Date.now() + HOUR);
   const b = await signToken("condesa", Date.now() + HOUR);
   assert.equal(await verifyToken(a), "yconia");
   assert.equal(await verifyToken(b), "condesa");
+
+  // --- the cookie names are distinct, so an access cookie can never be read as a project cookie
+  assert.notEqual(ACCESS_COOKIE, PROJECT_COOKIE);
+  assert.equal(ACCESS_PAYLOAD, "ok");
 
   console.log("✅ lib/auth.ts — all assertions passed");
 }

@@ -3,7 +3,25 @@
 // imported from middleware (Edge runtime) as well as Node route handlers.
 // No Next.js imports here — keep it pure and runtime-agnostic.
 
-export const SESSION_COOKIE = "dash_session";
+// Two cookies, two questions. dash_access answers "may this person enter at all?"
+// and is the only one Edge middleware checks. dash_project answers "which project
+// are they viewing?" and is resolved by requireClient() (lib/session.ts), which
+// needs the roster and therefore must stay out of the Edge bundle.
+export const ACCESS_COOKIE = "dash_access";
+export const PROJECT_COOKIE = "dash_project";
+
+// The signed payload of dash_access. It carries no identity — past the gate every
+// internal user is equivalent — so a fixed sentinel is all that is needed.
+export const ACCESS_PAYLOAD = "ok";
+
+// Shared by every Set-Cookie in the app, so one of them can't drift insecure.
+export const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: "lax",
+  path: "/",
+} as const;
+
 export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 function getSecret(): string {
@@ -48,32 +66,32 @@ async function hmac(message: string): Promise<string> {
     .join("");
 }
 
-// Token format: "<clientId>.<expiryMs>.<hmac(clientId.expiryMs)>".
-// The client id is INSIDE the signed payload, so a client cannot edit their
-// cookie to impersonate another client — the signature check fails. Contains no
-// password and no PII.
+// Token format: "<payload>.<expiryMs>.<hmac(payload.expiryMs)>".
+// The payload is INSIDE the signature, so a hand-edited cookie fails verification.
+// Contains no password and no PII.
 export async function signToken(clientId: string, expiryMs: number): Promise<string> {
   const payload = `${clientId}.${expiryMs}`;
   const sig = await hmac(payload);
   return `${payload}.${sig}`;
 }
 
-// Returns the client id on success, null on any failure (missing, malformed,
-// expired, or bad signature). Callers resolve the id to a ClientConfig.
+// Returns the signed payload on success, null on any failure (missing, malformed,
+// expired, or bad signature). Callers decide what the payload means: the literal
+// ACCESS_PAYLOAD for dash_access, a project id for dash_project.
 export async function verifyToken(value: string | undefined): Promise<string | null> {
   if (!value) return null;
   const parts = value.split(".");
   if (parts.length !== 3) return null;
 
-  const [clientId, expiryRaw, sig] = parts;
-  if (!clientId) return null;
+  const [payload, expiryRaw, sig] = parts;
+  if (!payload) return null;
 
   const expiryMs = Number(expiryRaw);
   if (!Number.isFinite(expiryMs)) return null;
   if (Date.now() > expiryMs) return null; // expired
 
-  const expected = await hmac(`${clientId}.${expiryMs}`);
+  const expected = await hmac(`${payload}.${expiryMs}`);
   if (!safeEqual(sig, expected)) return null;
 
-  return clientId;
+  return payload;
 }
