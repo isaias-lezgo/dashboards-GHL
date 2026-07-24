@@ -826,13 +826,20 @@ export async function updateOpportunityCustomFields(
   });
 }
 
+// Asimetría lectura/escritura: la LECTURA devuelve las opciones en
+// `picklistOptions` (string[]), pero la ESCRITURA (create/update) las espera en
+// `options`. Mandar `picklistOptions` da 422 "property picklistOptions should
+// not exist". Traducimos aquí, en el límite HTTP.
 /** POST /locations/:locationId/customFields — crea una definición de campo. */
-export async function createCustomFieldDef(body: {
+export async function createCustomFieldDef(input: {
   name: string;
   dataType: string;
   model: "contact" | "opportunity";
   picklistOptions?: string[];
 }): Promise<GHLCustomField> {
+  const { picklistOptions, ...rest } = input;
+  const body: Record<string, unknown> = { ...rest };
+  if (picklistOptions && picklistOptions.length) body.options = picklistOptions;
   const res = await ghlFetch<{ customField: GHLCustomField }>(
     "/locations/:locationId/customFields",
     { method: "POST", body },
@@ -843,8 +850,12 @@ export async function createCustomFieldDef(body: {
 /** PUT /locations/:locationId/customFields/:id — renombra / agrega opciones. */
 export async function updateCustomFieldDef(
   fieldId: string,
-  body: { name?: string; picklistOptions?: string[] },
+  input: { name?: string; picklistOptions?: string[] },
 ): Promise<GHLCustomField> {
+  const body: Record<string, unknown> = {};
+  if (input.name) body.name = input.name;
+  if (input.picklistOptions && input.picklistOptions.length)
+    body.options = input.picklistOptions;
   const res = await ghlFetch<{ customField: GHLCustomField }>(
     `/locations/:locationId/customFields/${fieldId}`,
     { method: "PUT", body },
