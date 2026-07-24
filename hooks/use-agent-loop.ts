@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   executeTool,
   executeExportCsv,
+  WRITE_TOOLS,
   type ChatDataset,
 } from "@/lib/ai-tools";
 import { executeUploadedTableTool } from "@/lib/attachment-tools";
@@ -76,6 +77,32 @@ export type AnswerPayload =
   | { values: string[]; labels?: string[] }
   | { text: string };
 
+// ─── Write mode (modo edición) ──────────────────────────────────────────────
+export interface WriteDiffRow {
+  id: string;
+  label: string;
+  sublabel?: string;
+  before: string;
+  after: string;
+}
+export interface PendingWrite {
+  toolUseId: string;
+  action: string;
+  title: string; // "Editar contacto" | "Editar 23 contactos" | "Crear campo" | "Editar campo"
+  subtitle?: string;
+  rows: WriteDiffRow[];
+  payload: Record<string, unknown>;
+}
+export interface WriteReceipt {
+  status: "applied" | "partial" | "cancelled" | "failed";
+  title: string;
+  detail: string;
+  ok?: number;
+  failed?: number;
+  failures?: Array<{ id: string; name?: string; error: string }>;
+  at: string;
+}
+
 // What the composer hands to send(): content blocks to append to the user
 // message, plus any tabular files to register for the query/join tools.
 export interface ReadyAttachment {
@@ -115,6 +142,7 @@ function estimateCost(u: TurnUsage): number {
 export interface AgentLoopOptions {
   datasetSummary: string;
   dataset: ChatDataset;
+  writeEnabled: boolean;
   onToolExecuted?: (
     name: string,
     input: Record<string, unknown>,
@@ -135,11 +163,15 @@ export interface AgentLoopReturn {
   runWithMessages: (msgs: UIMessage[]) => void;
   pendingQuestion: PendingQuestion | null;
   answer: (payload: AnswerPayload) => void;
+  pendingWrite: PendingWrite | null;
+  resolveWrite: (decision: { approve: boolean }) => void;
+  writeReceipts: WriteReceipt[];
 }
 
 export function useAgentLoop({
   datasetSummary,
   dataset,
+  writeEnabled,
   onToolExecuted,
 }: AgentLoopOptions): AgentLoopReturn {
   const [messages, setMessages] = useState<UIMessage[]>([]);
@@ -154,6 +186,13 @@ export function useAgentLoop({
     partialResults: ToolResultBlock[];
     askToolUseId: string;
   } | null>(null);
+  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(null);
+  const [writeReceipts, setWriteReceipts] = useState<WriteReceipt[]>([]);
+  const writeStashRef = useRef<{
+    convo: UIMessage[];
+    priorResults: ToolResultBlock[]; // lecturas + escrituras ya resueltas este turno
+    queue: ToolUseBlock[]; // escrituras pendientes (la primera es la activa)
+  } | null>(null);
 
   const stopRef = useRef(false);
   const messagesRef = useRef<UIMessage[]>([]);
@@ -161,6 +200,160 @@ export function useAgentLoop({
   // Always use the latest callback without re-creating runWithMessages
   const onToolExecutedRef = useRef(onToolExecuted);
   onToolExecutedRef.current = onToolExecuted;
+
+  // Build the confirmation-card diff for one write tool_use, reading the
+  // "before" from the record the browser already holds (never the model's
+  // narration of it).
+  const buildPendingWrite = useCallback(
+    (tu: ToolUseBlock): PendingWrite => {
+      const cur = (
+        rec: { customFieldsResolved?: Record<string, string | string[]> } | undefined,
+        name: string,
+      ): string => {
+        const v = rec?.customFieldsResolved?.[name];
+        if (v == null || (Array.isArray(v) && v.length === 0) || v === "")
+          return "(sin valor)";
+        return Array.isArray(v) ? v.join(", ") : String(v);
+      };
+
+      if (tu.name === "set_contact_fields" || tu.name === "set_opportunity_fields") {
+        const isContact = tu.name === "set_contact_fields";
+        const updates = Array.isArray(tu.input.updates)
+          ? (tu.input.updates as Array<Record<string, unknown>>)
+          : [];
+        const rows: WriteDiffRow[] = [];
+        for (const u of updates) {
+          const id = String(isContact ? u.contactId : u.opportunityId);
+          const rec = isContact
+            ? dataset.contacts.find((c) => c.id === id)
+            : dataset.opportunities.find((o) => o.id === id);
+          const label = (rec as { name?: string } | undefined)?.name ?? id;
+          const sublabel = isContact
+            ? [
+                (rec as { email?: string } | undefined)?.email,
+                (rec as { phone?: string } | undefined)?.phone,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : undefined;
+          const fields = (u.fields ?? {}) as Record<string, string | string[]>;
+          for (const [fname, val] of Object.entries(fields)) {
+            rows.push({
+              id,
+              label,
+              sublabel: sublabel || undefined,
+              before: cur(rec as { customFieldsResolved?: Record<string, string | string[]> }, fname),
+              after: Array.isArray(val) ? val.join(", ") : String(val),
+            });
+          }
+        }
+        const n = updates.length;
+        const noun = isContact ? "contacto" : "oportunidad";
+        return {
+          toolUseId: tu.id,
+          action: tu.name,
+          payload: tu.input,
+          title:
+            n === 1
+              ? `Editar ${noun}`
+              : `Editar ${n} ${isContact ? "contactos" : "oportunidades"}`,
+          rows,
+        };
+      }
+
+      if (tu.name === "create_custom_field") {
+        const p = tu.input as Record<string, unknown>;
+        const opts = Array.isArray(p.options) ? (p.options as string[]) : [];
+        return {
+          toolUseId: tu.id,
+          action: tu.name,
+          payload: tu.input,
+          title: "Crear campo",
+          subtitle: `${p.name} · ${p.dataType}${opts.length ? " · " + opts.join(", ") : ""}`,
+          rows: [],
+        };
+      }
+
+      // update_custom_field
+      const p = tu.input as Record<string, unknown>;
+      const def = dataset.customFieldDefs.find((d) => d.id === p.fieldId);
+      const rows: WriteDiffRow[] = [];
+      if (typeof p.name === "string" && p.name && def)
+        rows.push({ id: String(p.fieldId), label: "Nombre", before: def.name, after: p.name });
+      if (Array.isArray(p.addOptions) && p.addOptions.length && def) {
+        const existing = def.picklistOptions ?? [];
+        const present = new Set(existing.map((e) => e.toLowerCase()));
+        const after = [
+          ...existing,
+          ...(p.addOptions as string[]).filter((o) => !present.has(String(o).toLowerCase())),
+        ];
+        rows.push({
+          id: String(p.fieldId),
+          label: "Opciones",
+          before: existing.join(", ") || "(ninguna)",
+          after: after.join(", "),
+        });
+      }
+      return {
+        toolUseId: tu.id,
+        action: tu.name,
+        payload: tu.input,
+        title: "Editar campo",
+        subtitle: def?.name,
+        rows,
+      };
+    },
+    [dataset],
+  );
+
+  // Optimistic in-memory patch after a successful write, so the model sees a
+  // consistent world in the same session without a full re-sync.
+  const applyOptimisticPatch = useCallback(
+    (pw: PendingWrite) => {
+      const p = pw.payload as Record<string, unknown>;
+      if (pw.action === "set_contact_fields" || pw.action === "set_opportunity_fields") {
+        const isContact = pw.action === "set_contact_fields";
+        const updates = Array.isArray(p.updates)
+          ? (p.updates as Array<Record<string, unknown>>)
+          : [];
+        for (const u of updates) {
+          const id = String(isContact ? u.contactId : u.opportunityId);
+          const rec = isContact
+            ? dataset.contacts.find((c) => c.id === id)
+            : dataset.opportunities.find((o) => o.id === id);
+          if (!rec) continue;
+          rec.customFieldsResolved = rec.customFieldsResolved ?? {};
+          const fields = (u.fields ?? {}) as Record<string, string | string[]>;
+          for (const [name, val] of Object.entries(fields)) {
+            rec.customFieldsResolved[name] = val;
+          }
+        }
+      } else if (pw.action === "create_custom_field") {
+        dataset.customFieldDefs.push({
+          id: `optimistic-${Date.now()}`,
+          name: String(p.name),
+          objectKey: p.objectKey === "opportunity" ? "opportunity" : "contact",
+          dataType: String(p.dataType),
+          picklistOptions: Array.isArray(p.options) ? (p.options as string[]).map(String) : undefined,
+        });
+      } else if (pw.action === "update_custom_field") {
+        const def = dataset.customFieldDefs.find((d) => d.id === p.fieldId);
+        if (def) {
+          if (typeof p.name === "string" && p.name) def.name = p.name;
+          if (Array.isArray(p.addOptions)) {
+            const present = new Set((def.picklistOptions ?? []).map((o) => o.toLowerCase()));
+            def.picklistOptions = [
+              ...(def.picklistOptions ?? []),
+              ...(p.addOptions as string[])
+                .map(String)
+                .filter((o) => !present.has(o.toLowerCase())),
+            ];
+          }
+        }
+      }
+    },
+    [dataset],
+  );
 
   const runWithMessages = useCallback(
     async (initialMessages: UIMessage[]) => {
@@ -185,7 +378,7 @@ export function useAgentLoop({
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ datasetSummary, messages: apiMessages, userTimezone }),
+            body: JSON.stringify({ datasetSummary, messages: apiMessages, userTimezone, writeEnabled }),
           });
 
           if (!res.ok) {
@@ -241,10 +434,13 @@ export function useAgentLoop({
           // results are ready for the resume, but hold the request until the user
           // answers (the model is told to call ask_user alone, so toRun is usually
           // empty here).
+          // Writes never execute here: they pause at the confirmation gate
+          // below. ask_user also pauses. Everything else runs now.
           const askUse = toolUses.find((b) => b.name === "ask_user");
-          const toRun = askUse
-            ? toolUses.filter((b) => b.name !== "ask_user")
-            : toolUses;
+          const writeUses = toolUses.filter((b) => WRITE_TOOLS.has(b.name));
+          const toRun = toolUses.filter(
+            (b) => b.name !== "ask_user" && !WRITE_TOOLS.has(b.name),
+          );
 
           const toolResults: ToolResultBlock[] = await Promise.all(
             toRun.map(async (tu): Promise<ToolResultBlock> => {
@@ -344,6 +540,23 @@ export function useAgentLoop({
             return;
           }
 
+          // The write gate: any write tool the model emitted pauses the loop
+          // and surfaces a confirmation card with the diff read from the real
+          // record. Nothing reaches GHL until the user approves. Writes are
+          // handled one-at-a-time from a queue (see resolveWrite); the read
+          // results ride along until the queue drains.
+          if (writeUses.length > 0) {
+            setStatus(null);
+            writeStashRef.current = {
+              convo,
+              priorResults: toolResults,
+              queue: writeUses,
+            };
+            setPendingWrite(buildPendingWrite(writeUses[0]));
+            setBusy(false);
+            return;
+          }
+
           convo = [...convo, { role: "user", blocks: toolResults }];
           setMessages(convo);
           messagesRef.current = convo;
@@ -376,7 +589,92 @@ export function useAgentLoop({
         setStatus(null);
       }
     },
-    [datasetSummary, dataset]
+    [datasetSummary, dataset, writeEnabled, buildPendingWrite]
+  );
+
+  const resolveWrite = useCallback(
+    async (decision: { approve: boolean }) => {
+      const stash = writeStashRef.current;
+      const pw = pendingWrite;
+      if (!stash || !pw) return;
+      const active = stash.queue[0];
+      let resultForModel: unknown;
+      let receipt: WriteReceipt;
+
+      if (!decision.approve) {
+        resultForModel = { cancelled: true };
+        receipt = {
+          status: "cancelled",
+          title: pw.title,
+          detail: pw.subtitle ?? pw.rows[0]?.label ?? "",
+          at: new Date().toISOString(),
+        };
+      } else {
+        try {
+          const res = await fetch("/api/ghl-write", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: pw.action, payload: pw.payload }),
+          });
+          const data = (await res.json()) as {
+            ok?: number;
+            failed?: number;
+            failures?: Array<{ id: string; name?: string; error: string }>;
+            error?: string;
+          };
+          resultForModel = data;
+          const failed = data.failed ?? 0;
+          const ok = data.ok ?? 0;
+          const status: WriteReceipt["status"] =
+            failed === 0 && ok > 0 ? "applied" : ok > 0 ? "partial" : "failed";
+          receipt = {
+            status,
+            title: pw.title,
+            detail:
+              pw.subtitle ??
+              (pw.rows[0] ? `${pw.rows[0].label} → ${pw.rows[0].after}` : data.error ?? ""),
+            ok,
+            failed,
+            failures: data.failures ?? [],
+            at: new Date().toISOString(),
+          };
+          if (status !== "failed") applyOptimisticPatch(pw);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          resultForModel = { error: msg };
+          receipt = { status: "failed", title: pw.title, detail: msg, at: new Date().toISOString() };
+        }
+      }
+
+      setWriteReceipts((r) => [...r, receipt]);
+      const writeResult: ToolResultBlock = {
+        type: "tool_result",
+        tool_use_id: active.id,
+        content: JSON.stringify(resultForModel),
+        is_error: decision.approve && receipt.status === "failed",
+      };
+      const priorResults = [...stash.priorResults, writeResult];
+      const rest = stash.queue.slice(1);
+
+      setTotalTools((n) => n + 1);
+
+      if (rest.length > 0) {
+        writeStashRef.current = { convo: stash.convo, priorResults, queue: rest };
+        setPendingWrite(buildPendingWrite(rest[0]));
+        return; // siguiente tarjeta
+      }
+      // Cola vacía: emitir TODOS los tool_result y reanudar el loop.
+      writeStashRef.current = null;
+      setPendingWrite(null);
+      const resumed: UIMessage[] = [
+        ...stash.convo,
+        { role: "user", blocks: priorResults },
+      ];
+      setMessages(resumed);
+      messagesRef.current = resumed;
+      void runWithMessages(resumed);
+    },
+    [pendingWrite, buildPendingWrite, applyOptimisticPatch, runWithMessages],
   );
 
   const answer = useCallback(
@@ -463,6 +761,9 @@ export function useAgentLoop({
     setPendingQuestion(null);
     pauseStashRef.current = null;
     uploadedTablesRef.current = [];
+    setPendingWrite(null);
+    setWriteReceipts([]);
+    writeStashRef.current = null;
   }, []);
 
   return {
@@ -478,5 +779,8 @@ export function useAgentLoop({
     runWithMessages,
     pendingQuestion,
     answer,
+    pendingWrite,
+    resolveWrite,
+    writeReceipts,
   };
 }
