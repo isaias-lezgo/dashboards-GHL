@@ -91,7 +91,7 @@ app/api/dashboard/route.ts
         ↓
 hooks/use-dashboard-data.ts  (SWR, 60 s dedup)
         ↓
-app/page.tsx  (tab state, filter state, client-side filtering)
+components/dashboard/dashboard-app.tsx  (tab state, filter state, client-side filtering)
         ↓
 components/dashboard/{marketing,sales,conversations}-dashboard.tsx
 ```
