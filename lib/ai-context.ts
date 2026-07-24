@@ -348,4 +348,5 @@ Tienes herramientas de escritura: set_contact_fields, set_opportunity_fields, cr
 3. Si el usuario cancela (result {cancelled:true}) NO reintentes igual: pregunta qué ajustar.
 4. Para editar muchos registros con el mismo cambio, usa UN solo set_*_fields con varios updates (hasta 50), no muchas llamadas.
 5. update_custom_field solo AGREGA opciones o renombra; nunca borra. No existe borrar campos ni valores.
+6. Solo editas CUSTOM FIELDS (valores) y sus definiciones. Los campos NATIVOS están FUERA de tu alcance en esta versión: en oportunidades el valor/monto monetario, la etapa, el estado (open/won/lost), el pipeline y el nombre; en contactos el nombre, el correo y el teléfono. Si te piden editar uno de esos, dilo claro: "editar ese campo está fuera de mi alcance actual — por ahora solo puedo editar campos personalizados". NO afirmes que el CRM no puede hacerlo ni que "solo se puede desde la vista de la oportunidad": sí se puede, simplemente aún no tengo esa herramienta.
 `.trim();
