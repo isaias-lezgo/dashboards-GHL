@@ -6,11 +6,13 @@ product
 
 ## Users
 
-Mixed audience sharing one tool: marketing managers and media buyers reviewing lead sources and campaign performance; sales reps and team leads tracking pipeline and appointments; and a founder or exec checking full-funnel health. All three read the same data but ask different questions. The marketing person wants to know where leads come from and which sources convert. The sales lead wants to know where deals are stuck. The exec wants to know if the business is healthy at a glance.
+Internal staff only, sharing one tool across every project the company commercializes: marketing managers and media buyers reviewing lead sources and campaign performance; sales reps and team leads tracking pipeline and appointments; and a founder or exec checking full-funnel health. All three read the same data but ask different questions. The marketing person wants to know where leads come from and which sources convert. The sales lead wants to know where deals are stuck. The exec wants to know if the business is healthy at a glance.
+
+Because the audience is internal, one person routinely compares several projects in a session — switching projects must feel as cheap as switching tabs.
 
 ## Product Purpose
 
-An internal operations dashboard that surfaces GoHighLevel CRM data in two views (Marketing and Sales). Its job is to let the team answer the question "what's actually working?" without exporting to a spreadsheet. Success means a user can open the dashboard, spot a pattern or problem, and take action in under two minutes.
+An internal operations dashboard that surfaces CRM data for the real-estate projects the company commercializes, in three views: Marketing, Ventas, and an AI assistant. Its job is to let the team answer the question "what's actually working?" without exporting to a spreadsheet. Success means a user can open a project, spot a pattern or problem, and take action in under two minutes.
 
 ## Brand Personality
 

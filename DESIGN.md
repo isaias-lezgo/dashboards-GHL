@@ -1,6 +1,6 @@
 ---
-name: GHL CRM Dashboard
-description: Internal operations dashboard surfacing GoHighLevel CRM data for marketing, sales, and executive review.
+name: Proyectos Lezgo Dashboard
+description: Internal operations dashboard surfacing Lezgo Suite CRM data for marketing, sales, and executive review across the projects the company commercializes.
 colors:
   brand-amber: "#F59B1B"
   structural-navy: "#335577"
