@@ -21,6 +21,8 @@ pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-
 pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation + retry backoff caps
 pnpm verify:context      # lib/ghl-context.ts — credential isolation across concurrent requests
 pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabular parse/query/join
+pnpm verify:cf-merge     # lib/custom-field-merge.ts — fusión de opciones (no borra) + validación de valores
+pnpm verify:write-tools  # WRITE_TOOLS ⊇ definiciones + lista blanca de /api/ghl-write sin borrado
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
