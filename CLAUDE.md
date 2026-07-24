@@ -224,6 +224,16 @@ Verification scripts (no test framework in this repo): `pnpm verify:clients`,
 
 ### Loading & progress
 
+**`LoadingScreen` is imported with `next/dynamic` + `ssr: false`, on purpose.** It is a
+tree of framer-motion elements, and their `initial` prop (`opacity: 0`,
+`translateX(-8px)`, …) gets serialised into the SSR HTML — but on the client the
+animations have already advanced past it by the time React hydrates, so the `style`
+attributes don't match and React reports a hydration mismatch. `/` is a dynamic route,
+so it really was server-rendering that screen. Nothing in `DashboardApp` is
+server-renderable anyway: every byte arrives from a client-side fetch. Importing it
+normally again silently reintroduces the mismatch.
+
+
 The dashboard fetch streams NDJSON progress frames rather than returning a single JSON blob, so the UI can show live progress during the multi-second GHL sync:
 - `{ type: "location", name }` — sub-account name (resolved first, for the loading header).
 - `{ type: "step", key, status, count }` — structured per-dataset progress. `key` ∈ `config | contacts | opportunities | pautas | appointments | tasks`; `status` ∈ `loading | done`. Because those datasets are fetched **concurrently**, the loading screen (`components/dashboard/loading-screen.tsx`) renders one live row per dataset with a running count, plus a determinate progress bar driven by completed-step count.
