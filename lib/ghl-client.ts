@@ -799,6 +799,59 @@ export async function getCustomFields(): Promise<GHLCustomFieldsResponse> {
   });
 }
 
+// ============ CUSTOM FIELD WRITES (modo edición del asistente) ============
+
+/** PUT /contacts/:id — actualiza valores de custom fields de un contacto.
+ *  Forma de escritura: { id, field_value } (distinta de la lectura { id, value }). */
+export async function updateContactCustomFields(
+  contactId: string,
+  fields: Array<{ id: string; field_value: string | string[] }>,
+): Promise<unknown> {
+  return ghlFetch(`/contacts/${contactId}`, {
+    method: "PUT",
+    body: { customFields: fields },
+    noQueryLocationId: true, // el endpoint no espera ?locationId
+  });
+}
+
+/** PUT /opportunities/:id — actualiza valores de custom fields de una oportunidad. */
+export async function updateOpportunityCustomFields(
+  opportunityId: string,
+  fields: Array<{ id: string; field_value: string | string[] }>,
+): Promise<unknown> {
+  return ghlFetch(`/opportunities/${opportunityId}`, {
+    method: "PUT",
+    body: { customFields: fields },
+    noQueryLocationId: true,
+  });
+}
+
+/** POST /locations/:locationId/customFields — crea una definición de campo. */
+export async function createCustomFieldDef(body: {
+  name: string;
+  dataType: string;
+  model: "contact" | "opportunity";
+  picklistOptions?: string[];
+}): Promise<GHLCustomField> {
+  const res = await ghlFetch<{ customField: GHLCustomField }>(
+    "/locations/:locationId/customFields",
+    { method: "POST", body },
+  );
+  return res.customField;
+}
+
+/** PUT /locations/:locationId/customFields/:id — renombra / agrega opciones. */
+export async function updateCustomFieldDef(
+  fieldId: string,
+  body: { name?: string; picklistOptions?: string[] },
+): Promise<GHLCustomField> {
+  const res = await ghlFetch<{ customField: GHLCustomField }>(
+    `/locations/:locationId/customFields/${fieldId}`,
+    { method: "PUT", body },
+  );
+  return res.customField;
+}
+
 // ============ CUSTOM OBJECTS ============
 
 export interface GHLCustomObjectField {
