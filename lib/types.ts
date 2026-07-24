@@ -209,3 +209,12 @@ export interface Pauta {
   contactId?: string
   properties?: Record<string, string>
 }
+
+export interface CustomFieldDef {
+  id: string
+  name: string
+  objectKey: "contact" | "opportunity"
+  dataType: string // TEXT | LARGE_TEXT | NUMERICAL | SINGLE_OPTIONS | MULTIPLE_OPTIONS | DATE | CHECKBOX | RADIO
+  fieldKey?: string
+  picklistOptions?: string[]
+}

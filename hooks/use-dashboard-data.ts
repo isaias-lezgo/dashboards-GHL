@@ -9,6 +9,7 @@ import type {
   Pipeline,
   Pauta,
   Appointment,
+  CustomFieldDef,
 } from "@/lib/types";
 import { fetchStream } from "./fetch-stream";
 
@@ -48,6 +49,7 @@ export interface DashboardData {
   campaigns: string[];
   sources: string[];
   pautas: Pauta[];
+  customFieldDefs: CustomFieldDef[];
   locationId: string;
   locationName: string;
   meta: {

@@ -777,12 +777,13 @@ export interface GHLCustomField {
   name: string;
   fieldKey?: string;
   dataType?: string;
-  model?: string; // "contact" | "opportunity"
+  model?: string; // "contact" | "opportunity" | "custom_objects.<key>"
   locationId?: string;
   position?: number;
   placeholder?: string;
   required?: boolean;
-  options?: Array<{ id: string; value: string; label: string }>;
+  standard?: boolean;
+  picklistOptions?: string[]; // opciones para *_OPTIONS / RADIO / CHECKBOX (string[] plano)
 }
 
 export interface GHLCustomFieldsResponse {

@@ -337,6 +337,7 @@ export function DashboardApp() {
               messages,
               tasks: data?.tasks ?? [],
               calls: data?.calls ?? [],
+              customFieldDefs: data?.customFieldDefs ?? [],
             }}
             locationId={data?.locationId}
           />

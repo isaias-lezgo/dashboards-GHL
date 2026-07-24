@@ -10,6 +10,7 @@ import type {
   Message,
   Task,
   Call,
+  CustomFieldDef,
 } from "@/lib/types";
 import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
 import { isDePauta, resolveCampaignName } from "@/lib/pauta";
@@ -23,6 +24,7 @@ export interface ChatDataset {
   messages: Message[];
   tasks: Task[];
   calls: Call[];
+  customFieldDefs: CustomFieldDef[];
 }
 
 // ─── Chart spec (render_chart tool) ─────────────────────────────────────────────

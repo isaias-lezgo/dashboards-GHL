@@ -415,6 +415,19 @@ export async function GET() {
             customFieldMap.set(cf.id, cf.name);
           }
 
+          // Definiciones de campo que viajan al navegador para el modo edición del
+          // asistente: solo contact/opportunity (se descartan custom_objects.*).
+          const customFieldDefs = customFieldsRaw.customFields
+            .filter((cf) => cf.model === "contact" || cf.model === "opportunity")
+            .map((cf) => ({
+              id: cf.id,
+              name: cf.name,
+              objectKey: cf.model as "contact" | "opportunity",
+              dataType: cf.dataType ?? "TEXT",
+              fieldKey: cf.fieldKey,
+              picklistOptions: cf.picklistOptions,
+            }));
+
           // Build native lost-reason id→name lookup (empty for accounts without a catalog)
           const lostReasonMap = new Map<string, string>();
           for (const lr of lostReasonsRaw.lostReasons) {
@@ -628,6 +641,7 @@ export async function GET() {
             campaigns: Array.from(campaignSet),
             sources: Array.from(sourceSet),
             pautas,
+            customFieldDefs,
             locationId: client.locationId,
             meta: {
               totalContacts: contacts.length,
