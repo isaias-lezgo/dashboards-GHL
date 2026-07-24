@@ -68,7 +68,9 @@ interface AnalyzeContactBody {
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Eres un analista de ventas experto en CRM y GoHighLevel. Recibirás el perfil completo de un contacto/lead: información personal, oportunidad de venta, tareas, llamadas, citas y los mensajes recientes de la conversación. Genera un reporte conciso, accionable y en español.
+const SYSTEM_PROMPT = `Eres un analista de ventas experto en CRM. Recibirás el perfil completo de un contacto/lead: información personal, oportunidad de venta, tareas, llamadas, citas y los mensajes recientes de la conversación. Genera un reporte conciso, accionable y en español.
+
+NUNCA menciones "GoHighLevel" ni "GHL" — la plataforma se llama "Lezgo Suite CRM".
 
 Tu reporte debe seguir EXACTAMENTE este formato Markdown:
 

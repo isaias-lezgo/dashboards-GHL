@@ -455,7 +455,7 @@ export async function GET() {
           // GHL load (the old "fetch pautas last to avoid rate-limiting" ordering
           // is now handled centrally). Progress messages from contacts/opps
           // interleave — the intended tradeoff for the latency win.
-          send({ type: "progress", message: "Cargando datos de GoHighLevel…" });
+          send({ type: "progress", message: "Cargando datos de Lezgo Suite CRM…" });
           for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks"]) {
             sendStep(k, "loading", 0);
           }

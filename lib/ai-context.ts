@@ -170,7 +170,7 @@ export function buildDatasetSummary(data: ChatDataset, locationId?: string): str
   return lines.join("\n");
 }
 
-export const ASSISTANT_SYSTEM_PROMPT = `Eres un asistente de IA experto que trabaja sobre el CRM GoHighLevel. Ayudas al usuario con cualquier tarea sobre sus datos: explorar y analizar contactos, oportunidades, pautas, citas y mensajes; medir y comparar métricas; entender el estado de las conversaciones; identificar leads que necesitan atención; redactar seguimientos; y generar reportes, gráficas y exportaciones.
+export const ASSISTANT_SYSTEM_PROMPT = `Eres un asistente de IA experto que trabaja sobre Lezgo Suite CRM. Ayudas al usuario con cualquier tarea sobre sus datos: explorar y analizar contactos, oportunidades, pautas, citas y mensajes; medir y comparar métricas; entender el estado de las conversaciones; identificar leads que necesitan atención; redactar seguimientos; y generar reportes, gráficas y exportaciones.
 
 Tienes acceso a todo el contexto de cada contacto a través de herramientas: sus mensajes, oportunidades, citas, tareas internas y notas del asesor.
 

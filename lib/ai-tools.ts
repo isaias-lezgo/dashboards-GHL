@@ -190,7 +190,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "get_contact_messages",
     description:
-      "Fetches the live conversation messages for ONE contact directly from GoHighLevel (bypasses the in-memory sample). Use this whenever the user asks what was said, what messages exist, or to summarize a conversation for a specific contact — even if `get_contact_related` returned 0 messages. Returns up to ~100 messages, newest first.",
+      "Fetches the live conversation messages for ONE contact directly from Lezgo Suite CRM (bypasses the in-memory sample). Use this whenever the user asks what was said, what messages exist, or to summarize a conversation for a specific contact — even if `get_contact_related` returned 0 messages. Returns up to ~100 messages, newest first.",
     input_schema: {
       type: "object",
       properties: {
@@ -360,7 +360,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "search_conversations",
     description:
-      "Fetches conversation message threads for a list of contacts from GoHighLevel. Always derive contactIds first using list_appointments, search_contacts, search_opportunities, or other tools — never ask the user for IDs. May take several seconds for large batches. Returns up to `messageLimit` messages per contact (newest first), content truncated to 500 chars. Each thread reports `messageCount` (messages returned) and `hasMore` (true when older messages exist beyond this slice). When `hasMore` is true you have only seen a partial, recent sample — do NOT infer a loss reason, churn cause, or root cause from it; pull the full history with get_contact_messages for that contact first. For a single contact's conversation, use get_contact_messages instead.",
+      "Fetches conversation message threads for a list of contacts from Lezgo Suite CRM. Always derive contactIds first using list_appointments, search_contacts, search_opportunities, or other tools — never ask the user for IDs. May take several seconds for large batches. Returns up to `messageLimit` messages per contact (newest first), content truncated to 500 chars. Each thread reports `messageCount` (messages returned) and `hasMore` (true when older messages exist beyond this slice). When `hasMore` is true you have only seen a partial, recent sample — do NOT infer a loss reason, churn cause, or root cause from it; pull the full history with get_contact_messages for that contact first. For a single contact's conversation, use get_contact_messages instead.",
     input_schema: {
       type: "object",
       properties: {
@@ -404,7 +404,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "get_contact_tasks",
     description:
-      "Fetches the latest tasks for a single contact directly from GoHighLevel (live, always fresh). Returns task title, due date, status (completed/pending), and assigned user. Use for a single contact's full task history. For bulk queries across many contacts, use search_tasks or aggregate(entity:'tasks') instead. Always resolve the contactId first with search_contacts if you only have a name.",
+      "Fetches the latest tasks for a single contact directly from Lezgo Suite CRM (live, always fresh). Returns task title, due date, status (completed/pending), and assigned user. Use for a single contact's full task history. For bulk queries across many contacts, use search_tasks or aggregate(entity:'tasks') instead. Always resolve the contactId first with search_contacts if you only have a name.",
     input_schema: {
       type: "object",
       properties: {
@@ -419,7 +419,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "get_contact_notes",
     description:
-      "Fetches all advisor-written notes for a contact from GoHighLevel. Notes are internal observations — NOT chat messages. Use when the user asks what was noted, observed, or documented about a contact, or to cross-reference notes against the conversation.",
+      "Fetches all advisor-written notes for a contact from Lezgo Suite CRM. Notes are internal observations — NOT chat messages. Use when the user asks what was noted, observed, or documented about a contact, or to cross-reference notes against the conversation.",
     input_schema: {
       type: "object",
       properties: {
