@@ -12,17 +12,6 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
-// Client-only, deliberately. LoadingScreen is a tree of framer-motion elements
-// whose `initial` prop (opacity:0, translateX(-8px), …) gets serialised into the
-// SSR HTML, but on the client the animations have already advanced past it by the
-// time React hydrates — so the style attributes don't match and React reports a
-// hydration mismatch. Nothing here is server-renderable anyway: every byte the
-// dashboard shows arrives from a client-side fetch, so the SSR pass produced only
-// a throwaway loading screen.
-const LoadingScreen = dynamic(
-  () => import("@/components/dashboard/loading-screen").then((m) => m.LoadingScreen),
-  { ssr: false },
-)
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { useConversationsData } from "@/hooks/use-conversations-data"
 import {
@@ -42,6 +31,21 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+
+// Client-only, deliberately. LoadingScreen is a tree of framer-motion elements
+// whose `initial` prop (opacity:0, translateX(-8px), …) gets serialised into the
+// SSR HTML, but on the client the animations have already advanced past it by the
+// time React hydrates — so the style attributes don't match and React reports a
+// hydration mismatch. Nothing here is server-renderable anyway: every byte the
+// dashboard shows arrives from a client-side fetch, so the SSR pass produced only
+// a throwaway loading screen.
+//
+// Keep this BELOW the import block. Interleaved with the imports, the bundler
+// failed to bind `dynamic` and the module threw at evaluation.
+const LoadingScreen = dynamic(
+  () => import("@/components/dashboard/loading-screen").then((m) => m.LoadingScreen),
+  { ssr: false },
+)
 
 type DashboardTab = "marketing" | "sales" | "conversations"
 
