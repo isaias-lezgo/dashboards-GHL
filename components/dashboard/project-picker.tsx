@@ -19,11 +19,10 @@ export interface PickerProject {
 // one. The chip pins each logo to the background it needs, so the picker stays
 // readable in both light and dark theme without touching the source files.
 //
-// `shape` matches the chip to the asset. Five of these are horizontal wordmark
-// lockups and want a wide chip; Lezgo Suite is a bare square mark (no horizontal
-// lockup of it exists) and stranded in a wide chip it looks like a mistake. The
-// chip narrows to a square for those, while the SLOT around it keeps a constant
-// width so every project name still starts at the same x.
+// `shape` matches the chip to the asset. All six are currently horizontal wordmark
+// lockups and want the wide chip. A bare square mark stranded in a wide chip looks
+// like a mistake, so those take `shape: "square"`; the chip narrows while the SLOT
+// around it keeps a constant width, so every project name still starts at the same x.
 //
 // A project with no entry here simply renders without a chip — adding one to the
 // roster must never break the picker.
@@ -31,7 +30,7 @@ const LOGOS: Record<
   string,
   { src: string; tone: "light" | "dark"; shape?: "square" }
 > = {
-  "lezgo-suite": { src: "/logos/lezgo-suite.png", tone: "light", shape: "square" },
+  "lezgo-suite": { src: "/logos/lezgo-suite.png", tone: "light" },
   condesa: { src: "/logos/condesa.png", tone: "light" },
   "plaza-bosques": { src: "/logos/plaza-bosques.png", tone: "dark" },
   "grand-center": { src: "/logos/grand-center.svg", tone: "light" },
