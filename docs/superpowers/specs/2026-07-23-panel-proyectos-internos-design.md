@@ -175,10 +175,20 @@ dashboards, the AI assistant, and the PDF export.
 
 ```
 DASHBOARD_ACCESS_PASSWORD   new — the shared team password
-DASHBOARD_AUTH_SECRET       unchanged — signs both cookies
+DASHBOARD_AUTH_SECRET       ROTATED (openssl rand -hex 32) — signs both cookies
 DASHBOARD_CLIENTS           six projects, no `password` fields
 ANTHROPIC_API_KEY           unchanged
 ```
+
+`DASHBOARD_AUTH_SECRET` is rotated as part of this change, not carried over.
+
+To be precise about what does the work: the cookie **rename** is what actually
+ends the old sessions — middleware now looks for `dash_access`, and no browser
+holds one, so every pre-migration visitor lands on `/login` regardless of the
+secret. Rotating the secret is defense in depth: it retires a key that signed
+tokens minted under the password-is-identity model, so a captured old cookie
+cannot be replayed if a `dash_session`-reading path is ever reintroduced by
+mistake. Rotate it in Vercel **at the same time** as the deploy.
 
 The six projects: Lezgo Suite, Condesa Cimatario, Plaza Bosques / Meseta,
 Grand Center, Balvanera, Yconia.
