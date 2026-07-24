@@ -100,10 +100,17 @@ down one level.
 ### Header
 
 The header button that today POSTs to `/api/auth/logout` (`app/page.tsx:222`)
-becomes **"Cambiar proyecto"** → `POST /api/project/clear` → `router.refresh()`.
-"Cerrar sesión" moves to the picker screen, where it clears both cookies and
-redirects to `/login` — leaving the dashboard header with exactly one session
-control instead of two.
+becomes **"Cambiar proyecto"** → `POST /api/project/clear` → **full page load** to
+`/`. "Cerrar sesión" moves to the picker screen, where it clears both cookies and
+does a full page load to `/login` — leaving the dashboard header with exactly one
+session control instead of two.
+
+**Every project transition must be a full page load (`window.location.href`), not
+a `router.push` / `router.refresh`.** The existing logout button already does this
+deliberately (`app/page.tsx:223`) so that a cached React tree cannot show the
+previous tenant's data to the next one. Switching from Balvanera to Yconia is the
+same hazard: a soft navigation would leave Balvanera's contacts, opportunities and
+chat history mounted in memory. This applies to `select` as well as `clear`.
 
 ## Login
 
