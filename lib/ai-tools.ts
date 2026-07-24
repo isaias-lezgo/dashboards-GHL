@@ -92,6 +92,22 @@ export function parseChartSpec(input: unknown): ChartSpec | null {
 
 export const TOOL_DEFINITIONS = [
   {
+    name: "list_field_definitions",
+    description:
+      "Lista las definiciones de custom fields editables (de contactos y oportunidades): id, nombre, tipo de dato y opciones válidas. LLAMA ESTO ANTES de escribir un valor o de crear/editar un campo, para usar el id correcto y valores de picklist exactos. Los tipos con opciones (SINGLE_OPTIONS, MULTIPLE_OPTIONS, RADIO, CHECKBOX) solo aceptan valores de su lista.",
+    input_schema: {
+      type: "object",
+      properties: {
+        objectKey: {
+          type: "string",
+          enum: ["contact", "opportunity", "all"],
+          description: "Filtra por objeto. 'all' devuelve ambos.",
+        },
+      },
+      required: ["objectKey"],
+    },
+  },
+  {
     name: "list_fields",
     description:
       "Lists the available entities (contacts, opportunities, pautas, appointments, messages) and their queryable fields. Always call this first if you're unsure what fields exist on pautas (custom-object properties vary per location).",
@@ -940,6 +956,8 @@ export function executeTool(
   data: ChatDataset
 ): ToolOutput {
   switch (name) {
+    case "list_field_definitions":
+      return listFieldDefinitions(input, data);
     case "list_fields":
       return listFields(input, data);
     case "list_values":
@@ -1136,6 +1154,23 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
 }
 
 // ─── list_fields ──────────────────────────────────────────────────────────────
+
+function listFieldDefinitions(input: ToolInput, data: ChatDataset): ToolOutput {
+  const objectKey = typeof input.objectKey === "string" ? input.objectKey : "all";
+  const defs = data.customFieldDefs.filter(
+    (d) => objectKey === "all" || d.objectKey === objectKey,
+  );
+  return {
+    count: defs.length,
+    fields: defs.map((d) => ({
+      id: d.id,
+      name: d.name,
+      objectKey: d.objectKey,
+      dataType: d.dataType,
+      options: d.picklistOptions ?? undefined,
+    })),
+  };
+}
 
 function listFields(input: ToolInput, data: ChatDataset) {
   const entity = String(input.entity ?? "all");
