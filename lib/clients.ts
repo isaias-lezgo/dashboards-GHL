@@ -1,22 +1,17 @@
 // lib/clients.ts
-// The client roster — the seam between "where client config comes from" and
+// The project roster — the seam between "where project config comes from" and
 // everything downstream. Nothing outside this file knows the roster is backed by
 // an env var, so swapping in a database later touches only this file.
-import { safeEqual } from "./auth";
+//
+// Note: `client` is the internal vocabulary; the UI calls these "proyectos".
+// A project id may not contain a dot — it rides inside the dot-delimited
+// dash_project cookie (see lib/auth.ts).
 
 export interface ClientConfig {
   id: string;
   name: string;
   locationId: string;
   ghlToken: string;
-  // Optional override. Absent = the GHL location id doubles as the password.
-  // See the design doc's "Password model" for the accepted risk; this field is
-  // the escape hatch that makes a single client's password rotatable.
-  password?: string;
-}
-
-export function effectivePassword(c: ClientConfig): string {
-  return c.password ?? c.locationId;
 }
 
 // The session token is dot-delimited and embeds the id, so ids may not contain dots.
@@ -42,7 +37,6 @@ export function parseClients(raw: string): ClientConfig[] {
 
   const clients: ClientConfig[] = [];
   const seenIds = new Set<string>();
-  const seenPasswords = new Set<string>();
 
   parsed.forEach((entry, i) => {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -56,18 +50,11 @@ export function parseClients(raw: string): ClientConfig[] {
         throw new Error(`DASHBOARD_CLIENTS[${i}] is missing required field "${field}"`);
       }
     }
-    if (e.password !== undefined && (typeof e.password !== "string" || e.password.trim() === "")) {
-      throw new Error(
-        `DASHBOARD_CLIENTS[${i}] has an empty "password" — omit the field entirely to default to locationId`,
-      );
-    }
-
     const client: ClientConfig = {
       id: e.id as string,
       name: e.name as string,
       locationId: e.locationId as string,
       ghlToken: e.ghlToken as string,
-      ...(e.password !== undefined ? { password: e.password as string } : {}),
     };
 
     if (!ID_RE.test(client.id)) {
@@ -79,14 +66,6 @@ export function parseClients(raw: string): ClientConfig[] {
       throw new Error(`DASHBOARD_CLIENTS has a duplicate id "${client.id}"`);
     }
     seenIds.add(client.id);
-
-    // Two clients with the same effective password would make the login lookup
-    // ambiguous — one would silently shadow the other.
-    const pw = effectivePassword(client);
-    if (seenPasswords.has(pw)) {
-      throw new Error(`DASHBOARD_CLIENTS: client "${client.id}" shares a password with another client`);
-    }
-    seenPasswords.add(pw);
 
     clients.push(client);
   });
@@ -108,15 +87,4 @@ export function getClients(): ClientConfig[] {
 
 export function getClientById(id: string): ClientConfig | null {
   return getClients().find((c) => c.id === id) ?? null;
-}
-
-// Compares against EVERY client with no early return, so response timing doesn't
-// reveal which client a wrong password nearly matched.
-export function findClientByPassword(password: string): ClientConfig | null {
-  if (password === "") return null;
-  let match: ClientConfig | null = null;
-  for (const c of getClients()) {
-    if (safeEqual(password, effectivePassword(c))) match = c;
-  }
-  return match;
 }

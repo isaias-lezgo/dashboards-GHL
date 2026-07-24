@@ -12,7 +12,7 @@ pnpm start      # Serve production build
 pnpm lint       # Run ESLint
 
 # Multi-client
-pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
+pnpm add-client # Add a project to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
                 #   Non-interactive: pnpm add-client --name "X" --location <id> --token pit-…
 
 # Verification (see below — there is no test framework)
@@ -46,18 +46,22 @@ of truth — ignore it.
 ## Environment Variables
 
 Required vars in `.env.local`:
-- `DASHBOARD_CLIENTS` — JSON array of clients, one per GHL sub-account:
-  `[{"id","name","locationId","ghlToken","password"?}]`. `password` is optional and
-  defaults to that client's `locationId`. Use `npm run add-client` to extend it safely.
-- `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
+- `DASHBOARD_ACCESS_PASSWORD` — the one shared password for the internal team. Gates
+  the whole deployment; past the gate any user may open any project. If the value
+  contains `$`, single-quote it in `.env.local` so dotenv doesn't expand it — but
+  paste it **unquoted** in the Vercel UI, where quotes become part of the password.
+- `DASHBOARD_CLIENTS` — JSON array of projects, one per GHL sub-account:
+  `[{"id","name","locationId","ghlToken"}]`. Use `pnpm add-client` to extend it safely.
+- `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign both session cookies
+  (`openssl rand -hex 32`). Rotating it invalidates every live session.
 - `ANTHROPIC_API_KEY` — used by `app/api/chat` (assistant), `analyze-report` (PDF analyses)
   and `analyze-contact`
 - `GHL_API_TOKEN` / `GHL_LOCATION_ID` — **not read by the app.** Kept only so the dev
   GHL MCP server (`.mcp.json`) can point at one sub-account.
 
 All are server-side only. `DASHBOARD_CLIENTS` is read in `lib/clients.ts`;
-`DASHBOARD_AUTH_SECRET` in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
-`middleware.ts` — never exposed to the browser.
+`DASHBOARD_AUTH_SECRET` in `lib/auth.ts`, `app/api/auth/login/route.ts`,
+`app/api/project/select/route.ts`, and `middleware.ts` — never exposed to the browser.
 
 ## Architecture
 
@@ -72,10 +76,10 @@ This is a single-page Next.js 16 (App Router) dashboard that surfaces GoHighLeve
 ### Data flow
 
 ```
-browser → middleware.ts (verifies the signed dash_session cookie)
+browser → middleware.ts (verifies the signed dash_access cookie)
     ↓
 app/api/dashboard/route.ts
-    ↓  requireClient()  → resolves the cookie's client id to a ClientConfig (lib/session.ts)
+    ↓  requireClient()  → resolves dash_project to a ClientConfig (lib/session.ts)
     ↓  withClient(...)  → establishes the per-request credential context (lib/ghl-context.ts)
     ↓
 lib/ghl-client.ts  (raw GHL types + fetch helpers; reads token+location from the context)
@@ -87,7 +91,7 @@ hooks/fetch-stream.ts  (parses the NDJSON stream)
     ↓
 hooks/use-dashboard-data.ts  (custom streaming fetcher; exposes data, progress text, and structured per-dataset `steps`. No SWR/caching — refresh() re-runs the full sync)
     ↓
-app/page.tsx  (tab state, date-filter state, applies the client-side date-range filter, renders dashboard)
+components/dashboard/dashboard-app.tsx  (tab state, date-filter state, applies the client-side date-range filter, renders dashboard)
     ↓
 components/dashboard/{marketing,sales}-dashboard.tsx
 ```
@@ -105,50 +109,70 @@ already holds and need only the middleware gate:
 | `analyze-contact` | Anthropic call summarizing one contact (does read GHL for the opportunity) |
 | `chat` | one Anthropic turn for the AI assistant — **no GHL** |
 | `analyze-report` | Anthropic pass writing the PDF report's analyses — **no GHL** |
-| `auth/login` / `auth/logout` | session cookie |
+| `auth/login` / `auth/logout` | the shared-password gate cookie |
+| `project/select` / `project/clear` | which project the session is viewing — **no GHL** |
 
 Client-side data hooks mirror this: `use-dashboard-data.ts` (main sync),
 `use-conversations-data.ts` (messages), `use-agent-loop.ts` (the AI agent loop), all
 built on `fetch-stream.ts` for the NDJSON routes.
 
-### Multi-client (multi-tenancy)
+### Internal projects & the access gate
 
-One deployment serves every client. **The password IS the client's identity.**
+This deployment is **internal**. It serves the projects the company commercializes
+for third parties, to company staff. The client-facing product — where a client's
+password is their identity — is a *separate* deployment and shares no state with
+this one.
+
+**Vocabulary warning:** the UI says "proyecto" everywhere, but the internal code
+still says `client` (`ClientConfig`, `getClientById`, `withClient`,
+`DASHBOARD_CLIENTS`). This is deliberate — renaming would touch ~20 files without
+changing behavior. When reading this code, "client" means "one of our projects",
+not "a paying customer".
+
+Two cookies, two questions:
+
+| Cookie | Payload | Verified by | Answers |
+|---|---|---|---|
+| `dash_access` | `ok.<expiry>.<hmac>` | `middleware.ts` | may this person enter at all? |
+| `dash_project` | `<clientId>.<expiry>.<hmac>` | `requireClient()` (`lib/session.ts`) | which project are they viewing? |
 
 1. `lib/clients.ts` — the roster, parsed from `DASHBOARD_CLIENTS`. This is the
    **seam**: nothing downstream knows the roster comes from an env var, so swapping
-   in a database later touches only this file.
-2. Login (`app/api/auth/login/route.ts`) looks the submitted password up across the
-   roster (`findClientByPassword` — constant-time, no early return) and HMAC-signs
-   the matched client's id into the `dash_session` cookie:
-   `<clientId>.<expiryMs>.<hmac>`. The id is inside the signed payload, so a client
-   cannot edit their cookie to reach another client's data.
-3. Every GHL-touching route calls `requireClient()` (`lib/session.ts`), which
-   re-verifies the cookie **itself** — it deliberately does not trust a
-   middleware-injected header, which would be a spoofing surface. Middleware only
-   verifies the signature; resolving the client there would drag the roster into the
-   Edge bundle.
-4. The route runs its GHL work inside `withClient(client, ...)`
+   in a database later touches only this file. Project ids may not contain dots —
+   they ride inside the dot-delimited cookie.
+2. Login (`app/api/auth/login/route.ts`) compares the submitted value against
+   `DASHBOARD_ACCESS_PASSWORD` with `safeEqual` and signs `dash_access`. It keeps a
+   per-IP rate limiter (5 attempts / 15 min) — soft, since Vercel resets it on cold
+   starts, but it matters more with one password than it did with per-client ones.
+3. `app/page.tsx` is a **server shell**: it reads `dash_project` and renders either
+   `project-picker.tsx` or `dashboard-app.tsx`. The picker receives only
+   `{ id, name }` per project — **never `ghlToken` or `locationId`**, which would
+   put credentials in the browser bundle.
+4. `POST /api/project/select` validates the id against the roster before signing.
+   `POST /api/project/clear` drops the selection, keeping the gate.
+5. Middleware verifies **only** `dash_access`. It deliberately does not resolve the
+   project — that would drag the roster into the Edge bundle.
+6. Every GHL-touching route calls `requireClient()` (`lib/session.ts`), which
+   re-verifies `dash_project` **itself** rather than trusting a middleware-injected
+   header, which would be a spoofing surface.
+7. The route runs its GHL work inside `withClient(client, ...)`
    (`lib/ghl-context.ts`, an `AsyncLocalStorage`). `ghlFetch` reads credentials via
    `currentClient()`, which is why none of its ~113 exported functions needed a
    signature change. `currentClient()` **fails closed** — it throws rather than
    falling back to a default token.
-5. `lib/ghl-limiter.ts` keys the concurrency semaphore, token bucket, and 429
+8. `lib/ghl-limiter.ts` keys the concurrency semaphore, token bucket, and 429
    cooldown **by location id**, because GHL's budget is per location. Shared, one
-   client's 429 would freeze every other client's sync.
+   project's 429 would freeze every other project's sync.
 
 **NEVER** replace the AsyncLocalStorage context with a module-level "current client"
 variable: one serverless instance serves overlapping requests, so that would
-silently serve client A's dashboard using client B's token.
+silently render project A's dashboard using project B's token. The users being
+internal does not change this — it is a correctness bug, not just a leak.
 
-**Password model — a deliberate, informed tradeoff. Do not "fix" it unprompted.**
-A client's password defaults to their GHL `locationId`. That id is *not* a secret
-(it appears in GHL URLs, embed codes, webhook payloads, Make scenarios) and it
-**cannot be rotated**. The owner accepted this knowingly, for the convenience of
-having nothing extra to manage. The escape hatch is already built in: the optional
-`password` field on a client entry overrides the default, so any single client can be
-given a real, rotatable password by adding one line — no migration, no code change.
-Suggest that if a password leaks; don't rewrite the model on your own initiative.
+**Every project transition must be a full page load** (`window.location.href`),
+never `router.push` / `router.refresh`. A soft navigation leaves the previous
+project's contacts, opportunities and chat history mounted in the cached React
+tree. This applies to the picker, "Cambiar proyecto", and logout alike.
 
 The two streaming routes (`dashboard`, `dashboard-messages`) enter the context
 **inside** the `ReadableStream` `start()` callback — the stream outlives the
@@ -158,7 +182,7 @@ context.
 `app/api/chat` and `app/api/analyze-report` never touch GHL (they work off data the
 browser already holds), so they need no client context — only the middleware gate.
 
-Verification scripts (no test framework in this repo): `npm run verify:clients`,
+Verification scripts (no test framework in this repo): `pnpm verify:clients`,
 `verify:auth`, `verify:limiter`.
 
 ### Loading & progress

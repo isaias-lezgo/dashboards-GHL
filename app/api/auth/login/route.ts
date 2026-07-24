@@ -1,11 +1,13 @@
 // app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
 import {
-  SESSION_COOKIE,
+  ACCESS_COOKIE,
+  ACCESS_PAYLOAD,
+  COOKIE_OPTIONS,
   SESSION_MAX_AGE_SECONDS,
+  safeEqual,
   signToken,
 } from "@/lib/auth";
-import { findClientByPassword, type ClientConfig } from "@/lib/clients";
 
 export const runtime = "nodejs";
 
@@ -44,8 +46,9 @@ function recordFailure(ip: string): void {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.DASHBOARD_CLIENTS || !process.env.DASHBOARD_AUTH_SECRET) {
-    console.error("[auth] DASHBOARD_CLIENTS or DASHBOARD_AUTH_SECRET not set");
+  const expected = process.env.DASHBOARD_ACCESS_PASSWORD;
+  if (!expected || !process.env.DASHBOARD_AUTH_SECRET) {
+    console.error("[auth] DASHBOARD_ACCESS_PASSWORD or DASHBOARD_AUTH_SECRET not set");
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 
@@ -62,34 +65,20 @@ export async function POST(req: Request) {
     submitted = "";
   }
 
-  // The password IS the client's identity. findClientByPassword compares against
-  // every client with no early return, so timing reveals nothing about the roster.
-  let client: ClientConfig | null = null;
-  try {
-    client = findClientByPassword(submitted);
-  } catch (err) {
-    // A malformed roster must not look like a wrong password.
-    console.error("[auth] Invalid DASHBOARD_CLIENTS:", err);
-    return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
-  }
-
-  if (!client) {
+  // One shared team password. Constant-time compare: unlike the location ids this
+  // replaced, this value is a real secret, so timing must not leak a prefix match.
+  if (submitted === "" || !safeEqual(submitted, expected)) {
     recordFailure(ip);
     return NextResponse.json({ error: "invalid_password" }, { status: 401 });
   }
 
-  // Success: clear failures and set the signed session cookie for THIS client.
+  // Success: clear failures and set the signed gate cookie. It names no project —
+  // the picker sets dash_project separately.
   attempts.delete(ip);
   const expiryMs = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
-  const token = await signToken(client.id, expiryMs);
+  const token = await signToken(ACCESS_PAYLOAD, expiryMs);
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
+  res.cookies.set(ACCESS_COOKIE, token, { ...COOKIE_OPTIONS, maxAge: SESSION_MAX_AGE_SECONDS });
   return res;
 }

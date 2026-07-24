@@ -1,10 +1,10 @@
-// Verification for lib/clients.ts. Run: npm run verify:clients
+// Verification for lib/clients.ts. Run: pnpm verify:clients
 import assert from "node:assert/strict";
-import { parseClients, effectivePassword, findClientByPassword, getClientById } from "../lib/clients";
+import { parseClients, getClientById } from "../lib/clients";
 
 const VALID = JSON.stringify([
   { id: "yconia", name: "Yconia", locationId: "loc-yconia", ghlToken: "pit-a" },
-  { id: "condesa", name: "Condesa", locationId: "loc-condesa", ghlToken: "pit-b", password: "custom-pw" },
+  { id: "condesa", name: "Condesa", locationId: "loc-condesa", ghlToken: "pit-b" },
 ]);
 
 function throws(raw: string, needle: string, label: string) {
@@ -23,12 +23,24 @@ function throws(raw: string, needle: string, label: string) {
 const clients = parseClients(VALID);
 assert.equal(clients.length, 2);
 assert.equal(clients[0].id, "yconia");
-assert.equal(clients[0].password, undefined);
-assert.equal(clients[1].password, "custom-pw");
+assert.equal(clients[0].locationId, "loc-yconia");
+assert.equal(clients[1].name, "Condesa");
 
-// --- password defaults to locationId, override wins
-assert.equal(effectivePassword(clients[0]), "loc-yconia");
-assert.equal(effectivePassword(clients[1]), "custom-pw");
+// --- a stray `password` key in the JSON is ignored, not carried through.
+// Rosters written under the old model must not smuggle a dead field into ClientConfig.
+const legacy = parseClients(
+  JSON.stringify([{ id: "a", name: "A", locationId: "l", ghlToken: "t", password: "old" }]),
+);
+assert.equal((legacy[0] as unknown as Record<string, unknown>).password, undefined);
+
+// --- two projects MAY now share a locationId (it is no longer a password)
+const shared = parseClients(
+  JSON.stringify([
+    { id: "a", name: "A", locationId: "same", ghlToken: "t1" },
+    { id: "b", name: "B", locationId: "same", ghlToken: "t2" },
+  ]),
+);
+assert.equal(shared.length, 2);
 
 // --- validation failures
 throws("not json", "not valid JSON", "malformed JSON");
@@ -45,32 +57,10 @@ throws(
   "duplicate id",
   "duplicate id",
 );
-throws(
-  JSON.stringify([
-    { id: "a", name: "A", locationId: "same", ghlToken: "t" },
-    { id: "b", name: "B", locationId: "same", ghlToken: "t" },
-  ]),
-  "shares a password",
-  "password collision via identical locationId",
-);
-throws(
-  JSON.stringify([
-    { id: "a", name: "A", locationId: "l1", ghlToken: "t" },
-    { id: "b", name: "B", locationId: "l2", ghlToken: "t", password: "l1" },
-  ]),
-  "shares a password",
-  "password collision via override",
-);
 
 // --- env-backed lookups
 process.env.DASHBOARD_CLIENTS = VALID;
 assert.equal(getClientById("yconia")?.name, "Yconia");
 assert.equal(getClientById("nope"), null);
-assert.equal(findClientByPassword("loc-yconia")?.id, "yconia");
-assert.equal(findClientByPassword("custom-pw")?.id, "condesa");
-// the overridden client's locationId must NOT work as a password
-assert.equal(findClientByPassword("loc-condesa"), null);
-assert.equal(findClientByPassword("wrong"), null);
-assert.equal(findClientByPassword(""), null);
 
 console.log("✅ lib/clients.ts — all assertions passed");

@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   // Client component: can't export `metadata`, so set the browser-tab title here.
-  useEffect(() => { document.title = "Iniciar sesión - Lezgo Suite CRM" }, []);
+  useEffect(() => { document.title = "Acceso - Proyectos Lezgo" }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,7 +35,7 @@ export default function LoginPage() {
       if (res.status === 429) {
         setError("Demasiados intentos. Espera unos minutos e intenta de nuevo.");
       } else {
-        setError("Contraseña incorrecta.");
+        setError("Clave incorrecta.");
       }
     } catch {
       setError("Error de red. Intenta de nuevo.");
@@ -48,13 +48,13 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Dashboard protegido</CardTitle>
-          <CardDescription>Ingresa la contraseña para continuar.</CardDescription>
+          <CardTitle>Proyectos Lezgo</CardTitle>
+          <CardDescription>Ingresa la clave de acceso del equipo.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password">Clave de acceso</Label>
               <Input
                 id="password"
                 type="password"
