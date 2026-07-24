@@ -65,23 +65,22 @@ el resto**: el navegador se queda con `customFieldsResolved` (nombre→valor) y 
 ids sueltos dentro de cada registro, **sin el tipo del campo ni sus opciones**.
 Para escribir hace falta el id; para validar, el tipo y el picklist.
 
-La respuesta v1 (`GHLCustomField`) ya trae todo lo necesario —
-`{ id, name, dataType, model, options }` donde `model` es `"contact"|"opportunity"`
-y `options` es `Array<{id, value, label}>`. El frame `data` del NDJSON debe
-exponerlo (normalizando el nombre del campo objeto a `objectKey` para que
-coincida con lo que espera la escritura):
+La respuesta v1 ya trae todo lo necesario por campo —
+`{ id, name, dataType, model, fieldKey, picklistOptions }`. El frame `data` del
+NDJSON debe exponerlo, **filtrando** a los objetos que editamos:
 
 ```ts
 customFieldDefs: Array<{
   id: string;
   name: string;
-  objectKey: "contact" | "opportunity";   // derivado de GHLCustomField.model
-  dataType: string;          // TEXT, NUMERICAL, SINGLE_OPTIONS, MULTIPLE_OPTIONS, DATE, …
-  options?: Array<{ value: string; label: string }>;  // solo para *_OPTIONS
+  objectKey: "contact" | "opportunity";   // = GHLCustomField.model, filtrado a estos dos
+  dataType: string;          // TEXT | LARGE_TEXT | NUMERICAL | SINGLE_OPTIONS | MULTIPLE_OPTIONS | DATE | CHECKBOX | RADIO
+  fieldKey?: string;
+  picklistOptions?: string[];   // solo para *_OPTIONS / RADIO / CHECKBOX; string[] plano
 }>
 ```
 
-Prácticamente gratis: ya está en memoria en el servidor.
+Prácticamente gratis: ya está en memoria en el servidor (`customFieldsRaw`).
 
 **2. El toggle decide qué herramientas se mandan al modelo.**
 `conversations-chat.tsx` mantiene `writeEnabled` (estado local) y lo envía en el
@@ -118,21 +117,37 @@ acción de borrado.
 existente (ya hace POST/PUT, ya pasa por el limiter por location). Precedente:
 los ~40 helpers de Facebook ya mutan por esta vía.
 
-**⚠ Dos APIs de custom fields distintas — el plan debe tratarlas por separado:**
+**⚠ Corrección de API (verificada contra la doc y la API en vivo el 2026-07-23):**
 
-- **Escribir un VALOR** en un contacto/oportunidad va por los endpoints de
-  contacto/oportunidad. Forma de escritura documentada en CLAUDE.md:
-  `customFields: [{ id, key, field_value }]` (distinta de la forma de lectura
-  `{ id, value }`). La oportunidad usa un endpoint aparte del contacto.
-- **Crear/editar una DEFINICIÓN** va por la **Custom Fields V2**
-  (`marketplace.gohighlevel.com/docs/ghl/custom-fields/custom-fields-v-2`) — otro
-  path, otra versión de header, e identifica el objeto con `objectKey`, no con el
-  `model` que devuelve la lectura v1. Es CRUD por object key, con carpetas y un
-  Delete que **no** usamos.
+La versión anterior de este spec decía usar **Custom Fields V2**
+(`/custom-fields/`) para crear/editar definiciones. **Es incorrecto:** la doc de
+V2 dice literalmente *"Only supports Custom Objects and Company (Business)
+today"* — **no soporta objetos `contact` ni `opportunity`**, que son justo los
+nuestros. Los endpoints correctos son la **misma familia v1 por location** que ya
+usamos para leer:
 
-Es decir: se **lee** por v1 (lo que ya hace el dashboard) pero se **crea/edita la
-definición** por v2. El plan debe confirmar los paths/versiones exactos de v2
-contra la doc antes de codificar los dos últimos helpers.
+- **Escribir un VALOR** en un contacto: `PUT /contacts/:contactId` con
+  `customFields: [{ id, field_value }]` (forma de escritura de CLAUDE.md, distinta
+  de la lectura `{ id, value }`). Oportunidad: `PUT /opportunities/:id` con la
+  misma forma de `customFields`.
+- **Crear una DEFINICIÓN**: `POST /locations/:locationId/customFields` con
+  `{ name, dataType, model, picklistOptions? }` donde `model` es
+  `"contact"|"opportunity"`.
+- **Editar una DEFINICIÓN**: `PUT /locations/:locationId/customFields/:id` con
+  `{ name?, picklistOptions? }`. **`picklistOptions` reemplaza el arreglo
+  completo** — de ahí la lógica de fusión del No-negociable 6.
+
+**Forma real de las opciones (confirmada en vivo):** el campo se llama
+`picklistOptions` y es un **`string[]`** plano (p. ej. `["Show","No show",
+"Cancelada"]`), **no** `Array<{id,value,label}>` como sugiere la anotación
+obsoleta de `GHLCustomField.options` en `lib/ghl-client.ts`. La fusión opera sobre
+strings.
+
+**`dataType` observados en vivo:** `TEXT`, `LARGE_TEXT`, `NUMERICAL`,
+`SINGLE_OPTIONS`, `MULTIPLE_OPTIONS`, `DATE`, `CHECKBOX`, `RADIO`.
+
+**`model` incluye también `custom_objects.pautas`** — al construir
+`customFieldDefs` hay que **filtrar** a `model ∈ {contact, opportunity}`.
 
 ### Herramientas
 
