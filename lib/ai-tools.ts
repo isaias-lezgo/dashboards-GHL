@@ -722,6 +722,104 @@ export const TOOL_DEFINITIONS = [
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
 
+// Herramientas de ESCRITURA — solo se envían al modelo con el modo edición
+// activo, y CADA UNA pasa por la puerta de confirmación en use-agent-loop.ts.
+// WRITE_TOOLS se DERIVA de este arreglo: agregar una tool aquí la registra
+// automáticamente en la puerta (No-negociable 2 — no se puede desincronizar).
+export const WRITE_TOOL_DEFINITIONS = [
+  {
+    name: "set_contact_fields",
+    description:
+      "Cambia valores de custom fields en uno o varios contactos (hasta 50). Un elemento por contacto; cada 'fields' mapea nombre de campo -> valor. Para campos con opciones usa un valor exacto de la lista (ver list_field_definitions). Requiere confirmación del usuario.",
+    input_schema: {
+      type: "object",
+      properties: {
+        updates: {
+          type: "array",
+          maxItems: 50,
+          items: {
+            type: "object",
+            properties: {
+              contactId: { type: "string" },
+              fields: {
+                type: "object",
+                description: "nombre de campo -> valor (string o lista para multi-opción)",
+              },
+            },
+            required: ["contactId", "fields"],
+          },
+        },
+      },
+      required: ["updates"],
+    },
+  },
+  {
+    name: "set_opportunity_fields",
+    description:
+      "Cambia valores de custom fields en una o varias oportunidades (hasta 50). Igual que set_contact_fields pero con opportunityId. Requiere confirmación del usuario.",
+    input_schema: {
+      type: "object",
+      properties: {
+        updates: {
+          type: "array",
+          maxItems: 50,
+          items: {
+            type: "object",
+            properties: {
+              opportunityId: { type: "string" },
+              fields: { type: "object" },
+            },
+            required: ["opportunityId", "fields"],
+          },
+        },
+      },
+      required: ["updates"],
+    },
+  },
+  {
+    name: "create_custom_field",
+    description:
+      "Crea una definición de custom field nueva en el objeto contact u opportunity. Para tipos con opciones (SINGLE_OPTIONS, MULTIPLE_OPTIONS, RADIO) incluye 'options'. Requiere confirmación del usuario.",
+    input_schema: {
+      type: "object",
+      properties: {
+        objectKey: { type: "string", enum: ["contact", "opportunity"] },
+        name: { type: "string" },
+        dataType: {
+          type: "string",
+          enum: ["TEXT", "LARGE_TEXT", "NUMERICAL", "SINGLE_OPTIONS", "MULTIPLE_OPTIONS", "DATE", "RADIO", "CHECKBOX"],
+        },
+        options: {
+          type: "array",
+          items: { type: "string" },
+          description: "Solo para tipos con opciones.",
+        },
+      },
+      required: ["objectKey", "name", "dataType"],
+    },
+  },
+  {
+    name: "update_custom_field",
+    description:
+      "Edita una definición de campo existente: renómbrala (name) y/o AGREGA opciones (addOptions). NO puede quitar ni borrar opciones. Requiere confirmación del usuario.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fieldId: { type: "string" },
+        name: { type: "string", description: "Nuevo nombre (opcional)." },
+        addOptions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Opciones a agregar (opcional).",
+        },
+      },
+      required: ["fieldId"],
+    },
+  },
+] as const;
+
+export const WRITE_TOOLS = new Set<string>(WRITE_TOOL_DEFINITIONS.map((t) => t.name));
+
 // ─── Executor ─────────────────────────────────────────────────────────────────
 
 type ToolInput = Record<string, unknown>;
