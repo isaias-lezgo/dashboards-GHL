@@ -22,6 +22,7 @@ import {
   Paperclip,
   X,
   FileSpreadsheet,
+  Pencil,
   Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -64,6 +65,7 @@ import {
 import { ConversationsContextPanel } from "@/components/dashboard/conversations-context-panel";
 import { ChatChart } from "@/components/dashboard/chat-chart";
 import { ChatQuestion } from "@/components/dashboard/chat-question";
+import { ChatWriteConfirm, WriteReceiptCard } from "@/components/dashboard/chat-write-confirm";
 import {
   ChartDrillDrawer,
   DRILL_CLOSED,
@@ -246,6 +248,7 @@ export function ConversationsChat({
   locationId,
 }: ConversationsChatProps) {
   const [input, setInput] = useState("");
+  const [writeEnabled, setWriteEnabled] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -448,12 +451,15 @@ export function ConversationsChat({
     reset,
     pendingQuestion,
     answer,
-  } = useAgentLoop({ datasetSummary, dataset, onToolExecuted });
+    pendingWrite,
+    resolveWrite,
+    writeReceipts,
+  } = useAgentLoop({ datasetSummary, dataset, writeEnabled, onToolExecuted });
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, status, pendingQuestion]);
+  }, [messages, status, pendingQuestion, pendingWrite]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -590,6 +596,14 @@ export function ConversationsChat({
             <ChatQuestion question={pendingQuestion} onAnswer={answer} />
           )}
 
+          {writeReceipts.map((r, i) => (
+            <WriteReceiptCard key={`wr-${i}`} receipt={r} />
+          ))}
+
+          {pendingWrite && (
+            <ChatWriteConfirm pending={pendingWrite} onResolve={resolveWrite} />
+          )}
+
           {busy && status && (
             <div className="flex items-center gap-2.5 py-1 text-xs text-muted-foreground">
               <span className="flex gap-0.5">
@@ -677,6 +691,12 @@ export function ConversationsChat({
               e.target.value = "";
             }}
           />
+          {writeEnabled && (
+            <div className="mb-2 flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-[11px] text-primary">
+              <Pencil className="h-3 w-3 shrink-0" />
+              Modo edición: la IA puede modificar datos. Cada cambio te pide confirmación.
+            </div>
+          )}
           <Textarea
             ref={inputRef}
             value={input}
@@ -694,7 +714,7 @@ export function ConversationsChat({
             placeholder="¿Qué quieres saber?"
             rows={2}
             className="min-h-[52px] w-full resize-none text-sm"
-            disabled={busy}
+            disabled={busy || !!pendingWrite}
           />
           <div className="mt-2.5 flex items-center justify-between">
             <div className="flex items-center gap-1">
@@ -720,6 +740,26 @@ export function ConversationsChat({
                 <Paperclip className="h-3 w-3" />
                 Adjuntar
               </Button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={writeEnabled}
+                onClick={() => setWriteEnabled((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] transition-colors",
+                  writeEnabled
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border/60 text-muted-foreground hover:border-primary/40",
+                )}
+                title={
+                  writeEnabled
+                    ? "Modo edición activo: la IA puede proponer cambios, y cada uno te pide confirmación."
+                    : "Modo solo lectura. Actívalo para permitir ediciones (con confirmación)."
+                }
+              >
+                <Pencil className="h-3 w-3" />
+                {writeEnabled ? "Edición" : "Solo lectura"}
+              </button>
             </div>
             <div className="flex items-center gap-1.5">
               {busy && (
@@ -740,6 +780,7 @@ export function ConversationsChat({
                 onClick={handleSend}
                 disabled={
                   busy ||
+                  !!pendingWrite ||
                   attachments.some((a) => a.status === "processing") ||
                   (!input.trim() && !attachments.some((a) => a.status === "ready"))
                 }

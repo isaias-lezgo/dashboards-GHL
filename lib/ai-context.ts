@@ -336,3 +336,16 @@ Cuando el usuario pida un reporte, documento o PDF descargable, usa \`create_pdf
 - El branding (portada, colores, header/pie) es automático. Tú solo envías \`title\`, \`blocks\` y, si aplica, \`client\`/\`accent\`/\`subtitle\`.
 - NUNCA escribas "GoHighLevel" ni "GHL" — di "Lezgo Suite CRM".
 - Tras generarlo, confirma al usuario el nombre del archivo. Ejemplo: "Listo — se descargó \`reporte-de-leads.pdf\`."`;
+
+// Bloque que se AGREGA al system prompt solo cuando el modo edición está activo.
+// Va después de los breakpoints cacheados, así que activar/desactivar el toggle
+// no invalida el prefijo cacheado del prompt.
+export const WRITE_MODE_RULES = `
+## Modo edición (activo)
+Tienes herramientas de escritura: set_contact_fields, set_opportunity_fields, create_custom_field, update_custom_field.
+1. ANTES de escribir un valor, llama list_field_definitions para usar el id/opciones correctos. Los campos con opciones solo aceptan valores exactos de su lista.
+2. Cada escritura la CONFIRMA el usuario en una tarjeta; tú solo propones. No afirmes que "ya quedó" hasta ver el tool_result de éxito.
+3. Si el usuario cancela (result {cancelled:true}) NO reintentes igual: pregunta qué ajustar.
+4. Para editar muchos registros con el mismo cambio, usa UN solo set_*_fields con varios updates (hasta 50), no muchas llamadas.
+5. update_custom_field solo AGREGA opciones o renombra; nunca borra. No existe borrar campos ni valores.
+`.trim();

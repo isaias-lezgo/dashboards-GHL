@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
-import { ASSISTANT_SYSTEM_PROMPT } from "@/lib/ai-context";
+import { TOOL_DEFINITIONS, WRITE_TOOL_DEFINITIONS } from "@/lib/ai-tools";
+import { ASSISTANT_SYSTEM_PROMPT, WRITE_MODE_RULES } from "@/lib/ai-context";
 
 // Server-side, one Anthropic turn per request. The client runs the agent
 // loop: when we return tool_use blocks, the client executes them locally
@@ -18,6 +18,8 @@ interface ChatRequestBody {
   maxTokens?: number;
   // IANA timezone from the user's browser. Falls back to America/Mexico_City.
   userTimezone?: string;
+  // Modo edición: envía las herramientas de escritura + reglas de escritura.
+  writeEnabled?: boolean;
 }
 
 export const runtime = "nodejs";
@@ -111,6 +113,10 @@ export async function POST(req: Request) {
       timeZone: tz,
     });
 
+    const tools = body.writeEnabled
+      ? [...TOOL_DEFINITIONS, ...WRITE_TOOL_DEFINITIONS]
+      : TOOL_DEFINITIONS;
+
     const response = await client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: body.maxTokens ?? 4096,
@@ -125,12 +131,15 @@ export async function POST(req: Request) {
           text: body.datasetSummary,
           cache_control: { type: "ephemeral" },
         },
+        // El bloque de reglas de escritura va DESPUÉS de los dos breakpoints
+        // cacheados y sin cache_control, así que el toggle no invalida el prefijo.
+        ...(body.writeEnabled ? [{ type: "text" as const, text: WRITE_MODE_RULES }] : []),
         {
           type: "text",
           text: `Fecha y hora actuales: ${today}, ${time} (zona horaria ${tz}). Usa esto para resolver referencias relativas como "hoy", "ayer", "esta semana", "esta mañana" o "ahora".`,
         },
       ],
-      tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
+      tools: tools as unknown as Anthropic.Tool[],
       messages: withRollingCacheBreakpoint(body.messages),
     });
 
