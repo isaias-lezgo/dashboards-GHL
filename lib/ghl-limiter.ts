@@ -124,6 +124,42 @@ export function note429(locationId: string, cooldownMs: number): void {
   s.cooldownUntil = Math.max(s.cooldownUntil, Date.now() + cooldownMs);
 }
 
+// --- retry backoff policy ---
+//
+// Both caps exist because a `Retry-After` header is an UPSTREAM value: obeying it
+// verbatim hands an outside party the power to park a sync for arbitrarily long.
+// This is not hypothetical — GHL answered `522 Retry-After: 120` and every
+// parallel dataset fetch slept two minutes, leaving the loading screen frozen at
+// 0% (see the 2026-07-23 incident).
+
+// A 5xx is a broken/timed-out gateway, not a rate limit. It has no legitimate
+// knowledge of when we should return, so its opinion is capped hard.
+export const MAX_SERVER_BACKOFF_MS = 15_000;
+
+// A 429 IS authoritative about its own window, so this cap is looser — it only
+// guards against a pathological value freezing the location for many minutes.
+export const MAX_429_COOLDOWN_MS = 60_000;
+
+// Pure. Delay before retrying a 5xx: the server's Retry-After if it gave one,
+// otherwise exponential backoff, and never more than the cap.
+export function serverErrorDelayMs(
+  retryAfterSeconds: number,
+  attempt: number,
+  jitterMs: number,
+): number {
+  const base =
+    retryAfterSeconds > 0
+      ? retryAfterSeconds * 1000
+      : Math.pow(2, attempt) * 1000 + jitterMs;
+  return Math.min(base, MAX_SERVER_BACKOFF_MS);
+}
+
+// Pure. Cooldown to apply to a location after a 429.
+export function rateLimitCooldownMs(retryAfterSeconds: number, intervalMs: number): number {
+  const base = retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : intervalMs;
+  return Math.min(base, MAX_429_COOLDOWN_MS);
+}
+
 // --- verification hooks (scripts/verify-limiter.ts) ---
 export function __resetLimiters(): void {
   limiters.clear();

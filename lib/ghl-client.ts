@@ -4,13 +4,15 @@
 //
 // Credentials are per-request, not per-process: ghlFetch reads them from the
 // AsyncLocalStorage context established by the route (see lib/ghl-context.ts).
-import { currentClient } from "./ghl-context";
+import { currentClient, reportRetry } from "./ghl-context";
 import {
   acquireSlot,
   releaseSlot,
   acquireRateToken,
   noteRateLimitHeaders,
   note429,
+  rateLimitCooldownMs,
+  serverErrorDelayMs,
   RATE_LIMIT_INTERVAL_MS,
 } from "./ghl-limiter";
 
@@ -135,13 +137,17 @@ async function ghlFetch<T>(
           const interval =
             Number(response.headers.get("x-ratelimit-interval-milliseconds")) ||
             RATE_LIMIT_INTERVAL_MS;
-          const cool = retryAfter > 0 ? retryAfter * 1000 : interval;
+          const cool = rateLimitCooldownMs(retryAfter, interval);
           note429(locationId, cool + jitter());
           console.warn(`[GHL] 429 for ${locationId} — cooldown ~${cool}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          reportRetry({ status: 429, attempt: attempt + 1, maxAttempts: MAX_RETRIES + 1, delayMs: cool });
           continue; // acquireRateToken() at the top of the loop waits out the cooldown
         }
-        const delay = retryAfter > 0 ? retryAfter * 1000 : Math.pow(2, attempt) * 1000 + jitter();
+        // Capped: a 5xx is a broken gateway, not a rate limit, so its Retry-After
+        // does not get to park the whole sync (see lib/ghl-limiter.ts).
+        const delay = serverErrorDelayMs(retryAfter, attempt, jitter());
         console.warn(`[GHL] ${response.status} — retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        reportRetry({ status: response.status, attempt: attempt + 1, maxAttempts: MAX_RETRIES + 1, delayMs: delay });
         await sleep(delay);
         continue;
       }

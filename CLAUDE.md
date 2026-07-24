@@ -16,18 +16,19 @@ pnpm add-client # Add a project to the DASHBOARD_CLIENTS roster (prompts, valida
                 #   Non-interactive: pnpm add-client --name "X" --location <id> --token pit-…
 
 # Verification (see below — there is no test framework)
-pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
+pnpm verify:clients      # lib/clients.ts   — roster parsing
 pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-tamper rejection
-pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation
+pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation + retry backoff caps
+pnpm verify:context      # lib/ghl-context.ts — credential isolation across concurrent requests
 pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabular parse/query/join
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
-**No test framework, and not adopting one.** Instead, the three pure modules where a
-silent bug would be a *cross-tenant data leak* have assertion scripts under
-`scripts/verify-*.ts` (plain `node:assert/strict`, run via `tsx`). Run them after
-touching auth, the roster, or the limiter. Everything else is verified by driving the
-real app.
+**No test framework, and not adopting one.** Instead, the modules where a silent bug
+would be a *cross-project data leak* — or would strand a sync — have assertion scripts
+under `scripts/verify-*.ts` (plain `node:assert/strict`, run via `tsx`). Run them after
+touching auth, the roster, the credential context, or the limiter. Everything else is
+verified by driving the real app.
 
 Gotcha when writing these scripts: this package is CommonJS (no `"type": "module"`),
 so `tsx` compiles to CJS where **top-level `await` fails**. Wrap async work in a
@@ -180,6 +181,20 @@ Two cookies, two questions:
 8. `lib/ghl-limiter.ts` keys the concurrency semaphore, token bucket, and 429
    cooldown **by location id**, because GHL's budget is per location. Shared, one
    project's 429 would freeze every other project's sync.
+
+**Never obey an upstream `Retry-After` verbatim.** `serverErrorDelayMs()` and
+`rateLimitCooldownMs()` (`lib/ghl-limiter.ts`) cap it, because that header is a
+value someone else controls. GHL once answered `522 Retry-After: 120` and every
+parallel dataset fetch slept two minutes — with `MAX_RETRIES = 4` the worst case
+was an eight-minute stall. A 5xx is a broken gateway, not a rate limit; it has no
+legitimate knowledge of when we should come back, so its cap is the tighter one.
+
+While `ghlFetch` waits out a backoff the NDJSON stream would otherwise go silent,
+leaving the loading screen pinned at 0% with no way to tell "retrying" from
+"hung". `reportRetry()` (`lib/ghl-context.ts`) rides the same AsyncLocalStorage as
+the credentials so the route can turn a retry into a progress frame. It is
+**diagnostics only** — no reporter is a no-op and a throwing reporter is
+swallowed, because telling the user about a retry must never break the sync.
 
 **NEVER** replace the AsyncLocalStorage context with a module-level "current client"
 variable: one serverless instance serves overlapping requests, so that would

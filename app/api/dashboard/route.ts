@@ -355,10 +355,15 @@ export async function GET() {
       // The client context is entered HERE, not around GET(): the stream keeps
       // producing frames after GET() has returned, so wrapping the handler would
       // leave the pump running outside the context (where currentClient() throws).
-      await withClient(client, async () => {
-        const send = (obj: unknown) => {
-          controller.enqueue(encoder.encode(enc(obj)));
-        };
+      // `send` is declared before withClient so the retry reporter below can use
+      // it; the reporter fires from deep inside ghlFetch, mid-backoff.
+      const send = (obj: unknown) => {
+        controller.enqueue(encoder.encode(enc(obj)));
+      };
+
+      await withClient(
+        client,
+        async () => {
         // Structured per-dataset progress. The client renders one live row per
         // step (status + running count), so the user watches every stream advance
         // in parallel instead of staring at a single flickering line. `progress`
@@ -640,7 +645,22 @@ export async function GET() {
         } finally {
           controller.close();
         }
-      });
+        },
+        // Keeps the loading screen honest while ghlFetch waits out a backoff.
+        // Without this the stream goes silent mid-retry and the UI is stuck at 0%
+        // with no way to tell "retrying" from "hung" — which is exactly how a
+        // GHL 522 presented on 2026-07-23.
+        ({ status, attempt, maxAttempts, delayMs }) => {
+          const secs = Math.round(delayMs / 1000);
+          send({
+            type: "progress",
+            message:
+              status === 429
+                ? `Límite de solicitudes alcanzado, reintentando en ${secs}s… (${attempt}/${maxAttempts})`
+                : `El CRM no responde (${status}), reintentando en ${secs}s… (${attempt}/${maxAttempts})`,
+          });
+        },
+      );
     },
   });
 
