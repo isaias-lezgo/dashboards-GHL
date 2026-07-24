@@ -11,6 +11,25 @@ export interface PickerProject {
   name: string
 }
 
+// Logo assets live in public/logos/, named after the project id.
+//
+// `tone` is the chip background each logo was DESIGNED for, and it is not
+// cosmetic: five of these are dark ink on transparency and vanish on a dark
+// surface, while Plaza Bosques ships a WHITE wordmark and vanishes on a light
+// one. The chip pins each logo to the background it needs, so the picker stays
+// readable in both light and dark theme without touching the source files.
+//
+// A project with no entry here simply renders without a chip — adding one to the
+// roster must never break the picker.
+const LOGOS: Record<string, { src: string; tone: "light" | "dark" }> = {
+  "lezgo-suite": { src: "/logos/lezgo-suite.png", tone: "light" },
+  condesa: { src: "/logos/condesa.png", tone: "light" },
+  "plaza-bosques": { src: "/logos/plaza-bosques.png", tone: "dark" },
+  "grand-center": { src: "/logos/grand-center.svg", tone: "light" },
+  balvanera: { src: "/logos/balvanera.png", tone: "light" },
+  yconia: { src: "/logos/yconia.png", tone: "light" },
+}
+
 export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
   const [pending, setPending] = useState<string | null>(null)
 
@@ -49,28 +68,52 @@ export function ProjectPicker({ projects }: { projects: PickerProject[] }) {
           </p>
         ) : (
           <div className="mt-10 grid gap-4 sm:grid-cols-2">
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                disabled={pending !== null}
-                onClick={() => open(p.id)}
-                className={cn(
-                  "group flex items-center justify-between rounded-xl border border-border bg-card",
-                  "px-6 py-7 text-left transition-colors duration-200",
-                  "hover:border-foreground/25 hover:bg-accent",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  "disabled:pointer-events-none disabled:opacity-50",
-                )}
-              >
-                <span className="text-lg font-medium text-foreground">{p.name}</span>
-                {pending === p.id ? (
-                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
-                ) : (
-                  <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
-                )}
-              </button>
-            ))}
+            {projects.map((p) => {
+              const logo = LOGOS[p.id]
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={pending !== null}
+                  onClick={() => open(p.id)}
+                  className={cn(
+                    "group flex items-center gap-5 rounded-xl border border-border bg-card",
+                    "px-5 py-5 text-left transition-colors duration-200",
+                    "hover:border-foreground/25 hover:bg-accent",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "disabled:pointer-events-none disabled:opacity-50",
+                  )}
+                >
+                  {logo && (
+                    <span
+                      className={cn(
+                        "flex h-16 w-28 shrink-0 items-center justify-center rounded-lg p-2.5",
+                        // The ring is on EVERY chip, not just the dark one. Without it
+                        // the fill that matches the current theme's card goes invisible
+                        // and that one logo reads as a mistake — white chips vanish in
+                        // light theme, the dark chip vanishes in dark theme. A constant
+                        // outline makes all six read as one system with different fills.
+                        "ring-1 ring-black/10 dark:ring-white/15",
+                        logo.tone === "dark" ? "bg-[#151B28]" : "bg-white",
+                      )}
+                    >
+                      {/* Plain <img>, not next/image: these are fixed-size decorative
+                          marks that need no srcset, and one is an SVG, which the
+                          next/image optimizer refuses without dangerouslyAllowSVG.
+                          alt="" because the project name sits right beside it. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={logo.src} alt="" className="max-h-full max-w-full object-contain" />
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1 text-lg font-medium text-foreground">{p.name}</span>
+                  {pending === p.id ? (
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin text-muted-foreground" />
+                  ) : (
+                    <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5" />
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
       </main>
