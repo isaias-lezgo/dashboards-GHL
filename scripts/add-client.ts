@@ -1,8 +1,8 @@
-// scripts/add-client.ts — add a client to the DASHBOARD_CLIENTS roster.
+// scripts/add-client.ts — add a project to the DASHBOARD_CLIENTS roster.
 //
-// Interactive:     npm run add-client
-// Non-interactive: npm run add-client -- --name "Plaza Bosques" --location loc-b --token pit-b
-//                  (optional: --id plaza-bosques, --password s3cret)
+// Interactive:     pnpm add-client
+// Non-interactive: pnpm add-client --name "Plaza Bosques" --location loc-b --token pit-b
+//                  (optional: --id plaza-bosques)
 //
 // Reuses the app's own parseClients() validator, so this can never emit a roster
 // the app would reject at startup. It prints the blob; you paste it into Vercel.
@@ -38,13 +38,11 @@ async function collect(): Promise<Omit<ClientConfig, "id"> & { id?: string }> {
     if (!locationId || !ghlToken) {
       fail("Non-interactive mode requires --name, --location and --token.");
     }
-    const password = flag("password");
     return {
       id: flag("id"),
       name: flagName,
       locationId,
       ghlToken,
-      ...(password ? { password } : {}),
     };
   }
 
@@ -57,13 +55,12 @@ async function collect(): Promise<Omit<ClientConfig, "id"> & { id?: string }> {
     }
   }
   try {
-    const name = await ask("Client name (e.g. Plaza Bosques): ");
+    const name = await ask("Project name (e.g. Plaza Bosques): ");
     const suggestedId = slugify(name);
-    const id = (await rl.question(`Client id [${suggestedId}]: `)).trim() || suggestedId;
+    const id = (await rl.question(`Project id [${suggestedId}]: `)).trim() || suggestedId;
     const locationId = await ask("GHL location id: ");
     const ghlToken = await ask("GHL Private Integration Token (pit-...): ");
-    const password = (await rl.question("Password [blank = use the location id]: ")).trim();
-    return { id, name, locationId, ghlToken, ...(password ? { password } : {}) };
+    return { id, name, locationId, ghlToken };
   } finally {
     rl.close();
   }
@@ -96,7 +93,7 @@ async function main() {
   const blob = JSON.stringify([...clients, next]);
 
   // Validate the RESULT, not just the input — this is what catches duplicate ids
-  // and password collisions with clients already in the roster.
+  // against projects already in the roster.
   try {
     parseClients(blob);
   } catch (err) {
@@ -107,7 +104,7 @@ async function main() {
   console.log(blob);
   console.log(
     "\nPaste that into Vercel → Settings → Environment Variables → DASHBOARD_CLIENTS," +
-      `\nthen redeploy. ${next.name} logs in with: ${next.password ?? next.locationId}\n`,
+      `\nthen redeploy. ${next.name} will appear as a button on the project picker.\n`,
   );
 }
 
