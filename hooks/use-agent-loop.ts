@@ -309,7 +309,10 @@ export function useAgentLoop({
   // Optimistic in-memory patch after a successful write, so the model sees a
   // consistent world in the same session without a full re-sync.
   const applyOptimisticPatch = useCallback(
-    (pw: PendingWrite) => {
+    (
+      pw: PendingWrite,
+      created?: { id?: string; picklistOptions?: string[] },
+    ) => {
       const p = pw.payload as Record<string, unknown>;
       if (pw.action === "set_contact_fields" || pw.action === "set_opportunity_fields") {
         const isContact = pw.action === "set_contact_fields";
@@ -329,13 +332,20 @@ export function useAgentLoop({
           }
         }
       } else if (pw.action === "create_custom_field") {
-        dataset.customFieldDefs.push({
-          id: `optimistic-${Date.now()}`,
-          name: String(p.name),
-          objectKey: p.objectKey === "opportunity" ? "opportunity" : "contact",
-          dataType: String(p.dataType),
-          picklistOptions: Array.isArray(p.options) ? (p.options as string[]).map(String) : undefined,
-        });
+        // Usa el id REAL que devolvió GHL, no uno sintético — si no, un
+        // update posterior en la misma sesión mandaría un id que el servidor
+        // no puede resolver ("Campo no encontrado").
+        if (created?.id) {
+          dataset.customFieldDefs.push({
+            id: created.id,
+            name: String(p.name),
+            objectKey: p.objectKey === "opportunity" ? "opportunity" : "contact",
+            dataType: String(p.dataType),
+            picklistOptions:
+              created.picklistOptions ??
+              (Array.isArray(p.options) ? (p.options as string[]).map(String) : undefined),
+          });
+        }
       } else if (pw.action === "update_custom_field") {
         const def = dataset.customFieldDefs.find((d) => d.id === p.fieldId);
         if (def) {
@@ -621,6 +631,7 @@ export function useAgentLoop({
             failed?: number;
             failures?: Array<{ id: string; name?: string; error: string }>;
             error?: string;
+            field?: { id?: string; picklistOptions?: string[] };
           };
           resultForModel = data;
           const failed = data.failed ?? 0;
@@ -638,7 +649,7 @@ export function useAgentLoop({
             failures: data.failures ?? [],
             at: new Date().toISOString(),
           };
-          if (status !== "failed") applyOptimisticPatch(pw);
+          if (status !== "failed") applyOptimisticPatch(pw, data.field);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           resultForModel = { error: msg };
