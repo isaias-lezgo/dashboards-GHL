@@ -12,7 +12,7 @@
     "verify:limiter": "tsx scripts/verify-limiter.ts",
     "verify:attachments": "tsx scripts/verify-attachments.ts",
     "verify:pagination": "tsx --env-file=.env.local scripts/verify-pagination.ts",
-    "add-client": "tsx scripts/add-client.ts",
+    "add-client": "tsx --env-file-if-exists=.env.local scripts/add-client.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
     "verify:sync-store": "tsx --env-file-if-exists=.env.local scripts/verify-sync-store.ts"
   },

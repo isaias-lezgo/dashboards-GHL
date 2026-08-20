@@ -14,6 +14,10 @@ pnpm lint       # Run ESLint
 # Multi-client
 pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
                 #   Non-interactive: pnpm add-client --name "X" --location <id> --token pit-…
+                #   It APPENDS to the roster it reads from DASHBOARD_CLIENTS, which is why the
+                #   script loads .env.local. Run it without that env and it silently starts a
+                #   NEW roster of one — paste that blob into Vercel and every other client is
+                #   gone. Always check the "Current roster (N)" line it prints first.
 
 # Verification (see below — there is no test framework)
 pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
