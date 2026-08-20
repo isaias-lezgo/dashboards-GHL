@@ -396,7 +396,32 @@ export interface GHLOpportunitiesResponse {
     currentPage: number;
     nextPage?: number | null;
     prevPage?: number | null;
+    // Cursor for the record AFTER the last one on this page. Present on every
+    // response (page-numbered ones included), which is what lets us hand off
+    // from offset paging to cursor paging at the 10k ceiling — see
+    // OFFSET_CEILING / getAllOpportunities.
+    startAfterId?: string;
+    startAfter?: number;
   };
+}
+
+// GHL's search endpoints are Elasticsearch-backed and reject any request whose
+// offset reaches 10,000 records:
+//   /opportunities/search        → 400 SEARCH_USE_START_AFTER_PAGINATION
+//                                  "Please use startAfter and startAfterId…"
+//   /objects/:key/records/search → 400 "Invalid request body"
+// Verified live against every sub-account in the roster, so it's an API-level
+// ceiling, not a per-account quirk. Page 101 at limit=100 is the first to fail.
+// Anything walking these endpoints must switch to the cursor before crossing it.
+const DEFAULT_OFFSET_CEILING = 10_000;
+let OFFSET_CEILING = DEFAULT_OFFSET_CEILING;
+
+// --- verification hook (scripts/verify-pagination.ts) ---
+// No sub-account in the roster holds 10k+ records, so the only way to exercise
+// the offset→cursor handoff against REAL data is to move the ceiling down until
+// a normal-sized account crosses it. Production never calls this.
+export function __setOffsetCeiling(n?: number): void {
+  OFFSET_CEILING = n ?? DEFAULT_OFFSET_CEILING;
 }
 
 export interface GHLOpportunityDetail extends GHLOpportunity {
@@ -435,7 +460,13 @@ export async function getOpportunities(params?: {
   assignedTo?: string;
   limit?: number;
   page?: number;
+  startAfterId?: string;
+  startAfter?: number;
 }): Promise<GHLOpportunitiesResponse> {
+  // Cursor and page are mutually exclusive: when a cursor is supplied `page`
+  // must be omitted entirely, or GHL honors the page offset and ignores the
+  // cursor — which would silently re-serve the same records forever.
+  const useCursor = params?.startAfterId !== undefined;
   // Opportunities search endpoint uses location_id (snake_case)
   return ghlFetch<GHLOpportunitiesResponse>("/opportunities/search", {
     useSnakeCaseLocationId: true,
@@ -445,7 +476,9 @@ export async function getOpportunities(params?: {
       status: params?.status,
       assigned_to: params?.assignedTo,
       limit: params?.limit ?? 100,
-      page: params?.page ?? 1,
+      page: useCursor ? undefined : params?.page ?? 1,
+      startAfterId: params?.startAfterId,
+      startAfter: params?.startAfter,
     },
   });
 }
@@ -825,6 +858,9 @@ export interface GHLCustomObjectRecord {
   properties: Record<string, string | string[] | null>;
   createdAt?: string;
   updatedAt?: string;
+  // Per-record cursor, [timestamp, id]. Echo the LAST record's value back as
+  // the request body's `searchAfter` to page past the offset ceiling.
+  searchAfter?: [number, string];
   relations?: GHLCustomObjectRelation[];
   /** @deprecated GHL returns `relations`, not `associations` */
   associations?: Record<string, unknown>;
@@ -853,15 +889,15 @@ export async function getAllCustomObjectRecords(
   // locationId is required here, but in the request body — not the query string.
   // noQueryLocationId keeps it out of the query; ghlFetch still injects it into
   // the POST body (noBodyLocationId is left unset).
-  const fetchPage = (page: number) =>
+  const search = (body: Record<string, unknown>) =>
     ghlFetch<GHLCustomObjectRecordsResponse>(`/objects/${objectKey}/records/search`, {
       method: "POST",
       version: "2023-02-21",
       noQueryLocationId: true,
-      body: { page, pageLimit },
+      body: { pageLimit, ...body },
     });
 
-  const first = await fetchPage(1);
+  const first = await search({ page: 1 });
   const total = first.total ?? first.records.length;
 
   const seen = new Set<string>();
@@ -876,15 +912,32 @@ export async function getAllCustomObjectRecords(
   };
   absorb(first.records);
 
-  if (all.length >= total || first.records.length < pageLimit) return all;
+  if (first.records.length < pageLimit) return all;
 
-  // Total known after page 1 → fetch the remaining pages concurrently; ghlFetch's
-  // limiter bounds in-flight count and rate, so no manual paging/sleep is needed.
-  const totalPages = Math.ceil(total / pageLimit);
-  const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, i) => fetchPage(i + 2).then((r) => r.records))
-  );
-  for (const records of rest) absorb(records);
+  // Same hybrid walk as getAllOpportunities, and for the same reason: this
+  // endpoint 400s once the offset reaches OFFSET_CEILING, and a single rejected
+  // page inside the Promise.all would take the entire fetch down. Fan out the
+  // offset-safe pages, then follow each record's `searchAfter` cursor.
+  const maxOffsetPages = Math.floor(OFFSET_CEILING / pageLimit);
+  const offsetPages = Math.min(Math.ceil(total / pageLimit), maxOffsetPages);
+  let lastRecords = first.records;
+  if (offsetPages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: offsetPages - 1 }, (_, i) => search({ page: i + 2 }))
+    );
+    for (const r of rest) absorb(r.records);
+    lastRecords = rest[rest.length - 1].records;
+  }
+
+  while (lastRecords.length === pageLimit) {
+    const cursor = lastRecords[lastRecords.length - 1]?.searchAfter;
+    if (!cursor) break;
+    const before = all.length;
+    const page = await search({ searchAfter: cursor });
+    absorb(page.records);
+    if (all.length === before) break; // cursor stuck — bail rather than spin
+    lastRecords = page.records;
+  }
 
   return all;
 }
@@ -892,13 +945,26 @@ export async function getAllCustomObjectRecords(
 // ============ HELPER FUNCTIONS ============
 
 // Helper to fetch all pages of opportunities.
-// The /opportunities/search endpoint is page-numbered AND returns meta.total on
-// the first page, so once we have page 1 we know exactly how many pages remain
-// and can fetch them all concurrently. The global semaphore + token bucket in
-// ghlFetch bound the actual in-flight count and request rate, so there's no need
-// for the old sequential page-walk or the inter-page sleep — those just added
-// latency on top of the central limiter. Results are deduped by id so a shifting
-// dataset (page boundaries moving between requests) can't inflate the count.
+//
+// HYBRID PAGINATION, and it has to be hybrid. Two facts pull in opposite
+// directions:
+//   * /opportunities/search returns meta.total on page 1, so the offset-numbered
+//     pages can all be fired concurrently — 26 pages in ~1.6s vs ~12.9s walked
+//     sequentially (measured). Losing that would slow down every account.
+//   * GHL rejects any offset at or past OFFSET_CEILING with a 400. Fanning out
+//     past it doesn't just truncate: one rejected page rejects the whole
+//     Promise.all, the caller's catch swallows it, and the account renders with
+//     ZERO opportunities instead of 10,000.
+// So: fan out the offset-safe pages, then hand off to the cursor (which every
+// response carries in meta) for whatever is left. Accounts under the ceiling
+// take exactly the path they always did.
+//
+// The tail loop deliberately does NOT trust meta.total as its stop condition —
+// an ES-backed total can itself be capped, and believing a capped total is how
+// you silently drop records. It runs while pages keep coming back full.
+// Results are deduped by id, so a shifting dataset (page boundaries moving
+// between requests, or the cursor re-serving its boundary record) can't inflate
+// the count.
 export async function getAllOpportunities(
   onProgress?: (count: number) => void
 ): Promise<GHLOpportunity[]> {
@@ -918,16 +984,41 @@ export async function getAllOpportunities(
   };
   absorb(first.opportunities);
 
-  if (all.length >= total || !first.meta.nextPage) return all;
+  if (first.opportunities.length < pageSize) return all;
 
-  // Fan out the remaining pages. ghlFetch's limiter keeps this safe.
-  const totalPages = Math.ceil(total / pageSize);
-  const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, i) =>
-      getOpportunities({ page: i + 2, limit: pageSize }).then((r) => r.opportunities)
-    )
-  );
-  for (const opps of rest) absorb(opps);
+  // Phase 1 — fan out every page whose offset stays under the ceiling.
+  const maxOffsetPages = Math.floor(OFFSET_CEILING / pageSize); // page 100 → offset 9900, OK
+  const offsetPages = Math.min(Math.ceil(total / pageSize), maxOffsetPages);
+  let lastPage = first;
+  if (offsetPages > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: offsetPages - 1 }, (_, i) =>
+        getOpportunities({ page: i + 2, limit: pageSize })
+      )
+    );
+    for (const r of rest) absorb(r.opportunities);
+    lastPage = rest[rest.length - 1]; // Promise.all preserves order → the deepest page
+  }
+
+  // Phase 2 — cursor past the ceiling. Only runs for accounts big enough to
+  // need it; for everyone else the last offset page came back partial.
+  let cursorId = lastPage.meta.startAfterId;
+  let cursorTs = lastPage.meta.startAfter;
+  let lastCount = lastPage.opportunities.length;
+  while (lastCount === pageSize && cursorId !== undefined && cursorTs !== undefined) {
+    const before = all.length;
+    const page = await getOpportunities({
+      limit: pageSize,
+      startAfterId: cursorId,
+      startAfter: cursorTs,
+    });
+    absorb(page.opportunities);
+    lastCount = page.opportunities.length;
+    // A whole page of duplicates means the cursor is stuck — bail rather than spin.
+    if (all.length === before) break;
+    cursorId = page.meta.startAfterId;
+    cursorTs = page.meta.startAfter;
+  }
 
   return all;
 }
@@ -940,11 +1031,16 @@ export async function getAllContacts(
   const seenIds = new Set<string>();
   let startAfterId: string | undefined;
   let startAfter: number | undefined;
-  let total: number | undefined;
+  // Safety bound on the walk, not a data cap: only reachable if GHL kept
+  // serving full pages of never-before-seen ids forever. Loud, so a real
+  // account that somehow hits it shows up in the logs instead of silently
+  // arriving short.
+  const MAX_PAGES = 2000;
+  let pages = 0;
 
   while (true) {
     const response = await getContacts({ limit: 100, startAfterId, startAfter });
-    if (total === undefined && response.meta?.total !== undefined) total = response.meta.total;
+    pages++;
 
     // Dedupe by id — GHL's cursor pagination occasionally returns overlapping
     // pages and we'd otherwise inflate the count.
@@ -957,14 +1053,24 @@ export async function getAllContacts(
     }
     onProgress?.(allContacts.length);
 
-    // Stop once we have all records or got a partial page.
-    if (
-      (total !== undefined && allContacts.length >= total) ||
-      response.contacts.length < 100
-    ) break;
+    // Stop on a partial page — the end of the dataset.
+    //
+    // NOT on meta.total. These endpoints are Elasticsearch-backed and their
+    // totals can come back capped, so `length >= total` would quietly stop a
+    // >10k account at whatever ceiling GHL reported and hand back a truncated
+    // dataset that looks complete. The cursor itself is the authority on when
+    // the data runs out; total is only ever a progress hint.
+    if (response.contacts.length < 100) break;
 
     // If a whole page is duplicates, the cursor is stuck — bail out.
     if (pageNew === 0) break;
+
+    if (pages >= MAX_PAGES) {
+      console.warn(
+        `[GHL] getAllContacts hit the ${MAX_PAGES}-page safety bound at ${allContacts.length} contacts — result may be incomplete`
+      );
+      break;
+    }
 
     // Advance cursor — use both fields together (startAfter is a dateAdded
     // epoch ms; without it the cursor isn't unique).
