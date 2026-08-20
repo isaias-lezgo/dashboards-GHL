@@ -18,6 +18,7 @@ pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validat
                 #   script loads .env.local. Run it without that env and it silently starts a
                 #   NEW roster of one — paste that blob into Vercel and every other client is
                 #   gone. Always check the "Current roster (N)" line it prints first.
+                #   Full runbook: docs/alta-de-clientes.md
 
 # Verification (see below — there is no test framework)
 pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
