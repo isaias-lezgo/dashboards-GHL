@@ -209,3 +209,29 @@ export interface Pauta {
   contactId?: string
   properties?: Record<string, string>
 }
+
+// The whole dashboard payload, exactly as app/api/dashboard/route.ts ships it to
+// the browser and as lib/sync-store.ts caches it. Canonical here rather than in
+// the hook because the server now owns it: lib/sync.ts builds it, the cache
+// round-trips it, and hooks/use-dashboard-data.ts re-exports this same shape so
+// the two can never drift.
+export interface DashboardPayload {
+  locationName: string
+  contacts: Contact[]
+  opportunities: Opportunity[]
+  calls: Call[]
+  tasks: Task[]
+  appointments: Appointment[]
+  pipelines: Pipeline[]
+  members: string[]
+  tags: string[]
+  campaigns: string[]
+  sources: string[]
+  pautas: Pauta[]
+  locationId: string
+  meta: {
+    totalContacts: number
+    totalOpportunities: number
+    fetchedAt: string
+  }
+}

@@ -20,6 +20,10 @@ pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
 pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-tamper rejection
 pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation
 pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabular parse/query/join
+pnpm verify:pagination   # lib/ghl-client.ts — offset→cursor handoff (hits live GHL, read-only)
+pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-trip, lock
+                         #   (DB assertions run only when DATABASE_URL is set)
+pnpm db:migrate          # creates the project_sync cache table (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
@@ -52,6 +56,9 @@ Required vars in `.env.local`:
 - `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
 - `ANTHROPIC_API_KEY` — used by `app/api/chat` (assistant), `analyze-report` (PDF analyses)
   and `analyze-contact`
+- `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — Neon, injected by the Vercel Marketplace
+  integration. **Optional**: without them the app simply syncs live from GHL on every
+  load, which is exactly how it behaved before the cache existed.
 - `GHL_API_TOKEN` / `GHL_LOCATION_ID` — **not read by the app.** Kept only so the dev
   GHL MCP server (`.mcp.json`) can point at one sub-account.
 
@@ -231,11 +238,82 @@ Both dashboards export a branded PDF via `components/dashboard/export-report-but
 - pdfmake **cannot render in a bare Node harness** — verify PDF changes by building and
   driving the real app.
 
+### Sync cache (Neon Postgres)
+
+A full GHL sync takes tens of seconds, and it used to run on **every page load**. The
+cache removes GHL from the normal path: the route reads one row of already-assembled
+payload and ships it.
+
+```
+GET /api/dashboard
+    ↓  requireClient()      → the ClientConfig (unchanged)
+    ↓  readCache(client)    → the project_sync row
+    ├─ hit  → ship the payload immediately; if older than 15 min,
+    │         after(() => refreshInBackground()) once the response is out
+    └─ miss → live sync with the loading screen, then cache the result
+```
+
+| File | Responsibility |
+|---|---|
+| `lib/db.ts` | The Neon client. **The seam** — nothing downstream knows the database is Neon, the same way nothing knows the roster comes from an env var. `getSql()` is lazy: Next evaluates top-level module code at build time, so an eager `neon()` would break `next build` before the database exists. |
+| `lib/sync-store.ts` | `readSync` / `writeSync` / `claimSync` / `releaseSync` / `isStale`. The only module that knows the table. Compression lives here. |
+| `lib/sync.ts` | `syncProject(client, onFrame?)` — the GHL orchestration, extracted from the route so the route and the background refresh run the **same** code. Two copies would drift, and the background one would drift silently. |
+| `scripts/db-migrate.ts` | `CREATE TABLE IF NOT EXISTS`, idempotent. DDL goes through `DATABASE_URL_UNPOOLED` — pgbouncer in transaction mode interferes with schema changes. |
+
+Invariants, each of which exists because something broke first:
+
+- **The database is an accelerator, never a dependency.** Every failure is logged and
+  falls back to a live sync. Adding the cache must not create a new way for the
+  dashboard to fail to load. Verify by pointing `DATABASE_URL` at an invalid host.
+- **The cache is disposable.** One row per client, overwritten whole, present only —
+  no history. Drop the table and it refills itself. That property is what keeps this
+  one table instead of a schema, and keeps historical personal data from accumulating.
+- **`bytea` + gzip, not `jsonb`.** The payload is never queried from the inside, only
+  shipped whole, so `jsonb` would buy parsing cost on both ends. Measured ~11x smaller.
+- **This deployment needs its OWN Neon.** The roster here shares client ids
+  (`lezgo-suite`, `condesa`, `plaza-bosques`, `grand-center`) with the
+  `dashboards-internos-lezgo` deployment, and `project_id` is the primary key —
+  one shared database would have the two silently overwrite each other's payloads.
+- **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
+  TypeScript: that would leave a window where two requests both see the lock free.
+  The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
+  client forever.
+- **`releaseSync` never touches the payload.** A failed refresh must leave the last
+  good cache in place — an hour-old dashboard beats no dashboard.
+- **`synced_at` comes from the payload, not `now()`**: it records when GHL was read,
+  which is what the header's "Actualizado hace X" means.
+- **`after()` is scheduled in the handler scope**, not inside the stream. Without it
+  the function is torn down when the response closes and the refresh never runs.
+  `cookies()` is unavailable both inside the stream callback and inside `after()`.
+- **`maxDuration = 300` needs Fluid Compute ON** (Settings → Functions) — it is *not*
+  a paid-plan feature. With Fluid off the ceiling is 60s and a real 60.3s sync gets
+  cut silently, long after the response was sent; the only symptom is an
+  "Actualizado hace X" that stops advancing.
+- The header shows **relative** age, never clock time: a cache whose age is not
+  visible lies by omission. The loading screen waits 300 ms before appearing so a
+  cached read does not flash it.
+
 ### Key design decisions
 
 - **No mock-data fallback**: when the GHL API is unavailable or errors, the UI renders against empty arrays (`data?.contacts ?? []` patterns in `app/page.tsx`). The former `lib/mock-data.ts` and its stand-ins have been removed.
 - **All GHL API calls are server-only**: `lib/ghl-client.ts` is never imported from client components — only from API routes. This keeps the token out of the browser bundle. Client code reaches GHL data through `lib/ghl-fetchers.ts`, which calls those routes.
 - **`/opportunities/search` uses `location_id` (snake_case)** while most other endpoints use `locationId` (camelCase). The `useSnakeCaseLocationId` flag in `ghlFetch` handles this quirk.
+- **Offset pagination dies at 10,000 records.** GHL's search endpoints are
+  Elasticsearch-backed and reject any request whose offset reaches 10k:
+  `/opportunities/search` → `400 SEARCH_USE_START_AFTER_PAGINATION`,
+  `/objects/:key/records/search` → `400 "Invalid request body"`. Page 101 at
+  `limit=100` is the first to fail, on every sub-account. `getAllOpportunities`
+  and `getAllCustomObjectRecords` therefore paginate **hybrid**: fan out the
+  offset-safe pages concurrently (fast — ~8x faster than a sequential walk),
+  then hand off to the cursor (`startAfterId`+`startAfter` for opportunities,
+  the per-record `searchAfter` tuple for object records) for the remainder. Do
+  not "simplify" either back to a plain page fan-out: one rejected page rejects
+  the whole `Promise.all`, and the caller's catch turns that into an **empty
+  dataset**, so a 12k-opportunity account renders zero rows instead of 10,000.
+- **Never stop a paginated walk on `meta.total`.** Those totals come from the
+  same ES layer and can themselves be capped, so `length >= total` silently
+  truncates big accounts while looking complete. The cursor running out is the
+  only authority on the end of the data; `total` is a progress hint.
 - **Filtering is entirely client-side and date-range only**: `lib/date-range.ts` (`DateFilter`, `resolveDateRange`, `filterByDateRange`) filters the already-fetched dataset by date; `components/dashboard/date-range-filter.tsx` is the UI. The filtered slices are computed in `app/page.tsx` and passed to each dashboard as props. The date filter bar is hidden on the AI assistant tab, which always sees the full dataset.
 - **`calls` is always empty** in live data — GHL doesn't expose a public calls endpoint in the standard API. **`tasks` is populated** via the location-wide `/locations/:id/tasks/search` endpoint (`searchLocationTasks`), fetched concurrently with the other datasets.
 - **Drill-downs resolve joins against the *unfiltered* set.** Dashboards take both

@@ -7,7 +7,7 @@ import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { DateRangeFilter } from "@/components/dashboard/date-range-filter"
 import { filterByDateRange, resolveDateRange, type DateFilter } from "@/lib/date-range"
-import { format } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
@@ -51,7 +51,7 @@ export default function DashboardPage() {
 
   useEffect(() => { document.title = TAB_TITLES[activeTab] }, [activeTab])
 
-  const { data, isLoading, isError, progress, locationName, steps, refresh } = useDashboardData({})
+  const { data, isLoading, showLoading, isError, progress, locationName, syncedAt, steps, refresh } = useDashboardData({})
   const { messages } = useConversationsData()
 
   const [dateFilter, setDateFilter] = useState<DateFilter>({ preset: "all" })
@@ -102,7 +102,17 @@ export default function DashboardPage() {
   const availableMembers = data?.members ?? []
   const availableTags = data?.tags ?? []
 
-  const isInitialLoad = isLoading && !data
+  // showLoading, not isLoading: a cached read answers in one frame and the
+  // loading screen would only flash. See LOADING_SCREEN_DELAY_MS in the hook.
+  const isInitialLoad = showLoading && !data
+
+  // Re-render on a timer so "actualizado hace X" keeps counting up instead of
+  // freezing at whatever it said when the payload landed.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <>
@@ -181,8 +191,8 @@ export default function DashboardPage() {
             <span className="hidden text-[11px] tabular-nums text-white/55 sm:inline">
               {isLoading
                 ? (progress || "Sincronizando…")
-                : data?.meta?.fetchedAt
-                  ? `Actualizado ${new Date(data.meta.fetchedAt).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}`
+                : (syncedAt ?? data?.meta?.fetchedAt)
+                  ? `Actualizado ${formatDistanceToNow(new Date((syncedAt ?? data!.meta.fetchedAt)!), { addSuffix: true, locale: es })}`
                   : ""}
             </span>
             
