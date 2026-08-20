@@ -275,10 +275,18 @@ Invariants, each of which exists because something broke first:
   one table instead of a schema, and keeps historical personal data from accumulating.
 - **`bytea` + gzip, not `jsonb`.** The payload is never queried from the inside, only
   shipped whole, so `jsonb` would buy parsing cost on both ends. Measured ~11x smaller.
-- **This deployment needs its OWN Neon.** The roster here shares client ids
-  (`lezgo-suite`, `condesa`, `plaza-bosques`, `grand-center`) with the
-  `dashboards-internos-lezgo` deployment, and `project_id` is the primary key —
-  one shared database would have the two silently overwrite each other's payloads.
+- **This deployment needs its OWN Neon**, and has one: endpoint
+  `ep-frosty-term-awf7asfw` (Neon project `snowy-dawn-00376789`). The internal
+  panel (`dashboards-internos-lezgo`) is a *different* database entirely
+  (`ep-winter-brook-avuhndg1`) — never point one at the other. `project_id` is
+  the primary key and the two deployments have historically used overlapping
+  client ids, so a shared database would have them silently overwrite each
+  other's payloads. Verify the endpoint before running anything destructive.
+- **Who serves whom.** This deployment serves the *external* clients — as of
+  2026-08-19: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`. Condesa,
+  Lezgo Suite, Plaza Bosques and Grand Center were moved to the internal panel
+  and **deliberately removed** from this roster. A login that fails for one of
+  those is the intended behavior, not an outage.
 - **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a

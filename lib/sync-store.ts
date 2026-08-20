@@ -10,10 +10,10 @@
 // whole, so jsonb would only buy parsing cost on both the write and the read.
 // Measured on a real payload of this shape: ~11x smaller.
 //
-// This table is THIS deployment's alone. The roster here shares client ids
-// (lezgo-suite, condesa, plaza-bosques, grand-center) with the internal-dashboards
-// deployment, and project_id is the primary key — pointing both at one database
-// would have them silently overwrite each other's payloads.
+// This table is THIS deployment's alone (Neon endpoint ep-frosty-term-awf7asfw).
+// The internal-dashboards deployment has its own database entirely. project_id is
+// the primary key and the two rosters have historically overlapped, so pointing
+// both at one database would have them silently overwrite each other's payloads.
 import { gzipSync, gunzipSync } from "node:zlib";
 import { getSql } from "./db";
 import type { ClientConfig } from "./clients";
