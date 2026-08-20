@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import Image from "next/image"
 import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { DateRangeFilter } from "@/components/dashboard/date-range-filter"
-import { filterByDateRange, resolveDateRange, type DateFilter } from "@/lib/date-range"
+import { filterByDateRange, isLargeDataset, resolveDateRange, type DateFilter } from "@/lib/date-range"
 import { format, formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
@@ -56,6 +56,32 @@ export default function DashboardPage() {
 
   const [dateFilter, setDateFilter] = useState<DateFilter>({ preset: "all" })
   const dateRange = useMemo(() => resolveDateRange(dateFilter), [dateFilter])
+
+  // Accounts past LARGE_DATASET_THRESHOLD open on the last month instead of the
+  // whole history. What this avoids is NOT the fetch — the cache answers that in
+  // about a second — it is the browser rendering every chart over tens of
+  // thousands of records, which pins the main thread and bogs down the whole
+  // machine.
+  //
+  // Applied ONCE, when the data first lands, and never again: after that the
+  // filter belongs to the user, and choosing "Todo" has to stick even though the
+  // account is still big. The ref (not a piece of state) is what guarantees the
+  // effect can never fight the user on a later render or a refresh().
+  const autoScopedRef = useRef(false)
+  const [autoScoped, setAutoScoped] = useState(false)
+  useEffect(() => {
+    if (autoScopedRef.current || !data) return
+    autoScopedRef.current = true
+    if (
+      isLargeDataset({
+        contacts: data.contacts.length,
+        opportunities: data.opportunities.length,
+      })
+    ) {
+      setDateFilter({ preset: "month" })
+      setAutoScoped(true)
+    }
+  }, [data])
 
   // Human label of the active date filter, for the PDF report cover.
   const periodLabel = useMemo(() => {
@@ -275,7 +301,20 @@ export default function DashboardPage() {
       </nav>
 
       {activeTab !== "conversations" && (
-        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
+        <DateRangeFilter
+          value={dateFilter}
+          onChange={(next) => {
+            setAutoScoped(false)
+            setDateFilter(next)
+          }}
+          // Showing a slice of the data without saying so would mislead by
+          // omission — the same reason the header shows the cache's age.
+          hint={
+            autoScoped && dateFilter.preset === "month"
+              ? "Cuenta grande: se abre en el último mes para que las gráficas no traben el navegador. Elige Todo para ver el historial completo."
+              : undefined
+          }
+        />
       )}
 
       {/* Dashboard Content */}

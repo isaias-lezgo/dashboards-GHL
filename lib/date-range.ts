@@ -60,3 +60,25 @@ export function filterByDateRange<T>(
     return t >= fromMs && t <= toMs
   })
 }
+
+// Above this many contacts OR opportunities, the dashboard opens on the last
+// month instead of the whole history. The cost this avoids is NOT the data
+// fetch — that comes from the cache in about a second — it is the browser
+// rendering charts over tens of thousands of records, which pins the main
+// thread and makes the whole machine sluggish. Measured on a 30k-contact /
+// 25k-opportunity account.
+//
+// A threshold rather than a per-client setting: a client crossing it is a fact
+// about their data, not a preference, and one number is one thing to reason
+// about.
+export const LARGE_DATASET_THRESHOLD = 12_000
+
+export function isLargeDataset(counts: {
+  contacts: number
+  opportunities: number
+}): boolean {
+  return (
+    counts.contacts > LARGE_DATASET_THRESHOLD ||
+    counts.opportunities > LARGE_DATASET_THRESHOLD
+  )
+}

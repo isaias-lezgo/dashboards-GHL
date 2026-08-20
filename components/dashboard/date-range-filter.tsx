@@ -3,7 +3,7 @@
 import * as React from "react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { CalendarRange, ChevronDown } from "lucide-react"
+import { CalendarRange, ChevronDown, Info } from "lucide-react"
 import type { DateRange as DayPickerRange } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,10 @@ interface DateRangeFilterProps {
   value: DateFilter
   onChange: (value: DateFilter) => void
   className?: string
+  // Optional explanation of why the current range is what it is — shown when the
+  // dashboard picked the range instead of the user. Wraps to its own line on
+  // narrow screens rather than squeezing the buttons.
+  hint?: string
 }
 
 function formatCustomLabel(from?: Date, to?: Date) {
@@ -36,7 +40,7 @@ function formatCustomLabel(from?: Date, to?: Date) {
   return to ? `${fmt(from)} – ${fmt(to)}` : fmt(from)
 }
 
-export function DateRangeFilter({ value, onChange, className }: DateRangeFilterProps) {
+export function DateRangeFilter({ value, onChange, className, hint }: DateRangeFilterProps) {
   const [customOpen, setCustomOpen] = React.useState(false)
   const isCustom = value.preset === "custom"
 
@@ -142,6 +146,13 @@ export function DateRangeFilter({ value, onChange, className }: DateRangeFilterP
             </div>
           </PopoverContent>
         </Popover>
+
+        {hint && (
+          <p className="flex w-full items-start gap-1.5 text-[11px] leading-snug text-muted-foreground sm:w-auto sm:flex-1 sm:basis-0 sm:min-w-[16rem]">
+            <Info className="mt-px h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+            <span>{hint}</span>
+          </p>
+        )}
       </div>
     </section>
   )
