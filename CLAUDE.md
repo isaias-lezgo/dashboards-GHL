@@ -283,10 +283,11 @@ Invariants, each of which exists because something broke first:
   client ids, so a shared database would have them silently overwrite each
   other's payloads. Verify the endpoint before running anything destructive.
 - **Who serves whom.** This deployment serves the *external* clients — as of
-  2026-08-19: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`. Condesa,
-  Lezgo Suite, Plaza Bosques and Grand Center were moved to the internal panel
-  and **deliberately removed** from this roster. A login that fails for one of
-  those is the intended behavior, not an outage.
+  2026-08-27: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`,
+  `el-fundador-saki`, `sahai`, `terrenos-en-venta-jerry-medina`. Condesa, Lezgo
+  Suite, Plaza Bosques and Grand Center were moved to the internal panel and
+  **deliberately removed** from this roster. A login that fails for one of those
+  is the intended behavior, not an outage.
 - **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
