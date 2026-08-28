@@ -112,8 +112,18 @@ export async function POST(req: Request) {
     });
 
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: body.maxTokens ?? 4096,
+      model: "claude-sonnet-5",
+      // Sonnet 5 piensa por defecto: omitir `thinking` ya NO significa
+      // pensamiento apagado como en 4.6. Se deja explícito para que se lea como
+      // decisión y no como descuido — un asistente con ~22 herramientas se
+      // beneficia de que razone antes de elegir cuál llamar, y con el
+      // pensamiento apagado el modelo es notablemente menos propenso a usarlas.
+      thinking: { type: "adaptive" },
+      // El pensamiento sale de este mismo techo, y el tokenizador nuevo produce
+      // ~30% más tokens para el mismo texto. Con los 4096 de antes, una
+      // respuesta larga se cortaba y el loop la parchaba mandando "Continúa."
+      // Es un tope, no un objetivo: no sube el costo típico, evita el corte.
+      max_tokens: body.maxTokens ?? 16000,
       system: [
         {
           type: "text",

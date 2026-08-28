@@ -43,8 +43,19 @@ export interface DocumentBlock {
   type: "document";
   source: { type: "base64"; media_type: "application/pdf"; data: string };
 }
+// Sonnet 5 piensa por defecto, así que las respuestas del asistente traen
+// bloques `thinking`. La API exige devolverlos **sin modificar** en los turnos
+// siguientes o rechaza la petición, y el loop ya reenvía `data.content` entero
+// — esto solo lo hace explícito en los tipos. `thinking` llega vacío porque
+// `display` es "omitted" por defecto; la UI ignora los tipos que no conoce.
+export interface ThinkingBlock {
+  type: "thinking";
+  thinking: string;
+  signature?: string;
+}
 export type AnyBlock =
   | TextBlock
+  | ThinkingBlock
   | ToolUseBlock
   | ToolResultBlock
   | ImageBlock
@@ -93,11 +104,16 @@ interface TurnUsage {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_TURNS = 15;
+// USD por millón de tokens. Debe seguir al modelo de app/api/chat/route.ts
+// (hoy claude-sonnet-5: $2 entrada / $10 salida); lectura de caché es 0.1x la
+// entrada y escritura 1.25x. Si cambia el modelo y esto no, el contador de
+// costo del chat miente sin fallar — con las tarifas de Sonnet 4.6 ($3/$15)
+// sobreestimaba 50%.
 const PRICING = {
-  input: 3,
-  output: 15,
-  cacheRead: 0.3,
-  cacheWrite: 3.75,
+  input: 2,
+  output: 10,
+  cacheRead: 0.2,
+  cacheWrite: 2.5,
 };
 
 function estimateCost(u: TurnUsage): number {

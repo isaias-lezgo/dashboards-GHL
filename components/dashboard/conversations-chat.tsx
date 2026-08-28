@@ -483,7 +483,8 @@ export function ConversationsChat({
     if (messages.length === 0) return;
     const meta: ChatExportMeta = {
       exportedAt: new Date(),
-      model: "Sonnet 4.6",
+      // Etiqueta del export; sigue al modelo de app/api/chat/route.ts.
+      model: "Sonnet 5",
       totalCost,
       totalTools,
     };
