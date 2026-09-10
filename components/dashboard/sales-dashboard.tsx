@@ -100,6 +100,8 @@ interface SalesDashboardProps {
   locationName?: string
   /** Label of the active global date filter, shown on the PDF report cover. */
   periodLabel?: string
+  /** Label of the active global pipeline filter, shown on the PDF report cover. */
+  pipelineLabel?: string
 }
 
 // Funnel milestones are one quantity draining through stages, so hue carries no
@@ -143,7 +145,7 @@ function startOfWeek(input: Date): Date {
   return d
 }
 
-export function SalesDashboard({ opportunities, allOpportunities, contacts, allContacts, calls, messages = [], allMessages, appointments = [], allAppointments, pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel }: SalesDashboardProps) {
+export function SalesDashboard({ opportunities, allOpportunities, contacts, allContacts, calls, messages = [], allMessages, appointments = [], allAppointments, pipelines = [], tasks = [], pautas = [], members: membersProp = [], locationId = "", locationName, periodLabel, pipelineLabel }: SalesDashboardProps) {
   // Lookup table for drawer contact-resolution: the full set when provided,
   // falling back to the date-filtered `contacts` for backward compatibility.
   const lookupContacts = allContacts ?? contacts
@@ -719,6 +721,7 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
       title: "Reporte de Ventas",
       locationName,
       periodLabel,
+      pipelineLabel,
       kpis: [
         { label: "Ingreso ganado", value: mxn(kpiMetrics.wonRevenue) },
         { label: "Oportunidades", value: String(kpiMetrics.total) },
@@ -732,7 +735,7 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
   }, [
     timelineData, timelineGran, funnelData, monthlyFunnel, origenData, pipelineMatrix,
     matrixBy, apptOutcomeData, lossGroupsData, kpiMetrics, appointments.length,
-    contacts.length, opportunities.length, periodLabel, locationName,
+    contacts.length, opportunities.length, periodLabel, pipelineLabel, locationName,
     opportunities, lookupContacts, lookupAppointments,
   ])
 

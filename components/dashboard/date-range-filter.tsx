@@ -3,7 +3,7 @@
 import * as React from "react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { CalendarRange, ChevronDown, Info } from "lucide-react"
+import { CalendarRange, ChevronDown } from "lucide-react"
 import type { DateRange as DayPickerRange } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { FilterGroupLabel } from "./filter-bar"
 import type { DateFilter, DateFilterPreset } from "@/lib/date-range"
 
 const PRESET_OPTIONS: Array<{ label: string; value: DateFilterPreset }> = [
@@ -27,11 +28,6 @@ const PRESET_OPTIONS: Array<{ label: string; value: DateFilterPreset }> = [
 interface DateRangeFilterProps {
   value: DateFilter
   onChange: (value: DateFilter) => void
-  className?: string
-  // Optional explanation of why the current range is what it is — shown when the
-  // dashboard picked the range instead of the user. Wraps to its own line on
-  // narrow screens rather than squeezing the buttons.
-  hint?: string
 }
 
 function formatCustomLabel(from?: Date, to?: Date) {
@@ -40,7 +36,7 @@ function formatCustomLabel(from?: Date, to?: Date) {
   return to ? `${fmt(from)} – ${fmt(to)}` : fmt(from)
 }
 
-export function DateRangeFilter({ value, onChange, className, hint }: DateRangeFilterProps) {
+export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
   const [customOpen, setCustomOpen] = React.useState(false)
   const isCustom = value.preset === "custom"
 
@@ -62,98 +58,76 @@ export function DateRangeFilter({ value, onChange, className, hint }: DateRangeF
   )
 
   return (
-    <section
-      aria-label="Filtro de fechas"
-      className={cn(
-        "sticky top-0 z-40 border-b border-border/60",
-        "bg-[hsl(214_30%_92%)]/80 backdrop-blur-md",
-        "dark:bg-[hsl(222_15%_16%)]/75",
-        className
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 md:px-6">
-        <div className="mr-1 flex shrink-0 items-center gap-1.5">
-          <CalendarRange className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Fecha
-          </span>
-        </div>
+    <>
+      <FilterGroupLabel icon={CalendarRange}>Fecha</FilterGroupLabel>
 
-        <div
-          className="inline-flex items-center rounded-md border border-border/50 bg-white/60 dark:bg-white/[0.06] p-0.5"
-          role="group"
-          aria-label="Rango de fechas"
-        >
-          {PRESET_OPTIONS.map(({ label, value: preset }) => {
-            const isActive = value.preset === preset
+      <div
+        className="inline-flex items-center rounded-md border border-border/50 bg-white/60 dark:bg-white/[0.06] p-0.5"
+        role="group"
+        aria-label="Rango de fechas"
+      >
+        {PRESET_OPTIONS.map(({ label, value: preset }) => {
+          const isActive = value.preset === preset
 
-            return (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => onChange({ preset })}
-                aria-pressed={isActive}
-                className={cn(
-                  "h-6 shrink-0 rounded px-2 text-[11px] font-medium transition-all",
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => onChange({ preset })}
+              aria-pressed={isActive}
+              className={cn(
+                "h-6 shrink-0 rounded px-2 text-[11px] font-medium transition-all",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
 
-        <Popover open={customOpen} onOpenChange={setCustomOpen}>
-          <PopoverTrigger asChild>
+      <Popover open={customOpen} onOpenChange={setCustomOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant={isCustom ? "default" : "outline"}
+            className="h-7 gap-1.5 rounded-md px-2.5 text-[11px] font-medium"
+            aria-pressed={isCustom}
+          >
+            {isCustom ? formatCustomLabel(value.from, value.to) : "Personalizado"}
+            <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
+
+        <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] overflow-x-auto p-0">
+          <Calendar
+            mode="range"
+            numberOfMonths={showTwoMonths ? 2 : 1}
+            locale={es}
+            defaultMonth={value.from ?? new Date()}
+            selected={isCustom ? { from: value.from, to: value.to } : undefined}
+            onSelect={handleCustomSelect}
+          />
+          <div className="flex items-center justify-between gap-2 border-t border-border p-2">
+            <span className="px-1 text-[11px] text-muted-foreground">
+              {isCustom && value.from
+                ? formatCustomLabel(value.from, value.to)
+                : "Selecciona fecha de inicio y fin"}
+            </span>
             <Button
               type="button"
-              variant={isCustom ? "default" : "outline"}
-              className="h-7 gap-1.5 rounded-md px-2.5 text-[11px] font-medium"
-              aria-pressed={isCustom}
+              size="sm"
+              className="h-7 rounded-md text-[11px]"
+              disabled={!isCustom || !value.from}
+              onClick={() => setCustomOpen(false)}
             >
-              {isCustom ? formatCustomLabel(value.from, value.to) : "Personalizado"}
-              <ChevronDown className="h-3 w-3 opacity-60" aria-hidden="true" />
+              Aplicar
             </Button>
-          </PopoverTrigger>
-
-          <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] overflow-x-auto p-0">
-            <Calendar
-              mode="range"
-              numberOfMonths={showTwoMonths ? 2 : 1}
-              locale={es}
-              defaultMonth={value.from ?? new Date()}
-              selected={isCustom ? { from: value.from, to: value.to } : undefined}
-              onSelect={handleCustomSelect}
-            />
-            <div className="flex items-center justify-between gap-2 border-t border-border p-2">
-              <span className="px-1 text-[11px] text-muted-foreground">
-                {isCustom && value.from
-                  ? formatCustomLabel(value.from, value.to)
-                  : "Selecciona fecha de inicio y fin"}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                className="h-7 rounded-md text-[11px]"
-                disabled={!isCustom || !value.from}
-                onClick={() => setCustomOpen(false)}
-              >
-                Aplicar
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {hint && (
-          <p className="flex w-full items-start gap-1.5 text-[11px] leading-snug text-muted-foreground sm:w-auto sm:flex-1 sm:basis-0 sm:min-w-[16rem]">
-            <Info className="mt-px h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
-            <span>{hint}</span>
-          </p>
-        )}
-      </div>
-    </section>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </>
   )
 }

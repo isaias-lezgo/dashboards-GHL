@@ -6,7 +6,17 @@ import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
 import { MarketingDashboard } from "@/components/dashboard/marketing-dashboard"
 import { DateRangeFilter } from "@/components/dashboard/date-range-filter"
+import { FilterBar, FilterDivider } from "@/components/dashboard/filter-bar"
+import { PipelineFilterControl } from "@/components/dashboard/pipeline-filter"
 import { filterByDateRange, isLargeDataset, resolveDateRange, type DateFilter } from "@/lib/date-range"
+import {
+  contactIdsInPipelines,
+  filterByContactIds,
+  filterOpportunitiesByPipelines,
+  pipelineFilterLabel,
+  selectedPipelines,
+  type PipelineFilter,
+} from "@/lib/pipeline-filter"
 import { format, formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
@@ -57,6 +67,46 @@ export default function DashboardPage() {
   const [dateFilter, setDateFilter] = useState<DateFilter>({ preset: "all" })
   const dateRange = useMemo(() => resolveDateRange(dateFilter), [dateFilter])
 
+  // The panel's second global filter. Empty = todos, which is a strict
+  // passthrough — see lib/pipeline-filter.ts.
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineFilter>([])
+
+  const allPipelines = useMemo(() => data?.pipelines ?? [], [data?.pipelines])
+
+  // Derived from the UNFILTERED opportunities, deliberately: pipeline membership
+  // is a fact about a contact, not about the active date window. Deriving it from
+  // the date-filtered slice would drop every contact whose only opportunity in
+  // this pipeline predates the window — along with their pautas, citas and
+  // mensajes — and understate exactly the accounts with the longest history.
+  const pipelineContactIds = useMemo(
+    () => contactIdsInPipelines(data?.opportunities ?? [], pipelineFilter),
+    [data?.opportunities, pipelineFilter]
+  )
+
+  // Only the selected pipelines reach the dashboards, which is what makes their
+  // stage axis the real pipeline in GHL's order instead of every stage name in
+  // the account merged into one list.
+  const visiblePipelines = useMemo(
+    () => selectedPipelines(allPipelines, pipelineFilter),
+    [allPipelines, pipelineFilter]
+  )
+
+  const pipelineLabel = useMemo(
+    () => pipelineFilterLabel(allPipelines, pipelineFilter),
+    [allPipelines, pipelineFilter]
+  )
+
+  // Opportunities per pipeline over the whole history, for the picker. Answers
+  // "does this pipeline hold anything at all" — several sub-accounts carry
+  // pipelines that have never held one.
+  const pipelineCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of data?.opportunities ?? []) {
+      counts.set(o.pipelineId, (counts.get(o.pipelineId) ?? 0) + 1)
+    }
+    return counts
+  }, [data?.opportunities])
+
   // Accounts past LARGE_DATASET_THRESHOLD open on the last month instead of the
   // whole history. What this avoids is NOT the fetch — the cache answers that in
   // about a second — it is the browser rendering every chart over tens of
@@ -97,33 +147,106 @@ export default function DashboardPage() {
     }
   }, [dateFilter.preset, dateRange])
 
+  // Every dataset carries BOTH global filters. The pipeline lives only on the
+  // opportunity, so opportunities filter on it directly and everything else
+  // follows its contact into (or out of) the selected pipelines.
   const contacts = useMemo(
-    () => filterByDateRange(data?.contacts ?? [], (c) => c.createdAt, dateRange),
-    [data?.contacts, dateRange]
+    () =>
+      filterByContactIds(
+        filterByDateRange(data?.contacts ?? [], (c) => c.createdAt, dateRange),
+        (c) => c.id,
+        pipelineContactIds
+      ),
+    [data?.contacts, dateRange, pipelineContactIds]
   )
   const opportunities = useMemo(
-    () => filterByDateRange(data?.opportunities ?? [], (o) => o.createdAt, dateRange),
-    [data?.opportunities, dateRange]
+    () =>
+      filterOpportunitiesByPipelines(
+        filterByDateRange(data?.opportunities ?? [], (o) => o.createdAt, dateRange),
+        pipelineFilter
+      ),
+    [data?.opportunities, dateRange, pipelineFilter]
   )
   const calls = useMemo(
-    () => filterByDateRange(data?.calls ?? [], (c) => c.createdAt, dateRange),
-    [data?.calls, dateRange]
+    () =>
+      filterByContactIds(
+        filterByDateRange(data?.calls ?? [], (c) => c.createdAt, dateRange),
+        (c) => c.contactId,
+        pipelineContactIds
+      ),
+    [data?.calls, dateRange, pipelineContactIds]
   )
   const appointments = useMemo(
-    () => filterByDateRange(data?.appointments ?? [], (a) => a.startTime, dateRange),
-    [data?.appointments, dateRange]
+    () =>
+      filterByContactIds(
+        filterByDateRange(data?.appointments ?? [], (a) => a.startTime, dateRange),
+        (a) => a.contactId,
+        pipelineContactIds
+      ),
+    [data?.appointments, dateRange, pipelineContactIds]
   )
   const tasks = useMemo(
-    () => filterByDateRange(data?.tasks ?? [], (t) => t.createdAt ?? t.dueDate, dateRange),
-    [data?.tasks, dateRange]
+    () =>
+      filterByContactIds(
+        filterByDateRange(data?.tasks ?? [], (t) => t.createdAt ?? t.dueDate, dateRange),
+        (t) => t.contactId,
+        pipelineContactIds
+      ),
+    [data?.tasks, dateRange, pipelineContactIds]
   )
-  const pautas = useMemo(
+  // Date-filtered but NOT pipeline-filtered. The Meta blocks divide spend by this
+  // set, and Meta reports spend per ad account with no pipeline dimension — see
+  // PipelineScopeNotice.
+  const pautasAllPipelines = useMemo(
     () => filterByDateRange(data?.pautas ?? [], (p) => p.createdAt, dateRange),
     [data?.pautas, dateRange]
   )
+  const pautas = useMemo(
+    () => filterByContactIds(pautasAllPipelines, (p) => p.contactId, pipelineContactIds),
+    [pautasAllPipelines, pipelineContactIds]
+  )
+  const opportunitiesAllPipelines = useMemo(
+    () => filterByDateRange(data?.opportunities ?? [], (o) => o.createdAt, dateRange),
+    [data?.opportunities, dateRange]
+  )
+  // Memoized as one object: it feeds a useMemo inside the dashboard, and a fresh
+  // literal each render would re-filter ten thousand opportunities every time.
+  const unscopedByPipeline = useMemo(
+    () => ({
+      opportunities: opportunitiesAllPipelines,
+      pautas: pautasAllPipelines,
+      allPautas: data?.pautas ?? [],
+    }),
+    [opportunitiesAllPipelines, pautasAllPipelines, data?.pautas]
+  )
   const filteredMessages = useMemo(
-    () => filterByDateRange(messages, (m) => m.createdAt, dateRange),
-    [messages, dateRange]
+    () =>
+      filterByContactIds(
+        filterByDateRange(messages, (m) => m.createdAt, dateRange),
+        (m) => m.contactId,
+        pipelineContactIds
+      ),
+    [messages, dateRange, pipelineContactIds]
+  )
+
+  // The date-unfiltered lookup tables the drill-downs join against. They carry
+  // the pipeline filter too — otherwise a drawer opened from a pipeline-scoped
+  // chart would resolve rows from pipelines the panel is not showing.
+  const allContacts = useMemo(
+    () => filterByContactIds(data?.contacts ?? [], (c) => c.id, pipelineContactIds),
+    [data?.contacts, pipelineContactIds]
+  )
+  const allOpportunities = useMemo(
+    () => filterOpportunitiesByPipelines(data?.opportunities ?? [], pipelineFilter),
+    [data?.opportunities, pipelineFilter]
+  )
+  const allPautas = useMemo(
+    () => filterByContactIds(data?.pautas ?? [], (p) => p.contactId, pipelineContactIds),
+    [data?.pautas, pipelineContactIds]
+  )
+  const allAppointments = useMemo(
+    () => filterByContactIds(data?.appointments ?? [], (a) => a.contactId, pipelineContactIds),
+    [data?.appointments, pipelineContactIds]
   )
   const availableMembers = data?.members ?? []
   const availableTags = data?.tags ?? []
@@ -301,12 +424,7 @@ export default function DashboardPage() {
       </nav>
 
       {activeTab !== "conversations" && (
-        <DateRangeFilter
-          value={dateFilter}
-          onChange={(next) => {
-            setAutoScoped(false)
-            setDateFilter(next)
-          }}
+        <FilterBar
           // Showing a slice of the data without saying so would mislead by
           // omission — the same reason the header shows the cache's age.
           hint={
@@ -314,7 +432,22 @@ export default function DashboardPage() {
               ? "Cuenta grande: se abre en el último mes para que las gráficas no traben el navegador. Elige Todo para ver el historial completo."
               : undefined
           }
-        />
+        >
+          <DateRangeFilter
+            value={dateFilter}
+            onChange={(next) => {
+              setAutoScoped(false)
+              setDateFilter(next)
+            }}
+          />
+          <FilterDivider />
+          <PipelineFilterControl
+            pipelines={allPipelines}
+            value={pipelineFilter}
+            onChange={setPipelineFilter}
+            counts={pipelineCounts}
+          />
+        </FilterBar>
       )}
 
       {/* Dashboard Content */}
@@ -322,39 +455,47 @@ export default function DashboardPage() {
         {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}
-            allOpportunities={data?.opportunities ?? []}
+            allOpportunities={allOpportunities}
             contacts={contacts}
-            allContacts={data?.contacts ?? []}
+            allContacts={allContacts}
             pautas={pautas}
-            allPautas={data?.pautas ?? []}
-            pipelines={data?.pipelines ?? []}
+            allPautas={allPautas}
+            pipelines={visiblePipelines}
             tasks={tasks}
             calls={calls}
             appointments={appointments}
-            allAppointments={data?.appointments ?? []}
+            allAppointments={allAppointments}
             locationId={data?.locationId ?? ""}
             locationName={locationName ?? undefined}
             periodLabel={periodLabel}
+            pipelineLabel={pipelineLabel}
+            pipelineScoped={pipelineFilter.length > 0}
+            unscopedByPipeline={unscopedByPipeline}
+            ads={data?.ads}
+            dateRange={dateRange}
           />
         )}
         {activeTab === "sales" && (
           <SalesDashboard
             opportunities={opportunities}
-            allOpportunities={data?.opportunities ?? []}
+            allOpportunities={allOpportunities}
             contacts={contacts}
-            allContacts={data?.contacts ?? []}
+            allContacts={allContacts}
             calls={calls}
             messages={filteredMessages}
             allMessages={messages}
             appointments={appointments}
-            allAppointments={data?.appointments ?? []}
-            pipelines={data?.pipelines ?? []}
+            allAppointments={allAppointments}
+            pipelines={visiblePipelines}
             tasks={tasks}
             pautas={pautas}
             members={availableMembers}
             locationId={data?.locationId ?? ""}
             locationName={locationName ?? undefined}
             periodLabel={periodLabel}
+            // Undefined when the filter is off: the PDF only names a pipeline
+            // when one is actually narrowing the report.
+            pipelineLabel={pipelineFilter.length > 0 ? pipelineLabel : undefined}
           />
         )}
         {/* Kept permanently mounted (hidden when inactive) so the AI chat

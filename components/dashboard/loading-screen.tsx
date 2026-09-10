@@ -20,6 +20,7 @@ const STEP_ROWS: { key: StepKey; label: string }[] = [
   { key: "pautas", label: "Pautas" },
   { key: "appointments", label: "Citas" },
   { key: "tasks", label: "Tareas" },
+  { key: "ads", label: "Inversión en pauta" },
 ]
 
 const FALLBACK_STEPS: StepMap = {
@@ -29,6 +30,7 @@ const FALLBACK_STEPS: StepMap = {
   pautas: { status: "pending" },
   appointments: { status: "pending" },
   tasks: { status: "pending" },
+  ads: { status: "pending" },
 }
 
 function SyncRing() {

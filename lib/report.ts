@@ -27,6 +27,13 @@ export interface ReportInput {
   locationName?: string
   /** Human label of the active global date filter, e.g. "Últimos 30 días". */
   periodLabel?: string
+  /**
+   * Human label of the active global pipeline filter, e.g. "Enttorno" or
+   * "3 pipelines". Only set when the filter is on: a report that silently covers
+   * one pipeline out of 23 reads as the whole account, and the reader has no way
+   * to tell from the numbers alone.
+   */
+  pipelineLabel?: string
   kpis: { label: string; value: string }[]
   sections: ReportSection[]
 }
@@ -86,6 +93,9 @@ export function buildReportSpec(input: ReportInput, ai: ReportAiResult | null): 
   blocks.push({ t: "heading", text: "Resumen general" })
   if (input.periodLabel) {
     blocks.push({ t: "text", text: `Periodo del reporte: **${input.periodLabel}**.` })
+  }
+  if (input.pipelineLabel) {
+    blocks.push({ t: "text", text: `Pipeline: **${input.pipelineLabel}**.` })
   }
   blocks.push({ t: "kpis", items: input.kpis })
 

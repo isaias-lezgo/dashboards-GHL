@@ -19,7 +19,8 @@ import {
   ChartContainer,
   ChartTooltip,
 } from "@/components/ui/chart"
-import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline } from "@/lib/types"
+import type { Opportunity, Contact, Pauta, Task, Call, Appointment, Pipeline, AdsReport } from "@/lib/types"
+import type { ResolvedDateRange } from "@/lib/date-range"
 import { Tag, FileText, Calendar, BarChart3, Layers, TrendingUp, TrendingDown, Facebook, Instagram, Copy, Check, ExternalLink } from "lucide-react"
 import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel, originSignalText, hasGoogleAdsSignal, hasWebsiteSignal } from "@/lib/source-platform"
 import {
@@ -35,6 +36,9 @@ import {
 import { isWonOpp } from "@/lib/opportunity-status"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import { CampaignActivityChart } from "./campaign-activity-chart"
+import { AdsSection } from "./ads-section"
+import { useAdCampaigns } from "@/hooks/use-ad-campaigns"
+import { adsWindow, pautaAdId, spendForAdIds } from "@/lib/ads"
 import { ExportReportButton } from "./export-report-button"
 import type { ReportInput, ReportSection } from "@/lib/report"
 import { OrigenDeLeadInfo } from "./origen-de-lead-criteria"
@@ -135,6 +139,53 @@ interface MarketingDashboardProps {
   locationName?: string
   /** Label of the active global date filter, shown on the PDF report cover. */
   periodLabel?: string
+  /**
+   * Label of the active global pipeline filter ("Enttorno", "3 pipelines", or
+   * "Todos los pipelines"). Shown on the PDF cover and named in the notice on
+   * the Meta blocks below.
+   */
+  pipelineLabel?: string
+  /** Whether a pipeline filter is actually narrowing the panel right now. */
+  pipelineScoped?: boolean
+  /**
+   * The same data WITHOUT the pipeline filter applied — the universe the Meta
+   * blocks live in.
+   *
+   * Meta reports spend per AD ACCOUNT; there is no pipeline dimension in it and
+   * cannot be. So every block that divides spend by a lead count keeps the whole
+   * lead count: narrowing the denominator while the numerator stays account-wide
+   * multiplies the cost per lead by however small the chosen pipeline is. The
+   * blocks that use this say so on screen (`PipelineScopeNotice`).
+   *
+   * All three fields are needed, and `allPautas` is the one that is easy to
+   * forget: `isDePauta` is a union that counts an opportunity as paid when its
+   * CONTACT has a Pauta record, so a pipeline-filtered pauta history quietly
+   * makes the predicate stricter and shrinks the lead count even when the
+   * opportunity list itself was never filtered. That is exactly how a first
+   * attempt at this moved a live CPL from $218.03 to $253.13.
+   *
+   * Omitted (or equal to the scoped sets) when no filter is active.
+   */
+  unscopedByPipeline?: {
+    /** Date-filtered, every pipeline. */
+    opportunities: Opportunity[]
+    /** Date-filtered, every pipeline. */
+    pautas: Pauta[]
+    /** Neither date- nor pipeline-filtered: the full pauta history. */
+    allPautas: Pauta[]
+  }
+  /**
+   * Meta ad spend for this sub-account, or the reason there is none. Optional
+   * because a payload cached before the field existed simply has no `ads` — the
+   * section then renders its own "sin datos" notice rather than disappearing.
+   */
+  ads?: AdsReport
+  /**
+   * The resolved global date range. The ads section needs the range itself, not
+   * just pre-filtered rows: it has to CLIP the range to the days Meta actually
+   * returned, and a pre-filtered slice has already lost the bounds.
+   */
+  dateRange?: ResolvedDateRange | null
 }
 
 // Normalize any createdAt format → "YYYY-MM-DD" (UTC). Handles ISO strings,
@@ -475,7 +526,7 @@ function TopNSlider({ value, max, onChange }: { value: number; max: number; onCh
   )
 }
 
-export function MarketingDashboard({ opportunities, allOpportunities, contacts, allContacts, pautas, allPautas, pipelines = [], tasks = [], calls = [], appointments = [], allAppointments, locationId = "", locationName, periodLabel }: MarketingDashboardProps) {
+export function MarketingDashboard({ opportunities, allOpportunities, contacts, allContacts, pautas, allPautas, pipelines = [], tasks = [], calls = [], appointments = [], allAppointments, locationId = "", locationName, periodLabel, pipelineLabel, pipelineScoped = false, unscopedByPipeline, ads, dateRange }: MarketingDashboardProps) {
   // Lookup table for drawer contact-resolution: the full set when provided,
   // falling back to the date-filtered `contacts` for backward compatibility.
   const lookupContacts = allContacts ?? contacts
@@ -837,6 +888,83 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
     [opportunities, isDePauta],
   )
   const pautaOppCount = pautaOpps.length
+
+  // The sets the Meta blocks below divide spend by: date-filtered, never
+  // pipeline-filtered. See the prop docs — a pipeline-scoped denominator against
+  // an account-wide numerator inflates every cost figure on the page.
+  //
+  // The predicate is rebuilt here rather than reusing `isDePauta`: that one
+  // closes over the pipeline-scoped pauta history, so it would narrow this lead
+  // count too, by a route no reader of the call site would suspect.
+  const pautasForSpend = unscopedByPipeline?.pautas ?? pautas
+  const pautaOppsForSpend = useMemo(() => {
+    const opps = unscopedByPipeline?.opportunities ?? opportunities
+    const history = unscopedByPipeline?.allPautas
+    if (!history) return opps.filter((o) => isDePauta(o))
+
+    const contactIds = new Set<string>()
+    for (const p of history) if (p.contactId) contactIds.add(p.contactId)
+    return opps.filter((o) => isDePautaOpp(o, contactIds))
+  }, [unscopedByPipeline, opportunities, isDePauta])
+
+  // ---- Meta ad spend, joined to pautas by ad id ----------------------------
+  // The window is the global date filter clipped to the days Meta actually
+  // returned; see adsWindow(). Fetched here, not inside AdsSection, because the
+  // "Campañas activas por pauta" chart prices its rows from the same ad rows and
+  // two hooks would issue the same N+1 fetch twice.
+  const adWindow = useMemo(() => adsWindow(ads, dateRange ?? null), [ads, dateRange])
+  const {
+    ads: adRows,
+    isLoading: adRowsLoading,
+    error: adRowsError,
+  } = useAdCampaigns({
+    from: adWindow?.from,
+    to: adWindow?.to,
+    enabled: ads?.status === "connected" && !!adWindow,
+  })
+
+  const adsById = useMemo(() => new Map(adRows.map((a) => [a.adId, a])), [adRows])
+
+  // Spend per pauta-campaign name, for the "Campañas activas por pauta" chart.
+  //
+  // A campaign there is a `nombrePauta` group, and each group holds many pautas
+  // that share a handful of Meta ads. So the spend of a group is the spend of its
+  // DISTINCT ad ids — spendForAdIds dedupes, because summing per pauta would
+  // multiply each ad's cost by its own lead count and inflate exactly the number
+  // that gets read as cost per lead.
+  //
+  // `priced` is the other half of that fraction and the reason this returns a
+  // pair rather than a number. GHL links ONE Meta ad account per sub-account, and
+  // a group's pautas can come from ads spread across several (stanza-residencial
+  // runs 14). Dividing the linked account's spend by ALL the group's pautas mixes
+  // a partial numerator with a complete denominator and reports a cost per lead
+  // far below the real one — on a live account it read $10.75 against a true
+  // ~$30. So the cost is spend ÷ the pautas that spend actually covers, and the
+  // chart says how many of the group's pautas that is.
+  //
+  // Only pautas inside the ad window count, so the money and the leads it is
+  // divided by always describe the same days.
+  const moneyByCampaignName = useMemo(() => {
+    const m = new Map<string, { spend: number; priced: number }>()
+    if (!adWindow || adsById.size === 0) return m
+    const adIdsByName = new Map<string, Set<string>>()
+    const pricedByName = new Map<string, number>()
+    for (const p of pautasForSpend) {
+      const d = (p.createdAt ?? "").slice(0, 10)
+      if (d < adWindow.from || d > adWindow.to) continue
+      const adId = pautaAdId(p)
+      if (!adId || !adsById.has(adId)) continue
+      const name = p.nombrePauta?.trim() || "Sin nombre"
+      const set = adIdsByName.get(name) ?? new Set<string>()
+      set.add(adId)
+      adIdsByName.set(name, set)
+      pricedByName.set(name, (pricedByName.get(name) ?? 0) + 1)
+    }
+    for (const [name, ids] of adIdsByName) {
+      m.set(name, { spend: spendForAdIds(ids, adsById), priced: pricedByName.get(name) ?? 0 })
+    }
+    return m
+  }, [pautasForSpend, adWindow, adsById])
 
   // Pautas with no resolvable lead: either the record carries no contactId at all,
   // or it points at a contact that no longer exists. They inflate the pauta count
@@ -1257,6 +1385,7 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
       title: "Reporte de Marketing",
       locationName,
       periodLabel,
+      pipelineLabel: pipelineScoped ? pipelineLabel : undefined,
       kpis: [
         { label: "Oportunidades", value: String(opportunities.length) },
         { label: "Oportunidades por pauta", value: String(pautaOppCount) },
@@ -1273,6 +1402,7 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
     leadsByPlatformUrl, paidTrafficWithAppt, apptKeyCount,
     wonPaidTraffic, wonKeyCount, wonBySource, wonTotal,
     opportunities.length, pautaOppCount, pautas.length, reingresoCount, periodLabel,
+    pipelineLabel, pipelineScoped,
     locationName, originGroupBy, stageIncludeLost, stageGroupBy, pautaByStageConfig,
     apptGroupBy, apptStatusFilter, wonGroupBy,
   ])
@@ -1294,6 +1424,18 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
         onOpportunitiesClick={openAllOpportunitiesDrill}
         onPautaOpportunitiesClick={openPautaOppsDrill}
         onPautasClick={openAllPautasDrill}
+      />
+
+      <AdsSection
+        ads={ads}
+        dateRange={dateRange ?? null}
+        pautaOpportunities={pautaOppsForSpend}
+        pautas={pautasForSpend}
+        pipelineNotice={pipelineScoped ? pipelineLabel : undefined}
+        adRows={adRows}
+        adRowsLoading={adRowsLoading}
+        adRowsError={adRowsError}
+        onDrill={(d) => openDrill(d.title, d.opportunities, d.subtitle)}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1528,9 +1670,12 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
       </div>
 
       <CampaignActivityChart
-        pautas={pautas}
+        pautas={pautasForSpend}
         isUniqueLead={isUniqueLead}
         onDrill={openPautaRecordsDrill}
+        moneyByCampaignName={moneyByCampaignName}
+        currency={ads?.currency}
+        pipelineNotice={pipelineScoped ? pipelineLabel : undefined}
       />
 
       <DashboardCard>

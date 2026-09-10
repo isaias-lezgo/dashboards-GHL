@@ -25,6 +25,7 @@ import {
   type GHLTask,
 } from "@/lib/ghl-client";
 import { withClient } from "@/lib/ghl-context";
+import { fetchAdsReport } from "@/lib/ads-sync";
 import type { ClientConfig } from "@/lib/clients";
 import type {
   Contact,
@@ -34,6 +35,7 @@ import type {
   Pipeline,
   Pauta,
   Appointment,
+  AdsReport,
   DashboardPayload,
 } from "@/lib/types";
 
@@ -463,11 +465,11 @@ export async function syncProject(
     // is now handled centrally). Progress messages from contacts/opps
     // interleave — the intended tradeoff for the latency win.
     onFrame({ type: "progress", message: "Cargando datos de GoHighLevel…" });
-    for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks"]) {
+    for (const k of ["contacts", "opportunities", "pautas", "appointments", "tasks", "ads"]) {
       sendStep(k, "loading", 0);
     }
 
-    const [contactsRaw, opportunitiesRaw, pautas, appointments, tasks] =
+    const [contactsRaw, opportunitiesRaw, pautas, appointments, tasks, ads] =
       await Promise.all([
         getAllContacts((count) => {
           onFrame({ type: "progress", message: `Cargando contactos… ${count.toLocaleString("es-MX")}` });
@@ -500,6 +502,17 @@ export async function syncProject(
             console.error("[GHL] Tasks fetch failed:", err);
             sendStep("tasks", "done", 0);
             return [] as Task[];
+          }),
+        // Meta ad spend. fetchAdsReport never rejects — a missing or expired
+        // Facebook connection comes back as a status the UI explains, because
+        // most sub-accounts simply have no ad account linked and that must not
+        // read as a broken dashboard. The catch is belt-and-braces.
+        fetchAdsReport((days) => sendStep("ads", "loading", days))
+          .then((r) => { sendStep("ads", "done", r.daily.length); return r; })
+          .catch((err: unknown) => {
+            console.error("[GHL] Ads report failed:", err);
+            sendStep("ads", "done", 0);
+            return { status: "error", daily: [] } as AdsReport;
           }),
       ]);
 
@@ -634,6 +647,7 @@ export async function syncProject(
       campaigns: Array.from(campaignSet),
       sources: Array.from(sourceSet),
       pautas,
+      ads,
       locationId: client.locationId,
       meta: {
         totalContacts: contacts.length,

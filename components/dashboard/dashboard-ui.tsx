@@ -229,6 +229,32 @@ export function ChartHint({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * Says out loud that a block deliberately ignores the global pipeline filter.
+ *
+ * Meta reports spend per AD ACCOUNT; there is no pipeline dimension in it and
+ * never will be. So anything that divides spend by a lead count has to keep the
+ * unfiltered lead count — filtering the denominator while the numerator stays
+ * whole is the partial-numerator/complete-denominator error that once shipped a
+ * $10.75 cost per pauta against a true $29.92, except inverted and worse: with
+ * a pipeline holding a tenth of the leads, the cost per lead reads ten times the
+ * real one. Showing the honest number and naming the exception is the only
+ * option that does not put a wrong figure on screen.
+ */
+export function PipelineScopeNotice({ label }: { label: string }) {
+  return (
+    <p className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+      <Info className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+      <span>
+        La inversión de Meta se reporta por cuenta publicitaria, sin distinguir
+        pipelines. Este bloque ignora el filtro <strong className="font-medium text-foreground">{label}</strong> y
+        cuenta todas las pautas del periodo: dividir el gasto completo entre los
+        leads de un solo pipeline multiplicaría el costo por lead.
+      </span>
+    </p>
+  )
+}
+
 export function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { ChevronDown, Megaphone } from "lucide-react"
 
 import type { Pauta } from "@/lib/types"
@@ -18,6 +18,7 @@ import {
   ChartEmpty,
   ChartHint,
   DashboardCard,
+  PipelineScopeNotice,
   chartPaletteColor,
 } from "./dashboard-ui"
 
@@ -80,12 +81,21 @@ function CampaignBarRow({
   color,
   indent,
   onClick,
+  spend,
+  priced,
+  money,
+  showMoney,
 }: {
   row: CampaignRow
   max: number
   color: string
   indent: boolean
   onClick: () => void
+  spend: number
+  /** Pautas of this row whose ad is in the linked account, i.e. what `spend` buys. */
+  priced: number
+  money: { round: (n: number) => string; precise: (n: number) => string }
+  showMoney: boolean
 }) {
   const pct = max > 0 ? (row.pautas / max) * 100 : 0
   return (
@@ -120,6 +130,45 @@ function CampaignBarRow({
       <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
         {fmt(row.leads)}
       </span>
+      {showMoney && (
+        <>
+          <span
+            className="w-20 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground"
+            title={
+              spend > 0
+                ? `Cubre ${fmt(priced)} de ${fmt(row.pautas)} pautas de esta campaña`
+                : undefined
+            }
+          >
+            {spend > 0 ? money.round(spend) : "—"}
+          </span>
+          {/*
+            Divided by `priced`, not by row.pautas and not by row.leads.
+              · not row.pautas — the spend only covers the pautas whose ad is in
+                the linked account; the rest belong to ad accounts GHL cannot
+                report on, and including them reports a cost far below the real
+                one (live: $10.75 shown against a true ~$30).
+              · not row.leads — spend buys every entry, re-entries included, so
+                dividing by unique leads would understate it in the other
+                direction.
+            Amber when the coverage is partial, so a number computed over part of
+            the campaign never looks like one computed over all of it.
+          */}
+          <span
+            className={[
+              "w-20 shrink-0 text-right text-[11px] font-semibold tabular-nums",
+              priced > 0 && priced < row.pautas ? "text-primary" : "text-foreground",
+            ].join(" ")}
+            title={
+              priced > 0 && priced < row.pautas
+                ? `Sobre ${fmt(priced)} de ${fmt(row.pautas)} pautas — el resto viene de anuncios fuera de la cuenta vinculada`
+                : undefined
+            }
+          >
+            {spend > 0 && priced > 0 ? money.precise(spend / priced) : "—"}
+          </span>
+        </>
+      )}
     </button>
   )
 }
@@ -128,10 +177,16 @@ function FamilyHeaderRow({
   group,
   color,
   onClick,
+  spend,
+  money,
+  showMoney,
 }: {
   group: CampaignGroup
   color: string
   onClick: () => void
+  spend: number
+  money: { round: (n: number) => string; precise: (n: number) => string }
+  showMoney: boolean
 }) {
   return (
     <button
@@ -146,6 +201,7 @@ function FamilyHeaderRow({
       <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
         {fmt(group.campaigns.length)} {group.campaigns.length === 1 ? "campaña" : "campañas"} ·{" "}
         {fmt(group.pautas)} pautas · {fmt(group.leads)} leads
+        {showMoney && spend > 0 && <> · {money.round(spend)}</>}
       </span>
     </button>
   )
@@ -155,14 +211,47 @@ export function CampaignActivityChart({
   pautas,
   isUniqueLead,
   onDrill,
+  moneyByCampaignName,
+  currency,
+  pipelineNotice,
 }: {
   /** Already filtered by the global date range — the component never re-filters. */
   pautas: Pauta[]
   isUniqueLead: (p: Pauta) => boolean
   onDrill: (title: string, items: Pauta[]) => void
+  /**
+   * Meta spend per campaign name, joined by ad id upstream, together with how
+   * many of that campaign's pautas the spend actually covers (`priced`). Empty
+   * when the sub-account has no linked ad account — the money columns then do
+   * not render at all, rather than showing zeros that read as "these were free".
+   */
+  moneyByCampaignName?: Map<string, { spend: number; priced: number }>
+  /** ISO code of the ad account. Undefined → amounts print without a symbol. */
+  currency?: string
+  /**
+   * Label of the active pipeline filter, when one is on. Its presence means the
+   * `pautas` above are deliberately NOT pipeline-filtered — this chart prices
+   * them against account-wide Meta spend, which has no pipeline dimension — and
+   * the notice says so.
+   */
+  pipelineNotice?: string
 }) {
   const [depth, setDepth] = useState<GroupDepth>("flat")
   const [expanded, setExpanded] = useState(false)
+
+  // Only show the money columns when there is money to show. A client with no
+  // linked Meta account gets the chart exactly as it was.
+  const hasSpend = !!moneyByCampaignName && moneyByCampaignName.size > 0
+  const money = useMemo(() => {
+    const opts = currency ? { style: "currency" as const, currency } : {}
+    const round = new Intl.NumberFormat("es-MX", { ...opts, maximumFractionDigits: 0 })
+    const precise = new Intl.NumberFormat("es-MX", { ...opts, maximumFractionDigits: 2 })
+    return { round: (n: number) => round.format(n), precise: (n: number) => precise.format(n) }
+  }, [currency])
+  const moneyOf = useCallback(
+    (name: string) => moneyByCampaignName?.get(name) ?? { spend: 0, priced: 0 },
+    [moneyByCampaignName],
+  )
 
   // One pass: the tallies that drive the bars and the record lists the drill
   // needs, keyed by the same campaign name so the drawer count always matches
@@ -259,6 +348,11 @@ export function CampaignActivityChart({
         actions={<DepthToggle value={depth} onChange={setDepth} />}
       />
       <ChartCardContent>
+        {pipelineNotice && (
+          <div className="mb-3">
+            <PipelineScopeNotice label={pipelineNotice} />
+          </div>
+        )}
         {campaignCount === 0 ? (
           <ChartEmpty message="Sin pautas en el periodo seleccionado." height={220} />
         ) : (
@@ -273,6 +367,12 @@ export function CampaignActivityChart({
               <span className="w-[30%] shrink-0" />
               <span className="w-12 shrink-0 text-right">Pautas</span>
               <span className="w-12 shrink-0 text-right">Leads</span>
+              {hasSpend && (
+                <>
+                  <span className="w-20 shrink-0 text-right">Inversión</span>
+                  <span className="w-20 shrink-0 text-right">Costo/pauta</span>
+                </>
+              )}
             </div>
 
             <div className="mt-1">
@@ -283,6 +383,9 @@ export function CampaignActivityChart({
                     group={item.group}
                     color={colorByGroup.get(item.group.key) ?? NEUTRAL_COLOR}
                     onClick={() => drillFamily(item.group)}
+                    spend={item.group.campaigns.reduce((t, c) => t + moneyOf(c.name).spend, 0)}
+                    money={money}
+                    showMoney={hasSpend}
                   />
                 ) : (
                   <CampaignBarRow
@@ -292,6 +395,10 @@ export function CampaignActivityChart({
                     indent={item.indent}
                     color={colorByGroup.get(item.groupKey) ?? NEUTRAL_COLOR}
                     onClick={() => drillCampaign(item.row)}
+                    spend={moneyOf(item.row.name).spend}
+                    priced={moneyOf(item.row.name).priced}
+                    money={money}
+                    showMoney={hasSpend}
                   />
                 ),
               )}
@@ -318,6 +425,15 @@ export function CampaignActivityChart({
               Activa = con al menos una pauta en el periodo · la barra mide pautas (incluye
               reingresos), &ldquo;Leads&rdquo; cuenta el primer ingreso de cada contacto · haz clic
               en una fila para ver los registros
+              {hasSpend && (
+                <>
+                  {" · "}la inversión viene de Meta, unida por el id de anuncio que cada pauta
+                  guarda, y el costo se divide solo entre las pautas que esa inversión cubre (en
+                  ámbar cuando es parte de la campaña) · un &ldquo;—&rdquo; significa que el
+                  anuncio no está en la cuenta publicitaria vinculada en GHL, no que no haya
+                  costado
+                </>
+              )}
             </ChartHint>
           </>
         )}

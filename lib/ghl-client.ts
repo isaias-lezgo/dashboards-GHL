@@ -1511,3 +1511,176 @@ export async function duplicateFacebookAd(
 export async function deleteFacebookAd(adId: string): Promise<unknown> {
   return fbFetch(`/ad-publishing/facebook/ads/${adId}`, { method: "DELETE" });
 }
+
+// ---- Facebook Ads: reporting ----
+//
+// Docs: https://marketplace.gohighlevel.com/docs/ghl/ad-publishing/facebook-reporting
+// Scope: adPublishing.readonly — a Private Integration Token created before this
+// feature existed will NOT have it, and every call below 401s until it is ticked
+// on in GHL → Settings → Private Integrations.
+//
+// `type` selects which world the numbers come from and is REQUIRED:
+//   AD_MANAGER  — campaigns built inside GHL's Ad Manager.
+//   INTEGRATION — a Meta ad account merely linked to the sub-account, i.e. ads
+//                 the client runs in Meta Ads Manager themselves.
+// Our clients are INTEGRATION; AD_MANAGER returns nothing for them.
+//
+// Verified against a live connected sub-account. Three behaviors worth knowing,
+// all confirmed on real responses rather than read off the docs:
+//
+//  1. Every metric arrives as a STRING ("spend": "13971.29"), including the ones
+//     the docs type as numbers. `conversions` is a number at account level and a
+//     string at campaign level. Coerce everything — see lib/ads.ts.
+//  2. `totals` SUMS ratio metrics instead of weighting them, so its cpc/cpm/ctr
+//     are arithmetically meaningless (a real response came back ctr "21.94",
+//     cpm "505.42"). Never surface totals' ratios — recompute from spend,
+//     clicks and impressions. We only read `grouped`.
+//  3. `cost_per_conversion` / `cost_per_result` in `totals` are always 0
+//     placeholders; the real values are `costPerConversion` / `costPerResult`.
+
+export type FacebookReportingSource = "AD_MANAGER" | "INTEGRATION";
+
+// The metrics we ask for. `fields` is required and the response only carries
+// what is named here, so this list is the contract for GHLFacebookReportingRow.
+export const FACEBOOK_REPORTING_FIELDS = [
+  "impressions",
+  "clicks",
+  "spend",
+  "cpc",
+  "cpm",
+  "ctr",
+  "reach",
+  "frequency",
+  "conversions",
+  "results",
+] as const;
+
+/** A metric as GHL actually sends it: usually a string, sometimes a number. */
+type Numeric = string | number | null | undefined;
+
+export interface GHLFacebookReportingRow {
+  dateStart?: string;
+  dateStop?: string;
+  locationId?: string;
+  accountId?: string;
+  impressions?: Numeric;
+  clicks?: Numeric;
+  spend?: Numeric;
+  cpc?: Numeric;
+  cpm?: Numeric;
+  ctr?: Numeric;
+  reach?: Numeric;
+  frequency?: Numeric;
+  conversions?: Numeric;
+  /** Counts keyed by Meta action type. The types overlap — summing double-counts. */
+  results?: Record<string, Numeric>;
+  costPerConversion?: Numeric;
+  costPerResult?: Numeric;
+  costPerResultBreakdown?: Record<string, Numeric>;
+  [key: string]: unknown;
+}
+
+export interface GHLFacebookReportingResponse {
+  /** One row per `groupBy` period, or a single whole-range row when omitted. */
+  grouped: GHLFacebookReportingRow[];
+  /** Aggregate across `grouped`. Its ratio metrics are unusable — see note 2. */
+  totals: GHLFacebookReportingRow & { resultsBreakdown?: Record<string, Numeric> };
+}
+
+/**
+ * GET /ad-publishing/facebook/reporting — account-wide metrics over a window.
+ *
+ * `fields` goes on the wire comma-separated. Dates are YYYY-MM-DD and inclusive.
+ */
+export async function getFacebookAdReporting(params: {
+  startDate: string;
+  endDate: string;
+  groupBy?: "day" | "week" | "month";
+  fields?: readonly string[];
+  type?: FacebookReportingSource;
+}): Promise<GHLFacebookReportingResponse> {
+  return fbFetch<GHLFacebookReportingResponse>("/ad-publishing/facebook/reporting", {
+    params: {
+      startDate: params.startDate,
+      endDate: params.endDate,
+      groupBy: params.groupBy,
+      fields: (params.fields ?? FACEBOOK_REPORTING_FIELDS).join(","),
+      type: params.type ?? "INTEGRATION",
+    },
+  });
+}
+
+/**
+ * One row of /reporting/list. The shape follows `listType`, so this is the union
+ * of all three branches with everything optional:
+ *   campaigns — keyed by `campaignId`, carries `status`
+ *   adsets    — keyed by `adSetId`, carries a nested `campaign`
+ *   ads       — keyed by `adId`, carries `adsetId` / `adsetName`
+ *
+ * `revenue` / `sales` / `leads` are GHL's OWN CDP attribution, not Meta's, and
+ * are the reason this endpoint is worth the extra calls.
+ */
+export interface GHLFacebookReportingListItem {
+  name?: string;
+  status?: string;
+  campaignId?: string;
+  campaignName?: string;
+  campaign?: { id?: string; objective?: string };
+  adSetId?: string;
+  adId?: string;
+  adsetId?: string;
+  adsetName?: string;
+  objective?: string;
+  adAccountId?: string;
+  locationId?: string;
+  clicks?: Numeric;
+  cpc?: Numeric;
+  ctr?: Numeric;
+  impressions?: Numeric;
+  spend?: Numeric;
+  reach?: Numeric;
+  frequency?: Numeric;
+  dateStart?: string;
+  dateStop?: string;
+  results?: Record<string, Numeric>;
+  revenue?: Numeric;
+  sales?: Numeric;
+  leads?: Numeric;
+  averageRevenue?: Numeric;
+  [key: string]: unknown;
+}
+
+/**
+ * GET /ad-publishing/facebook/reporting/list — campaigns, ad sets, or ads.
+ *
+ * IMPORTANT, and not in the docs: with `type=INTEGRATION`, `listType=campaigns`
+ * returns campaigns with NO metrics at all — just name/status/campaignId. Only
+ * the AD_MANAGER branch fills in the locally stored campaign fields. To get
+ * spend per campaign for an externally-run ad account you must walk down a
+ * level: list the campaigns, then call this again per campaign with
+ * `listType=adsets` (which DOES carry metrics plus CDP attribution) and roll
+ * the ad sets back up. `lib/ads-sync.ts` does exactly that.
+ *
+ * `campaignId` is required when listType is "adsets" or "ads".
+ */
+export async function getFacebookReportingList(params: {
+  listType: "campaigns" | "adsets" | "ads";
+  startDate: string;
+  endDate: string;
+  campaignId?: string;
+  type?: FacebookReportingSource;
+}): Promise<GHLFacebookReportingListItem[]> {
+  const res = await fbFetch<GHLFacebookReportingListItem[] | null>(
+    "/ad-publishing/facebook/reporting/list",
+    {
+      params: {
+        listType: params.listType,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        campaignId: params.campaignId,
+        type: params.type ?? "INTEGRATION",
+      },
+    }
+  );
+  return Array.isArray(res) ? res : [];
+}

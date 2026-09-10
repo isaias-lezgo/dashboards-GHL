@@ -10,7 +10,8 @@ export type StepKey =
   | "opportunities"
   | "pautas"
   | "appointments"
-  | "tasks";
+  | "tasks"
+  | "ads";
 
 export interface StepState {
   status: "pending" | "loading" | "done";
@@ -26,6 +27,7 @@ const INITIAL_STEPS: StepMap = {
   pautas: { status: "pending" },
   appointments: { status: "pending" },
   tasks: { status: "pending" },
+  ads: { status: "pending" },
 };
 
 // The payload shape is defined server-side in lib/types.ts and re-exported here,
