@@ -247,6 +247,12 @@ function longDayLabel(key: string): string {
   return `${Number(d)} ${MONTHS_ES[Number(m) - 1]} ${y}`
 }
 
+/**
+ * La tabla por campana esta apagada mientras se arregla el join por ad id.
+ * El resto de la seccion (inversion, clics, CPL, graficas) no depende de ella.
+ */
+const SHOW_CAMPAIGN_TABLE = false
+
 // ---------------------------------------------------------------------------
 
 export function AdsSection({
@@ -621,6 +627,10 @@ export function AdsSection({
             </DashboardCard>
           </div>
 
+          {/* Oculto a proposito: en amir-cherit la tabla se quedo en «Cargando
+              campanas» y reporto 3 764 de 3 764 pautas como inalcanzables.
+              Se vuelve a encender poniendo SHOW_CAMPAIGN_TABLE en true. */}
+          {SHOW_CAMPAIGN_TABLE && (
           <DashboardCard>
             <ChartCardHeader
               title="Campañas de Meta"
@@ -721,6 +731,7 @@ export function AdsSection({
               </ChartHint>
             </ChartCardContent>
           </DashboardCard>
+          )}
         </>
       )}
     </div>
