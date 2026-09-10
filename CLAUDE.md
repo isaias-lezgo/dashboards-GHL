@@ -24,6 +24,9 @@ pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validat
 pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
 pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-tamper rejection
 pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation
+pnpm verify:ads          # lib/ads.ts — metric coercion, ratio recomputation, window clipping
+pnpm verify:pipelines    # lib/pipeline-filter.ts — the derived contact set, orphan handling
+pnpm check:ads [clientId] # read-only probe: which clients have Meta linked, and what the API returns
 pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabular parse/query/join
 pnpm verify:pagination   # lib/ghl-client.ts — offset→cursor handoff (hits live GHL, read-only)
 pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-trip, lock
@@ -243,6 +246,154 @@ Both dashboards export a branded PDF via `components/dashboard/export-report-but
 - pdfmake **cannot render in a bare Node harness** — verify PDF changes by building and
   driving the real app.
 
+### Meta ad spend (`/ad-publishing` reporting)
+
+The CRM half of the dashboard knows how many leads arrived; this is the only part
+that knows what they cost. Without it there is no CPL, no cost per cita, no ROAS.
+
+| File | Responsibility |
+|---|---|
+| `lib/ghl-client.ts` (reporting section) | `getFacebookAdReporting` / `getFacebookReportingList` — the two GET endpoints. The rest of the `/ad-publishing` surface (integration, pages, campaigns, audiences) was already there and is still unused by the app. |
+| `lib/ads.ts` | **Pure, client-safe.** Coercion, ratio recomputation, window clipping. Imported by both the server and the browser, so it must never import `lib/ghl-client`. |
+| `lib/ads-sync.ts` | Server-side: fetch, classify, normalize. Never throws into `syncProject`. |
+| `app/api/ads-campaigns/route.ts` | On-demand per-campaign breakdown for an explicit window. |
+| `components/dashboard/ads-section.tsx` | The UI: notice banner, stat tiles, two charts, campaign table. |
+
+Verify with `pnpm verify:ads` (pure module, `scripts/verify-ads.ts`).
+
+**Scope: `adPublishing.readonly`.** Verified present on an existing client token
+(kapitaliza) — the roster's PITs were created with it, so no token work was
+needed. A token that lacks it 401s on every call, which `classifyError` maps to
+the `unauthorized` status; the fix is to tick the scope in GHL → Settings →
+Private Integrations.
+
+**NEVER gate on `/ad-publishing/facebook/integration`.** That endpoint describes
+GHL's Ad Manager *publishing* setup — connected pages, the default page, whether
+campaigns can be created from inside GHL. **Reporting is independent of it.**
+`fetchAdsReport` proved this the hard way: it checked the integration first and
+refused to continue without it, which hid three clients with live spend behind a
+"no conectado" banner. sahai 404s on that endpoint (`Integrations for location …
+does not exist`) while its reporting returns MXN 21,755.49 for the same window
+GHL's own Meta Ads report shows. The reporting call itself is the gate; the ad
+account id is read off the reporting rows (`accountId`). The integration is
+optional context only — `scripts/check-ads.ts` prints it labelled "informativa".
+
+**`type=INTEGRATION`, not `AD_MANAGER`.** `AD_MANAGER` means campaigns built
+inside GHL's Ad Manager; our clients run ads in Meta themselves and merely link
+the ad account, which is `INTEGRATION`. Asking for the wrong one returns nothing,
+not an error.
+
+Everything below was verified against a live connected sub-account, and none of
+it is in the public docs:
+
+- **`grouped` is hard-capped at 25 rows and truncates SILENTLY.** A 365-day
+  `groupBy=day` request returns the first 25 days; a 365-day `groupBy=week`
+  request returns 25 weeks ending in March. Nothing in the response says it is
+  short. `lib/ads-sync.ts` therefore splits the window into 25-day chunks and
+  reassembles. Never widen a single request past `MAX_GROUPED_ROWS`.
+- **`totals` sums ratio metrics instead of weighting them**, so its `cpc`/`cpm`/
+  `ctr` are meaningless — a real response came back `ctr: "21.94"`,
+  `cpm: "505.42"`. `totals` is also capped to the same 25 rows. We never read it:
+  `sumAdDays()` recomputes every ratio from the summed components.
+- **Every metric is a string** (`"spend": "13971.29"`), including ones the docs
+  type as numbers, and `conversions` is a number at account level but a string at
+  campaign level. Coerce with `num()`, which returns 0 rather than NaN — one NaN
+  would poison every downstream sum.
+- **`listType=campaigns` carries NO metrics under `INTEGRATION`** — just name,
+  status and id. Only the `AD_MANAGER` branch fills in the campaign fields. The
+  `ads` rows do carry spend, so per-campaign spend means listing campaigns then
+  walking their ads. That N+1 is why the breakdown is an on-demand route and not
+  part of the sync.
+- **GHL's CDP attribution (`revenue`/`sales`/`leads` on those rows) is empty.**
+  0 on every campaign of every account checked — and GHL's own Meta Ads report
+  shows the same zeros, so it is an unpopulated GHL feature, not a bug either
+  side. We ignore it and join ourselves; the fields were removed from
+  `AdCampaignStat` so nobody renders a column of zeros again.
+- **`/reporting/campaign/:id` takes GHL's Mongo `_id`, not the Meta campaign id**
+  (`422 campaignId must be a mongodb id`), so it only works for campaigns created
+  inside Ad Manager. Unused here.
+- **Amounts are in the ad account's own currency**, read once from
+  `getFacebookAdAccount`. An account in MXN rendered as USD is off ~18x; when the
+  lookup fails the UI prints bare numbers rather than guessing a symbol.
+
+Design invariants:
+
+- **"Not connected" is a state, not an error.** Many sub-accounts have no Meta ad
+  account linked, so `AdsReport.status` is a first-class field and the section
+  renders an amber notice saying who fixes it. Never red, never a thrown error,
+  and never allowed to blank the other twenty charts — `fetchAdsReport` returns a
+  status for every failure path.
+- **A MISSING `ads` is not a disconnected `ads`.** The cache is disposable and
+  unversioned, so a row written before this feature shipped has no `ads` field at
+  all. That is "we have not looked yet", and the section says exactly that
+  (`AdsPendingNotice`) rather than reusing the disconnected notice — which would
+  assert a fact we do not have, and the wrong one for any client who IS
+  connected. This bit once, on stanza-residencial. Keep the two states distinct.
+- **The window is CLIPPED to the days we hold, and the lead count is clipped with
+  it.** Spend reaches back `ADS_WINDOW_DAYS` (365) while the CRM goes back to the
+  account's first day. On "Todo el historial" an unclipped CPL would divide one
+  year of spend by five years of leads and report a third of the real cost.
+  `adsWindow()` intersects the two and the UI says so whenever it bites.
+- **CPL uses the CRM's lead count, not Meta's.** Meta's action types overlap
+  (`lead`, `onsiteConversion.lead`, `onsiteConversion.leadGrouped` all fire for
+  one lead) and which one means "lead" depends on the objective — a WhatsApp
+  campaign's real lead is a conversation started. `metaLeadsFrom()` picks one,
+  never sums, and is kept only as a cross-check.
+- **Two charts, never a dual axis.** Spend and cost-per-lead are different scales;
+  sharing a y-axis would flatten one to zero.
+- **Daily rows, not a pre-aggregated total.** The dashboard filters client-side by
+  date, so spend has to be re-summable over whatever window the user picks.
+
+**The Meta↔CRM join is by AD ID, never by name.** The Pauta custom object stores
+the Meta ad id in `id_de_pauta`, and an opportunity carries the same value in
+`adId` (from `utmAdId`). `pautaAdId()` reads it; `joinPautasToAds()` counts
+pautas per ad; `campaignsFromAds()` rolls that up. The names are NOT comparable —
+one live ad is "Mazatlán si puede ser tuyo_imagen" in Meta and "Casas en Mazatlán
+desde $1.29 MDP" in the Pauta record. A name join would look like it worked.
+
+- **GHL links ONE Meta ad account per sub-account, and clients run several.**
+  stanza-residencial has 14 ad accounts; only *Stanza Magnolia* is linked, and
+  201 of its 326 pautas came from ads in the other 13. Their spend is not
+  missing data, it is **unreachable** data — the endpoint will never return it.
+  `AdJoin` therefore separates `unlinkedAccount` from `noAdId`, and both the
+  campaign table and the pauta chart say so out loud. Never price those pautas
+  at zero.
+- **Cost divides by what the spend actually covers.** A pauta group's cost is
+  `spend ÷ priced`, where `priced` counts only the pautas whose ad is in the
+  linked account — never the group's full pauta count. Mixing a partial
+  numerator with a complete denominator once shipped a $10.75 cost per pauta
+  against a true $29.92. The chart tints such rows amber and names the coverage
+  in a title.
+- **Spend per group dedupes ad ids** (`spendForAdIds`). A group holds many pautas
+  per ad, so summing per pauta multiplies each ad's cost by its own lead count —
+  inflating precisely the number read as cost per lead.
+
+**Who actually has Meta spend** (`pnpm check:ads`, 2026-09-01; amir-cherit
+2026-09-07). Five of the eight external clients, not one — the number the
+integration gate was hiding:
+
+| Cliente | Reporting | Cuenta | Campañas |
+|---|---|---|---|
+| hausmen | ✅ | Hausmen (MXN) | 167 |
+| amir-cherit | ✅ | Amir Cherit (MXN) | 189 |
+| sahai | ✅ | HAI (MXN) | 91 |
+| el-fundador-saki | ✅ | El Fundador (MXN) | 20 |
+| stanza-residencial | ✅ | Stanza Magnolia (MXN) | 9 |
+| kapitaliza | ❌ `disconnected`, sin ad account | — | — |
+| rise-29 | ❌ `Ad Account not found` | — | — |
+| terrenos-en-venta-jerry-medina | ❌ `Access Token not found` (caducado) | — | — |
+
+The per-campaign fan-out is one request each and measured **19.9s for sahai's 91
+campaigns** (332 ads), so `maxDuration = 300` on the route is comfortable;
+`MAX_CAMPAIGNS_FANNED_OUT` (200) is a guard that does not bite today — though
+amir-cherit's 189 campaigns are the closest anyone has come to it.
+
+Cross-checked against GHL's own "Meta Ads report" for stanza-residencial over
+Aug 17 – Sep 1 2026: spend 4748.86, clicks 4049, impressions 110838, CPC 1.17 —
+identical on all four. The ad-id join then produced 110 leads at $30.01 for
+"SM | AG26 | Interacción" and 15 at $728.63 for "SM | JL26 | INT | Brianza",
+matching the pauta chart's own rows for the same ads.
+
 ### Sync cache (Neon Postgres)
 
 A full GHL sync takes tens of seconds, and it used to run on **every page load**. The
@@ -283,11 +434,11 @@ Invariants, each of which exists because something broke first:
   client ids, so a shared database would have them silently overwrite each
   other's payloads. Verify the endpoint before running anything destructive.
 - **Who serves whom.** This deployment serves the *external* clients — as of
-  2026-08-27: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`,
-  `el-fundador-saki`, `sahai`, `terrenos-en-venta-jerry-medina`. Condesa, Lezgo
-  Suite, Plaza Bosques and Grand Center were moved to the internal panel and
-  **deliberately removed** from this roster. A login that fails for one of those
-  is the intended behavior, not an outage.
+  2026-09-07: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`,
+  `el-fundador-saki`, `sahai`, `terrenos-en-venta-jerry-medina`, `amir-cherit`.
+  Condesa, Lezgo Suite, Plaza Bosques and Grand Center were moved to the internal
+  panel and **deliberately removed** from this roster. A login that fails for one
+  of those is the intended behavior, not an outage.
 - **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
@@ -328,8 +479,60 @@ Invariants, each of which exists because something broke first:
   same ES layer and can themselves be capped, so `length >= total` silently
   truncates big accounts while looking complete. The cursor running out is the
   only authority on the end of the data; `total` is a progress hint.
-- **Filtering is entirely client-side and date-range only**: `lib/date-range.ts` (`DateFilter`, `resolveDateRange`, `filterByDateRange`) filters the already-fetched dataset by date; `components/dashboard/date-range-filter.tsx` is the UI. The filtered slices are computed in `app/page.tsx` and passed to each dashboard as props. The date filter bar is hidden on the AI assistant tab, which always sees the full dataset.
+- **Filtering is entirely client-side, along two dimensions**: date
+  (`lib/date-range.ts` — `DateFilter`, `resolveDateRange`, `filterByDateRange`)
+  and pipeline (`lib/pipeline-filter.ts`, below). Both filter the already-fetched
+  dataset; `components/dashboard/filter-bar.tsx` is the sticky bar that holds
+  their two controls. The filtered slices are computed in `app/page.tsx` and
+  passed to each dashboard as props. The filter bar is hidden on the AI assistant
+  tab, which always sees the full dataset.
 - **`calls` is always empty** in live data — GHL doesn't expose a public calls endpoint in the standard API. **`tasks` is populated** via the location-wide `/locations/:id/tasks/search` endpoint (`searchLocationTasks`), fetched concurrently with the other datasets.
+### Pipeline filter
+
+`lib/pipeline-filter.ts` is the global pipeline filter — pure, UI-free, verified
+by `pnpm verify:pipelines`. Multi-select; **an empty selection means "todos"**
+and must stay a strict passthrough, since it is the panel's default state.
+
+**The pipeline exists only on the opportunity**, and never will exist anywhere
+else — GHL has no such concept outside one. Everything else in the payload is
+therefore filtered by a set of contact ids DERIVED from the selected pipelines'
+opportunities (`contactIdsInPipelines`). Every rule below follows from that.
+
+- **Derive the contact set from the FULL opportunity list, never the
+  date-filtered slice.** Pipeline membership is a fact about a contact, not about
+  the active window: a contact whose only opportunity here was created two years
+  ago still belongs. Deriving it from the filtered slice drops them plus their
+  pautas, citas and mensajes, and understates exactly the accounts with the
+  longest history. Same invariant the drill-down joins already carry.
+- **Rows with no contact id are dropped while the filter is active**, unlike the
+  date filter's undated rows, which are kept. An undated row is still one of
+  *these* leads; an unattributable one belongs to no pipeline at all. Keeping the
+  orphans was considered and rejected — it puts pautas on screen that the
+  selected pipeline does not explain.
+- **Only the selected pipelines reach the dashboards** (`selectedPipelines`, via
+  the `pipelines` prop). This is what fixes the stage axis: both dashboards derive
+  their stage order by walking that prop, so one pipeline selected turns an axis
+  that merged every stage name in the account (17 distinct on amir-cherit's 23
+  pipelines, 31 on hausmen's 6) into that pipeline's real stages in GHL's order.
+  Ordered by the account's pipeline order, not click order, so the axis does not
+  reshuffle as boxes are ticked.
+- **Meta spend has NO pipeline dimension, so the Meta blocks ignore the filter
+  and say so.** Meta reports per ad account. Narrowing the lead count while the
+  spend stays account-wide multiplies the cost per lead by however small the
+  chosen pipeline is — the same partial/complete mismatch as the `priced` rule
+  above, inverted. `MarketingDashboard` therefore takes an `unscopedByPipeline`
+  bundle (opportunities, pautas, and the full pauta history) which `AdsSection`
+  and `CampaignActivityChart` use, and both render `PipelineScopeNotice`.
+- **`isDePauta` must be rebuilt from the UNFILTERED pauta history for those
+  blocks.** The predicate is a union that counts an opportunity as paid when its
+  *contact* has a Pauta record, so a pipeline-filtered history silently makes it
+  stricter and shrinks the lead count even though the opportunity list was never
+  filtered. That is the third field of `unscopedByPipeline`, and it is the one
+  that is easy to miss: leaving it out moved stanza-residencial's live CPL from
+  $218.03 to $253.13 while every other number looked right.
+- The AI assistant is deliberately **unaffected** — it always sees the whole
+  dataset, and can filter by pipeline itself when asked.
+
 - **Drill-downs resolve joins against the *unfiltered* set.** Dashboards take both
   `opportunities` (date-filtered, for display) and `allOpportunities` (everything, as a
   lookup table) — likewise `allContacts` / `allPautas` / `allAppointments`. An opportunity
