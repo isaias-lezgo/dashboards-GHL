@@ -27,6 +27,7 @@ import {
   sumAdDays,
   costPer,
   isWindowClipped,
+  hasUnobservableLeadDays,
   toDayKey,
   joinPautasToAds,
   campaignsFromAds,
@@ -59,6 +60,19 @@ interface AdsSectionProps {
   ads?: AdsReport
   /** The active global date filter, already resolved. Null means "todo". */
   dateRange: ResolvedDateRange | null
+  /**
+   * The CRM's first recorded day, from firstRecordedDay() over the UNFILTERED
+   * contacts and opportunities. Floors the window: spend from before the
+   * sub-account existed has no leads to divide by, and dividing by them anyway
+   * is how stanza-residencial reported a CPL of 214.96 against a true 50.98.
+   */
+  crmFrom?: string
+  /**
+   * The first day the Pauta object recorded anything. Older spend has leads we
+   * cannot observe, so the campaign table writes "sin registro" there instead
+   * of a zero that reads as failure.
+   */
+  attributionFrom?: string
   /**
    * Opportunities the CRM classifies as coming from paid advertising, already
    * date-filtered. Classification stays with lib/pauta in the parent — this
@@ -248,16 +262,19 @@ function longDayLabel(key: string): string {
 }
 
 /**
- * La tabla por campana esta apagada mientras se arregla el join por ad id.
- * El resto de la seccion (inversion, clics, CPL, graficas) no depende de ella.
+ * Interruptor de la tabla por campana. Se apago una vez cuando su columna de
+ * leads mostraba ceros que en realidad eran "no hay registro"; queda aqui para
+ * poder apagarla de nuevo en una linea si vuelve a decir algo que no sabe.
  */
-const SHOW_CAMPAIGN_TABLE = false
+const SHOW_CAMPAIGN_TABLE = true
 
 // ---------------------------------------------------------------------------
 
 export function AdsSection({
   ads,
   dateRange,
+  crmFrom,
+  attributionFrom,
   pautaOpportunities,
   pautas,
   adRows,
@@ -270,8 +287,20 @@ export function AdsSection({
   // the days fetched from Meta. Everything below — spend AND the lead count it
   // is divided by — is scoped to this, so the two halves of every cost figure
   // always cover the same days.
-  const adWindow = useMemo(() => adsWindow(ads, dateRange), [ads, dateRange])
-  const clipped = useMemo(() => isWindowClipped(ads, dateRange), [ads, dateRange])
+  const adWindow = useMemo(() => adsWindow(ads, dateRange, crmFrom), [ads, dateRange, crmFrom])
+  const clipped = useMemo(
+    () => isWindowClipped(ads, dateRange, crmFrom),
+    [ads, dateRange, crmFrom]
+  )
+  // Which of the two bounds actually bit, so the notice can name the real
+  // reason instead of always blaming Meta's 365-day limit.
+  const clippedByCrm = !!crmFrom && !!adWindow && adWindow.from === crmFrom && crmFrom > (ads?.from ?? "")
+  // A zero in the leads column is only trustworthy when the whole window sits
+  // inside the era the Pauta object was recording.
+  const zeroLeadsUnknown = useMemo(
+    () => hasUnobservableLeadDays(adWindow, attributionFrom),
+    [adWindow, attributionFrom]
+  )
 
   const days = useMemo(() => daysInWindow(ads?.daily ?? [], adWindow), [ads?.daily, adWindow])
   const totals = useMemo(() => sumAdDays(days), [days])
@@ -404,9 +433,22 @@ export function AdsSection({
           <p className="text-[12px] leading-relaxed text-muted-foreground">
             {adWindow ? (
               <>
-                Meta solo entrega los últimos 365 días de inversión, así que estas cifras cubren{" "}
-                <span className="font-semibold text-foreground">{windowLabel}</span> aunque el filtro
-                de fechas abarque más. El resto del tablero sí usa el periodo completo.
+                {clippedByCrm ? (
+                  <>
+                    Hay inversión anterior a los primeros registros de este CRM, y sin leads con
+                    los cuales compararla el costo por lead saldría inflado. Por eso estas cifras
+                    cubren{" "}
+                    <span className="font-semibold text-foreground">{windowLabel}</span>, desde el
+                    primer día con registros.
+                  </>
+                ) : (
+                  <>
+                    Meta solo entrega los últimos 365 días de inversión, así que estas cifras cubren{" "}
+                    <span className="font-semibold text-foreground">{windowLabel}</span> aunque el
+                    filtro de fechas abarque más.
+                  </>
+                )}{" "}
+                El resto del tablero sí usa el periodo completo.
               </>
             ) : (
               <>
@@ -627,9 +669,6 @@ export function AdsSection({
             </DashboardCard>
           </div>
 
-          {/* Oculto a proposito: en amir-cherit la tabla se quedo en «Cargando
-              campanas» y reporto 3 764 de 3 764 pautas como inalcanzables.
-              Se vuelve a encender poniendo SHOW_CAMPAIGN_TABLE en true. */}
           {SHOW_CAMPAIGN_TABLE && (
           <DashboardCard>
             <ChartCardHeader
@@ -694,7 +733,16 @@ export function AdsSection({
                               {c.clicks.toLocaleString("es-MX")}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {c.leads.toLocaleString("es-MX")}
+                              {c.leads === 0 && zeroLeadsUnknown ? (
+                                <span
+                                  className="text-muted-foreground"
+                                  title="Parte de esta ventana es anterior al primer registro de pauta, así que no podemos saber si esta campaña trajo leads o no."
+                                >
+                                  sin registro
+                                </span>
+                              ) : (
+                                c.leads.toLocaleString("es-MX")
+                              )}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {campaignCpl === null ? "—" : money.precise(campaignCpl)}
@@ -708,7 +756,22 @@ export function AdsSection({
               )}
               <ChartHint>
                 Ordenadas por inversión · el punto verde marca las campañas activas
-                {join.unmatched > 0 && (
+                {zeroLeadsUnknown && (
+                  <>
+                    {" · "}
+                    <span className="font-medium text-foreground">«sin registro»</span> no es cero:
+                    parte de este periodo es anterior al primer registro de pauta
+                    {attributionFrom ? ` (${longDayLabel(attributionFrom)})` : ""}, así que de esas
+                    campañas no podemos saber si trajeron leads
+                  </>
+                )}
+                {/* Only once the ad rows are in. While they are loading the ad-id
+                    set is empty, which makes joinPautasToAds classify EVERY
+                    pauta as belonging to an unlinked account — amir-cherit read
+                    "3 764 de 3 764 pautas no aparecen aquí" for the 20-40s the
+                    fan-out takes. That is an absence of data stated as a fact,
+                    the same mistake AdsPendingNotice exists to avoid. */}
+                {!campaignsLoading && join.unmatched > 0 && (
                   <>
                     {" · "}
                     <span className="font-medium text-foreground">

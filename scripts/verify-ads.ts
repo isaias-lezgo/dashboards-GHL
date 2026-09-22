@@ -15,6 +15,8 @@ import {
   sumAdDays,
   costPer,
   adsWindow,
+  firstRecordedDay,
+  hasUnobservableLeadDays,
   daysInWindow,
   isWindowClipped,
   toDayKey,
@@ -151,6 +153,81 @@ async function main() {
     "a filter inside the data does not clip",
   );
 
+  // --- The second bound: the CRM's own first day. A sub-account opened after
+  // the ad account was already spending is the mirror image of the case above,
+  // and it bit harder — stanza-residencial holds spend from 2026-03-02 with a
+  // first contact on 2026-07-15, reporting a CPL of 214.96 against a true 50.98.
+  assert.deepEqual(
+    adsWindow(report, null, "2026-04-15"),
+    { from: "2026-04-15", to: "2026-09-01" },
+    "spend older than the CRM is clipped away",
+  );
+  assert.deepEqual(
+    adsWindow(report, null, "2025-06-01"),
+    { from: "2026-01-01", to: "2026-09-01" },
+    "a CRM older than the spend changes nothing",
+  );
+  assert.deepEqual(
+    adsWindow(report, { from: new Date(2026, 4, 1), to: new Date(2026, 5, 30) }, "2026-04-15"),
+    { from: "2026-05-01", to: "2026-06-30" },
+    "the tightest of the three bounds wins",
+  );
+  assert.equal(
+    adsWindow(report, null, "2027-01-01"),
+    null,
+    "a CRM that starts after the spend ends → null, not an inverted range",
+  );
+  assert.equal(
+    isWindowClipped(report, { from: new Date(2026, 1, 1), to: new Date(2026, 8, 1) }, "2026-04-15"),
+    true,
+    "a filter inside the data still clips when the CRM starts later",
+  );
+  assert.equal(
+    isWindowClipped(report, { from: new Date(2026, 4, 1), to: new Date(2026, 5, 30) }, "2026-04-15"),
+    false,
+    "a filter after both bounds does not clip",
+  );
+
+  // firstRecordedDay(): the earliest day across every set, ignoring undated and
+  // absent ones. Fed the UNFILTERED sets — a filtered one would drift with the
+  // date picker and the clip would chase its own tail.
+  assert.equal(
+    firstRecordedDay(
+      [{ createdAt: "2026-07-16T10:00:00Z" }, { createdAt: "2026-08-01T00:00:00Z" }],
+      [{ createdAt: "2026-07-15T23:00:00Z" }],
+    ),
+    "2026-07-15",
+    "the earliest day across both sets",
+  );
+  assert.equal(
+    firstRecordedDay([{ createdAt: "" }, {}], undefined),
+    undefined,
+    "nothing dated → undefined, never an empty string that sorts first",
+  );
+  assert.equal(firstRecordedDay(), undefined, "no sets at all → undefined");
+
+  // hasUnobservableLeadDays(): a zero in the leads column is only trustworthy
+  // when the whole window sits inside the era the Pauta object was recording.
+  // amir-cherit: 85 of 188 campaigns at zero, nearly all of them older than its
+  // first pauta (2026-03-01).
+  const win = { from: "2026-01-01", to: "2026-09-01" };
+  assert.equal(
+    hasUnobservableLeadDays(win, "2026-03-01"),
+    true,
+    "a window reaching before the first pauta cannot tell a zero from a blank",
+  );
+  assert.equal(
+    hasUnobservableLeadDays({ from: "2026-03-01", to: "2026-09-01" }, "2026-03-01"),
+    false,
+    "a window starting exactly at the first pauta is fully observable",
+  );
+  assert.equal(
+    hasUnobservableLeadDays(win, undefined),
+    true,
+    "no pauta ever recorded → nothing is observable",
+  );
+  assert.equal(hasUnobservableLeadDays(null, "2026-03-01"), false, "no window → nothing to say");
+
   // --- daysInWindow(): inclusive on BOTH ends. An exclusive end would drop the
   // most recent day of spend, every time.
   const series = [day("2026-05-31"), day("2026-06-01"), day("2026-06-15"), day("2026-07-01")];
@@ -243,6 +320,27 @@ async function main() {
   const c2 = rolledCampaigns.find((c) => c.id === "c2")!;
   assert.equal(c2.leads, 0, "an ad with no pautas contributes 0, not undefined");
   assert.deepEqual(campaignsFromAds([], new Map()), []);
+
+  // A campaign that did not deliver in this window is dropped, not listed as a
+  // row of zeros. GHL returns the account's whole campaign list whatever the
+  // window is — amir-cherit answers with the same 194 ads for 30 days as for
+  // 365 — so without this the table fills with absences that read as failures.
+  assert.deepEqual(
+    campaignsFromAds(
+      [{ adId: "ad9", adName: "Z", campaignId: "c9", campaignName: "C9", campaignStatus: "PAUSED", spend: 0, impressions: 0, clicks: 0 }],
+      new Map(),
+    ),
+    [],
+    "a campaign with no delivery in the window is dropped",
+  );
+  assert.equal(
+    campaignsFromAds(
+      [{ adId: "ad8", adName: "Y", campaignId: "c8", campaignName: "C8", campaignStatus: "ACTIVE", spend: 0, impressions: 40, clicks: 0 }],
+      new Map(),
+    ).length,
+    1,
+    "delivery without spend still counts as delivery",
+  );
 
   console.log("verify:ads — all assertions passed");
 }

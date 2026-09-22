@@ -35,11 +35,12 @@ pnpm db:migrate          # creates the project_sync cache table (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
-**No test framework, and not adopting one.** Instead, the three pure modules where a
-silent bug would be a *cross-tenant data leak* have assertion scripts under
-`scripts/verify-*.ts` (plain `node:assert/strict`, run via `tsx`). Run them after
-touching auth, the roster, or the limiter. Everything else is verified by driving the
-real app.
+**No test framework, and not adopting one.** Instead, the pure modules where a silent
+bug would be a *cross-tenant data leak* (roster, auth, limiter) or a silently wrong
+number (ads, pipeline filter, attachments, sync store) have assertion scripts under
+`scripts/verify-*.ts` (plain `node:assert/strict`, run via `tsx`). "Running a single
+test" means running the one script for the module you touched. Everything else is
+verified by driving the real app.
 
 Gotcha when writing these scripts: this package is CommonJS (no `"type": "module"`),
 so `tsx` compiles to CJS where **top-level `await` fails**. Wrap async work in a
@@ -60,7 +61,7 @@ of truth — ignore it.
 Required vars in `.env.local`:
 - `DASHBOARD_CLIENTS` — JSON array of clients, one per GHL sub-account:
   `[{"id","name","locationId","ghlToken","password"?}]`. `password` is optional and
-  defaults to that client's `locationId`. Use `npm run add-client` to extend it safely.
+  defaults to that client's `locationId`. Use `pnpm add-client` to extend it safely.
 - `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
 - `ANTHROPIC_API_KEY` — used by `app/api/chat` (assistant), `analyze-report` (PDF analyses)
   and `analyze-contact`
@@ -120,6 +121,8 @@ already holds and need only the middleware gate:
 | `analyze-contact` | Anthropic call summarizing one contact (does read GHL for the opportunity) |
 | `chat` | one Anthropic turn for the AI assistant — **no GHL** |
 | `analyze-report` | Anthropic pass writing the PDF report's analyses — **no GHL** |
+| `ads-campaigns` | on-demand per-campaign Meta spend breakdown (see "Meta ad spend") |
+| `attachments/process` | parses assistant uploads (PDF via `unpdf`, CSV/Excel via `xlsx`) — **no GHL** |
 | `auth/login` / `auth/logout` | session cookie |
 
 Client-side data hooks mirror this: `use-dashboard-data.ts` (main sync),
@@ -173,8 +176,7 @@ context.
 `app/api/chat` and `app/api/analyze-report` never touch GHL (they work off data the
 browser already holds), so they need no client context — only the middleware gate.
 
-Verification scripts (no test framework in this repo): `npm run verify:clients`,
-`verify:auth`, `verify:limiter`.
+Verification scripts: `pnpm verify:clients`, `verify:auth`, `verify:limiter`.
 
 ### Loading & progress
 
@@ -192,7 +194,7 @@ The assistant is an **agent loop that runs in the browser**, not on the server.
   model returns `tool_use` blocks the server just returns them; `hooks/use-agent-loop.ts`
   executes the tools locally and POSTs back with `tool_result` blocks. The server holds
   **no session state** between turns.
-- `lib/ai-tools.ts` — the ~22 `TOOL_DEFINITIONS` and their executor. Most tools
+- `lib/ai-tools.ts` — the ~25 `TOOL_DEFINITIONS` and their executor. Most tools
   (`search_*`, `aggregate`, `relate`, `get_*`) run **against the dataset the browser
   already holds** — no extra GHL calls. The exceptions reach back through
   `lib/ghl-fetchers.ts` for data not in the initial sync: `get_contact_messages`,
@@ -334,6 +336,36 @@ Design invariants:
   account's first day. On "Todo el historial" an unclipped CPL would divide one
   year of spend by five years of leads and report a third of the real cost.
   `adsWindow()` intersects the two and the UI says so whenever it bites.
+- **It clips in BOTH directions, and the reverse case is the one that bit.** A
+  sub-account is routinely opened *after* its ad account was already spending.
+  stanza-residencial holds spend from 2026-03-02 and its first contact is
+  2026-07-15 — five months of spend over two months of leads, a CPL of **214.96
+  against a true 50.98**. amir-cherit has the same shape, milder (228.65 →
+  218.02). `adsWindow()` therefore takes a third bound, `crmFrom`, from
+  `firstRecordedDay()` over the **unfiltered** contacts and opportunities.
+  Derive it from a filtered slice and the clip chases its own tail as the date
+  picker moves. Only days when no record could exist are removed: a zero after
+  the CRM was already recording is a real zero, the same way an unlinked pauta
+  is never priced at zero.
+- **A `0` in the campaign table's leads column means three different things.**
+  The campaign produced nothing; no Pauta record could be written yet; or it is
+  a traffic-objective campaign that never produces a form. Only the first
+  accuses the campaign. On amir-cherit **85 of 188 campaigns** sit at zero — 34%
+  of all clicks — and nearly all of them ran before its Pauta object's first
+  record (2026-03-01); "Casa Tabachines" shows 3 099 clicks whose single ad id
+  appears in none of its 3 764 pautas, of any date. Ad rows come back aggregated
+  for the window with no dates, so per-campaign precision does not exist:
+  `hasUnobservableLeadDays()` is an account-level fact and the zero rows render
+  "sin registro". Pick a window inside the pauta era and a zero means zero again.
+- **The join footer must not speak while the ad rows are loading.** With an empty
+  ad-id set `joinPautasToAds` classifies every pauta as belonging to an unlinked
+  account, so amir-cherit read "3 764 de 3 764 pautas no aparecen aquí" for the
+  20–40s its fan-out takes — an absence of data stated as a fact. Same mistake
+  `AdsPendingNotice` exists to prevent, one level down.
+- **Campaigns with no delivery in the window are dropped from the table.** GHL
+  returns the account's whole campaign list whatever the window is — amir-cherit
+  answers with the same 194 ads for 30 days as for 365, only the metrics move —
+  so listing them fills the table with absences that read as failures.
 - **CPL uses the CRM's lead count, not Meta's.** Meta's action types overlap
   (`lead`, `onsiteConversion.lead`, `onsiteConversion.leadGrouped` all fire for
   one lead) and which one means "lead" depends on the objective — a WhatsApp
@@ -384,7 +416,12 @@ integration gate was hiding:
 | terrenos-en-venta-jerry-medina | ❌ `Access Token not found` (caducado) | — | — |
 
 The per-campaign fan-out is one request each and measured **19.9s for sahai's 91
-campaigns** (332 ads), so `maxDuration = 300` on the route is comfortable;
+campaigns** (332 ads) and **23.3s for amir-cherit's 189** (194 ads), so
+`maxDuration = 300` on the route is comfortable. There is no one-shot shortcut:
+`listType=ads` and `listType=adsets` without a `campaignId` both 422 with
+`campaignId must be a string`. The window cannot be cached and re-sliced in the
+browser either — the ad rows are the same set for any window but their metrics
+are aggregated per request;
 `MAX_CAMPAIGNS_FANNED_OUT` (200) is a guard that does not bite today — though
 amir-cherit's 189 campaigns are the closest anyone has come to it.
 
@@ -457,6 +494,13 @@ Invariants, each of which exists because something broke first:
 - The header shows **relative** age, never clock time: a cache whose age is not
   visible lies by omission. The loading screen waits 300 ms before appearing so a
   cached read does not flash it.
+
+### Other docs in the repo
+
+- `README.md` is **stale** (says Next 15, SWR, a "Conversaciones" tab). Trust this file
+  and the code over it.
+- `DESIGN.md` (palette, typography tokens) and `PRODUCT.md` (users, purpose, brand
+  personality) are the design context — read them before UI/visual work.
 
 ### Key design decisions
 
@@ -579,7 +623,7 @@ An HTTP MCP server (`ghl-mcp`, configured in `.mcp.json`) connects directly to G
 
 - `components/ui/` — shadcn/ui components (generated, do not hand-edit)
 - `components/dashboard/` — domain components; each dashboard component receives already-filtered data as props
-- `components/dashboard/date-range-filter.tsx` is the only global filter UI; the `DateFilter` type lives in `lib/date-range.ts`
+- Global filters: `filter-bar.tsx` hosts `date-range-filter.tsx` (`DateFilter` type in `lib/date-range.ts`) and `pipeline-filter.tsx` (logic in `lib/pipeline-filter.ts`)
 - Charts use Recharts via the shadcn chart wrapper (`components/ui/chart.tsx`)
 - `components.json` controls shadcn/ui config (alias `@/components/ui`, Tailwind CSS v3)
 - Shared chart chrome lives in `dashboard-ui.tsx`: `ChartCardHeader`, `ScopePill` (scope

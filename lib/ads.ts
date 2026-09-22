@@ -139,23 +139,59 @@ export function toDayKey(d: Date): string {
 }
 
 /**
- * The window the ad numbers actually cover: the active date filter clipped to
- * the days we fetched from Meta.
+ * The first day the CRM holds any record at all, or undefined when it holds
+ * none. Takes several record sets because "the CRM was recording" is proven by
+ * whichever of them starts earliest.
  *
- * This clipping is the point. Spend is fetched over a bounded trailing window
- * while the CRM data goes back to the account's first day, so on "Todo el
- * historial" a naive CPL would divide a year of spend by five years of leads and
- * report a third of the real cost. Every ad KPI — and the lead count it is
- * divided by — is scoped to what comes back from here.
+ * Pass the UNFILTERED sets. This is a fact about the account, not about the
+ * active window, and deriving it from a filtered slice would make it drift with
+ * the date picker — the clip below would then chase its own tail.
+ */
+export function firstRecordedDay(
+  ...sets: Array<ReadonlyArray<{ createdAt?: string }> | undefined>
+): string | undefined {
+  let first: string | undefined
+  for (const set of sets) {
+    if (!set) continue
+    for (const r of set) {
+      const day = (r.createdAt ?? "").slice(0, 10)
+      if (!day) continue
+      if (first === undefined || day < first) first = day
+    }
+  }
+  return first
+}
+
+/**
+ * The window the ad numbers actually cover: the active date filter clipped to
+ * the days we fetched from Meta AND to the days the CRM was recording.
+ *
+ * This clipping is the point, and it cuts in both directions:
+ *
+ * - Spend is fetched over a bounded trailing window while the CRM can go back to
+ *   the account's first day, so on "Todo el historial" a naive CPL would divide
+ *   a year of spend by five years of leads and report a third of the real cost.
+ * - The reverse is just as common and was hiding in plain sight: a sub-account
+ *   opened AFTER the ad account was already spending. stanza-residencial holds
+ *   spend from 2026-03-02 but its first contact is 2026-07-15, so an unclipped
+ *   CPL divided five months of spend by two months of leads — 214.96 against a
+ *   true 50.98. amir-cherit has the same shape, milder (228.65 → 218.02).
+ *
+ * `crmFrom` is that second bound, from firstRecordedDay(). Only days no record
+ * could possibly exist for are removed: a zero after the CRM was already
+ * recording is a real zero and stays in, the same way an unlinked pauta is never
+ * priced at zero.
  *
  * Returns null when the filter and the fetched window don't overlap at all.
  */
 export function adsWindow(
   report: AdsReport | undefined,
-  range: ResolvedDateRange | null
+  range: ResolvedDateRange | null,
+  crmFrom?: string
 ): { from: string; to: string } | null {
   if (!report?.from || !report?.to) return null
-  const from = range ? maxDay(report.from, toDayKey(range.from)) : report.from
+  let from = range ? maxDay(report.from, toDayKey(range.from)) : report.from
+  if (crmFrom) from = maxDay(from, crmFrom)
   const to = range ? minDay(report.to, toDayKey(range.to)) : report.to
   return from <= to ? { from, to } : null
 }
@@ -164,6 +200,34 @@ export function adsWindow(
 const maxDay = (a: string, b: string) => (a >= b ? a : b)
 const minDay = (a: string, b: string) => (a <= b ? a : b)
 
+/**
+ * True when part of the window predates the first day the Pauta object ever
+ * recorded a lead, so a campaign's zero cannot be told apart from "nothing was
+ * recording yet".
+ *
+ * Three different facts arrive at the same rendered `0` in the leads column:
+ * the campaign produced nothing, no pauta could be written yet, or it is a
+ * traffic-objective campaign that never produces a form at all. Only the first
+ * is an accusation against the campaign. amir-cherit shows 85 of 188 campaigns
+ * at zero — 34% of all clicks — and nearly all of them ran before its Pauta
+ * object's first record (2026-03-01); "Casa Tabachines" has 3 099 clicks whose
+ * one ad id appears in none of the 3 764 pautas, of any date.
+ *
+ * Per-campaign precision is not available — ad rows come back aggregated for
+ * the window, with no dates — so this is an account-level fact, applied to the
+ * zero rows only. When the user picks a window that sits entirely inside the
+ * pauta era it goes false and a zero means zero again.
+ */
+export function hasUnobservableLeadDays(
+  window: { from: string; to: string } | null,
+  attributionFrom: string | undefined
+): boolean {
+  if (!window) return false
+  // No pauta has ever been recorded: nothing in any window is observable.
+  if (!attributionFrom) return true
+  return window.from < attributionFrom
+}
+
 /** The daily rows inside a window, inclusive on both ends. */
 export function daysInWindow(days: AdDay[], window: { from: string; to: string } | null): AdDay[] {
   if (!window) return []
@@ -171,17 +235,20 @@ export function daysInWindow(days: AdDay[], window: { from: string; to: string }
 }
 
 /**
- * True when the active filter reaches further back than the spend we hold, i.e.
- * the ad KPIs are describing a shorter period than the rest of the page. The UI
- * says so out loud; a silently narrower window is exactly how a CPL ends up
- * looking three times better than it is.
+ * True when the active filter reaches further back than the window the ad KPIs
+ * actually describe — because Meta stops at 365 days, because the CRM had not
+ * started yet, or both. The UI says so out loud; a silently narrower window is
+ * exactly how a CPL ends up looking three times better than it is.
  */
 export function isWindowClipped(
   report: AdsReport | undefined,
-  range: ResolvedDateRange | null
+  range: ResolvedDateRange | null,
+  crmFrom?: string
 ): boolean {
   if (!report?.from) return false
-  return !range || toDayKey(range.from) < report.from
+  if (!range) return true
+  const asked = toDayKey(range.from)
+  return asked < report.from || (!!crmFrom && asked < crmFrom)
 }
 
 // ---------------------------------------------------------------------------
@@ -319,5 +386,12 @@ export function campaignsFromAds(
     prev.clicks += ad.clicks
     prev.leads += leads
   }
-  return Array.from(byCampaign.values()).sort((a, b) => b.spend - a.spend)
+  // Campaigns that did not deliver at all in this window are dropped rather
+  // than listed as a row of zeros. GHL returns the account's whole campaign
+  // list whatever the window is — amir-cherit answers with the same 194 ads for
+  // 30 days as for 365, only the metrics move — so without this the table is
+  // mostly empty rows that look like failures instead of absences.
+  return Array.from(byCampaign.values())
+    .filter((c) => c.spend > 0 || c.clicks > 0 || c.impressions > 0)
+    .sort((a, b) => b.spend - a.spend)
 }

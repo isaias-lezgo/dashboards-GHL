@@ -38,7 +38,7 @@ import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-d
 import { CampaignActivityChart } from "./campaign-activity-chart"
 import { AdsSection } from "./ads-section"
 import { useAdCampaigns } from "@/hooks/use-ad-campaigns"
-import { adsWindow, pautaAdId, spendForAdIds } from "@/lib/ads"
+import { adsWindow, firstRecordedDay, pautaAdId, spendForAdIds } from "@/lib/ads"
 import { ExportReportButton } from "./export-report-button"
 import type { ReportInput, ReportSection } from "@/lib/report"
 import { OrigenDeLeadInfo } from "./origen-de-lead-criteria"
@@ -912,7 +912,30 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
   // returned; see adsWindow(). Fetched here, not inside AdsSection, because the
   // "Campañas activas por pauta" chart prices its rows from the same ad rows and
   // two hooks would issue the same N+1 fetch twice.
-  const adWindow = useMemo(() => adsWindow(ads, dateRange ?? null), [ads, dateRange])
+  //
+  // The window is ALSO floored at the CRM's first day. A sub-account opened
+  // after the ad account was already spending divides months of spend by weeks
+  // of leads: stanza-residencial holds spend from 2026-03-02 and its first
+  // contact is 2026-07-15, which reported a CPL of 214.96 against a true 50.98.
+  // Derived from the unfiltered lookup sets on purpose — it is a fact about the
+  // account, not about the active filter.
+  const crmFrom = useMemo(
+    () => firstRecordedDay(lookupContacts, lookupOpportunities),
+    [lookupContacts, lookupOpportunities]
+  )
+
+  // The first day the Pauta object recorded anything. Spend older than this has
+  // leads we cannot observe, which is not the same as leads that did not happen
+  // — the table says so instead of printing a zero.
+  const attributionFrom = useMemo(
+    () => firstRecordedDay(unscopedByPipeline?.allPautas ?? allPautas),
+    [unscopedByPipeline, allPautas]
+  )
+
+  const adWindow = useMemo(
+    () => adsWindow(ads, dateRange ?? null, crmFrom),
+    [ads, dateRange, crmFrom]
+  )
   const {
     ads: adRows,
     isLoading: adRowsLoading,
@@ -1429,6 +1452,8 @@ export function MarketingDashboard({ opportunities, allOpportunities, contacts, 
       <AdsSection
         ads={ads}
         dateRange={dateRange ?? null}
+        crmFrom={crmFrom}
+        attributionFrom={attributionFrom}
         pautaOpportunities={pautaOppsForSpend}
         pautas={pautasForSpend}
         pipelineNotice={pipelineScoped ? pipelineLabel : undefined}
