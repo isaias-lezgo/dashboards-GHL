@@ -7,7 +7,8 @@
 //   GET /api/dashboard
 //       ↓  requireClient()           → resolves the cookie to a ClientConfig
 //       ↓  readCache(client)         → the project_sync row
-//       ├─ hit  → ship the payload immediately; if it is older than the fresh
+//       ├─ hit  → ship the payload immediately (unless older than MAX_SERVE_AGE_MS,
+//       │         which is treated as a miss); if it is older than the fresh
 //       │         window, after(() => refresh) once the response has gone out
 //       └─ miss → live sync with the loading screen, then cache the result
 //
@@ -16,7 +17,7 @@ import { after } from "next/server";
 import { requireClient, unauthorized } from "@/lib/session";
 import { syncProject } from "@/lib/sync";
 import { isDbConfigured } from "@/lib/db";
-import { readSync, writeSync, claimSync, releaseSync, isStale } from "@/lib/sync-store";
+import { readSync, writeSync, claimSync, releaseSync, isStale, isTooOldToServe } from "@/lib/sync-store";
 import type { ClientConfig } from "@/lib/clients";
 import type { DashboardPayload } from "@/lib/types";
 
@@ -98,7 +99,13 @@ export async function GET(request: Request) {
   if (!client) return unauthorized();
 
   const fresh = new URL(request.url).searchParams.get("fresh") === "1";
-  const cached = fresh ? null : await readCache(client);
+  const row = fresh ? null : await readCache(client);
+  // Too old to show at all (see MAX_SERVE_AGE_MS): take the cold path, which
+  // syncs live and overwrites the row. The old payload is never shipped.
+  const cached = row && !isTooOldToServe(row.syncedAt) ? row : null;
+  if (row && !cached) {
+    console.log(`[cache] ${client.id} cache from ${row.syncedAt} is too old to serve — syncing live`);
+  }
 
   // Scheduled from the handler scope, not from inside the stream: after() belongs
   // to the request, and without it the function is torn down when the response
@@ -123,7 +130,8 @@ export async function GET(request: Request) {
           return;
         }
 
-        // Cold path: never synced, ?fresh=1, or the database did not answer.
+        // Cold path: never synced, too old to serve, ?fresh=1, or the database
+        // did not answer.
         // syncProject enters the credential context itself — and it does so
         // inside this start() callback, because the stream keeps producing
         // frames after GET() has already returned.
@@ -132,6 +140,12 @@ export async function GET(request: Request) {
         await saveQuietly(client, payload);
       } catch (error) {
         console.error("[GHL Dashboard API Error]", error);
+        if (row) {
+          // The live sync failed but an old row exists: old data beats an error
+          // screen. The header's "Actualizado hace X" still tells the truth.
+          send({ type: "data", ...row.payload, syncedAt: row.syncedAt });
+          return;
+        }
         send({
           type: "error",
           error: "Failed to fetch dashboard data",

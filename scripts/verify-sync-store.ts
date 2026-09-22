@@ -9,7 +9,7 @@
 // top-level await is unavailable. Same gotcha as the other verify-* scripts.
 import assert from "node:assert/strict";
 import { gzipSync, gunzipSync } from "node:zlib";
-import { isStale, FRESH_WINDOW_MS, readSync, writeSync, claimSync, releaseSync } from "../lib/sync-store";
+import { isStale, isTooOldToServe, FRESH_WINDOW_MS, MAX_SERVE_AGE_MS, readSync, writeSync, claimSync, releaseSync } from "../lib/sync-store";
 import { isDbConfigured, getSql } from "../lib/db";
 import type { ClientConfig } from "../lib/clients";
 import type { DashboardPayload } from "../lib/types";
@@ -82,12 +82,25 @@ function pureAssertions() {
   const future = new Date(now.getTime() + 60 * 60 * 1000);
   assert.equal(isStale(future, now), false, "a future synced_at is treated as fresh");
 
+  // Both edges of the serve ceiling. Past it the row is a miss, not a hit: the
+  // rise-29 regression was a 3-week-old row shipped as if it were current.
+  const serveInside = new Date(now.getTime() - (MAX_SERVE_AGE_MS - 1000));
+  const serveAt = new Date(now.getTime() - MAX_SERVE_AGE_MS);
+  const threeWeeks = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
+  assert.ok(MAX_SERVE_AGE_MS > FRESH_WINDOW_MS, "the serve ceiling sits past the fresh window");
+  assert.equal(isTooOldToServe(serveInside, now), false, "1s inside the ceiling is served");
+  assert.equal(isTooOldToServe(serveAt, now), true, "exactly at the ceiling is refused");
+  assert.equal(isTooOldToServe(threeWeeks.toISOString(), now), true, "a 3-week-old row is refused");
+  assert.equal(isTooOldToServe(wellPast, now), false, "an hour old is stale but still served");
+  assert.equal(isTooOldToServe(future, now), false, "a future synced_at is served, same as isStale");
+  assert.equal(isTooOldToServe("not a date", now), true, "an unparseable synced_at is refused");
+
   // The compression round-trip must be byte-exact, accents and emoji included.
   const original = payloadFixture("compresión-🚀");
   const restored = JSON.parse(gunzipSync(gzipSync(Buffer.from(JSON.stringify(original), "utf8"))).toString("utf8"));
   assert.deepEqual(restored, original, "gzip round-trip preserves the payload exactly");
 
-  console.log("✅ puras: ventana de frescura, reloj chueco y round-trip de gzip");
+  console.log("✅ puras: ventana de frescura, tope de antigüedad, reloj chueco y round-trip de gzip");
 }
 
 async function dbAssertions() {

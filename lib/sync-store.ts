@@ -27,13 +27,38 @@ export const FRESH_WINDOW_MS = 15 * 60 * 1000;
 // Self-healing: a function that dies mid-sync must not freeze the client forever.
 const LOCK_TIMEOUT_MINUTES = 10;
 
-export function isStale(syncedAt: string | Date, now: Date = new Date()): boolean {
+// How old a payload may be and still be SERVED at all. Past this, the route
+// treats the row as a miss and syncs live with the loading screen.
+//
+// Stale-while-revalidate only helps a client that comes back soon: the refresh
+// runs in after(), updates the row, and the browser that triggered it keeps the
+// old payload until the next load. A client nobody opened for three weeks was
+// therefore shown three-week-old data on its first visit — rise-29 on
+// 2026-09-21 got the 2026-08-31 snapshot, and the AI assistant, reading that
+// browser copy, told the user there were zero leads in September (there were
+// 109). A blocking sync after a long absence is the lesser evil.
+export const MAX_SERVE_AGE_MS = 6 * 60 * 60 * 1000;
+
+function ageMs(syncedAt: string | Date, now: Date): number {
   const then = syncedAt instanceof Date ? syncedAt : new Date(syncedAt);
-  const age = now.getTime() - then.getTime();
+  return now.getTime() - then.getTime();
+}
+
+export function isStale(syncedAt: string | Date, now: Date = new Date()): boolean {
+  const age = ageMs(syncedAt, now);
   // A negative age means clock skew put synced_at in the future. Treat it as
   // fresh: re-syncing on every visit would be worse than trusting the row.
   if (age < 0) return false;
   return age >= FRESH_WINDOW_MS;
+}
+
+export function isTooOldToServe(syncedAt: string | Date, now: Date = new Date()): boolean {
+  const age = ageMs(syncedAt, now);
+  // Same clock-skew rule as isStale. NaN (an unparseable date) compares false
+  // everywhere, so it is refused explicitly rather than served forever.
+  if (Number.isNaN(age)) return true;
+  if (age < 0) return false;
+  return age >= MAX_SERVE_AGE_MS;
 }
 
 // Every function here takes the ClientConfig, never a bare string. Reading the

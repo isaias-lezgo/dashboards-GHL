@@ -480,6 +480,17 @@ Invariants, each of which exists because something broke first:
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
   client forever.
+- **Stale-while-revalidate has a ceiling: `MAX_SERVE_AGE_MS` (6 h).** The
+  background refresh updates the ROW, never the browser that triggered it, so a
+  client nobody opened in weeks used to be shown weeks-old data on its first
+  visit. rise-29 on 2026-09-21 got its 2026-08-31 snapshot, and the assistant,
+  reading that browser copy, told the user September had zero leads (it had
+  109). Past the ceiling the row is a miss: live sync with the loading screen.
+  If that live sync fails, the old row is served as a fallback — old data still
+  beats an error screen.
+- **The assistant knows where its copy ends.** `syncedAt` goes into
+  `buildDatasetSummary`, and rule 9 of the system prompt says to cite that date
+  and point at "Actualizar" instead of concluding "there were no records".
 - **`releaseSync` never touches the payload.** A failed refresh must leave the last
   good cache in place — an hour-old dashboard beats no dashboard.
 - **`synced_at` comes from the payload, not `now()`**: it records when GHL was read,

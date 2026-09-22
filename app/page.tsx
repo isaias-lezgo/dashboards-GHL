@@ -514,6 +514,7 @@ export default function DashboardPage() {
               calls: data?.calls ?? [],
             }}
             locationId={data?.locationId}
+            syncedAt={syncedAt ?? data?.meta?.fetchedAt}
           />
         </div>
       </div>

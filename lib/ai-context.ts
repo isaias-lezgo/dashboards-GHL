@@ -48,11 +48,20 @@ const topNWithCounts = <T>(
   n: number
 ): string[] => topN(items, key, n, true);
 
-export function buildDatasetSummary(data: ChatDataset, locationId?: string): string {
+// `syncedAt` is when the browser's copy was read from GHL. It is pinned for the
+// whole session like the rest of this block, so it never busts the prompt cache.
+// Without it the model had no way to tell "no records after X" from "my copy
+// ends at X" — see rule 9 in ASSISTANT_SYSTEM_PROMPT.
+export function buildDatasetSummary(data: ChatDataset, locationId?: string, syncedAt?: string): string {
   const lines: string[] = [];
 
   lines.push("=== RESUMEN DEL DATASET ===");
   if (locationId) lines.push(`Location: ${locationId}`);
+  if (syncedAt) {
+    lines.push(
+      `Datos sincronizados del CRM el: ${syncedAt} (UTC). Todo lo creado en el CRM después de este momento NO está en este dataset.`
+    );
+  }
   lines.push(
     `Totales: ${data.contacts.length} contactos · ${data.opportunities.length} oportunidades · ${data.pautas.length} pautas · ${data.appointments.length} citas · ${data.messages.length} mensajes · ${data.tasks.length} tareas`
   );
@@ -189,6 +198,11 @@ Tienes acceso a todo el contexto de cada contacto a través de herramientas: sus
    - **PASO OBLIGATORIO — fija la ventana UNA vez y reúsala en cada entidad**: antes de tocar cualquier herramienta, convierte el periodo a fechas ISO concretas (\`createdAfter\` + \`createdBefore\`) UNA sola vez y aplica ESAS MISMAS fechas en CADA llamada de datos: contactos, **oportunidades**, pautas, citas y tareas. El error más común y más grave es filtrar los contactos por la semana pero pedir las oportunidades (o cualquier otra entidad) SIN filtro de fecha, con lo que salen "de todos los tiempos". Eso es un BUG, no una opción. Cada \`aggregate\`/\`relate\`/\`search_*\` de un reporte de periodo DEBE llevar el filtro de fecha; si una llamada no lo lleva, está mal — corrígela antes de responder.
    - **Base de fecha de las oportunidades dentro de un reporte de periodo**: por defecto usa la fecha de creación de la OPORTUNIDAD → \`aggregate(opportunities, filters:{createdAfter, createdBefore}, groupBy:"stage")\`, con las MISMAS fechas que los contactos, y dilo en una línea ("oportunidades creadas en el periodo"). Dentro de un reporte de periodo NO te detengas a preguntar con \`ask_user\` la base de fecha (la regla 4 de \`ask_user\` NO aplica aquí): elige este valor por defecto y acláralo. Solo pregunta si el usuario pide algo que dependa de otra base (p. ej. "ventas CERRADAS en la semana" → usa \`closedAfter/closedBefore\`).
    - **"Oportunidades de los contactos creados en el periodo"** es un cruce entre entidades: usa \`relate({ from: { entity: "contacts", filters: { createdAfter, createdBefore } }, to: { entity: "opportunities" }, groupBy: "stage" })\`. NO uses \`aggregate(opportunities, ...)\` con \`createdAfter/createdBefore\` para esto — esos filtros miran la fecha de creación de la OPORTUNIDAD, no la del contacto. Usa \`aggregate(opportunities, filters:{createdAfter,createdBefore})\` cuando quieras las oportunidades CREADAS en el periodo (el default de arriba); si hay ambigüedad entre ambas lecturas, elige una, aclárala en una línea y mantén la misma ventana.
+9. **Fecha de corte del dataset**: el resumen del dataset trae "Datos sincronizados del CRM el: <fecha>". Tus herramientas de búsqueda y conteo (\`search_*\`, \`aggregate\`, \`relate\`, \`list_*\`) leen una COPIA tomada en ese momento, no el CRM en vivo. Por eso:
+   - Si una consulta de un periodo POSTERIOR a esa fecha da 0, NO concluyas que "no hubo leads/citas/ventas": di que tus datos llegan hasta esa fecha y pide al usuario que presione el botón **Actualizar** (arriba a la derecha, el ícono de flechas circulares) y vuelva a preguntar.
+   - Si el usuario dice que hay registros más recientes de los que ves, créele: cita la fecha de corte y pídele que presione **Actualizar**. NUNCA insistas en que no existen ni atribuyas el hueco a un "dataset indexado" o a un sync ajeno.
+   - Nunca sustituyas por tu cuenta el periodo pedido por "la última ventana con datos" sin que el usuario lo acepte primero.
+   - Solo afirma que revisaste un campo o una fecha si de verdad hiciste esa consulta.
 
 # Cuándo preguntar (ask_user)
 

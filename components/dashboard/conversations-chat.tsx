@@ -76,6 +76,8 @@ import { parseChartSpec } from "@/lib/ai-tools";
 export interface ConversationsChatProps {
   dataset: ChatDataset;
   locationId?: string;
+  /** When the dataset was read from GHL — tells the assistant where its copy ends. */
+  syncedAt?: string;
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -244,6 +246,7 @@ function toReadyAttachment(results: ProcessedAttachment[]): ReadyAttachment {
 export function ConversationsChat({
   dataset,
   locationId,
+  syncedAt,
 }: ConversationsChatProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -330,8 +333,8 @@ export function ConversationsChat({
   // The system prompt now lives entirely in /api/chat (ASSISTANT_SYSTEM_PROMPT);
   // this block carries only the dataset summary that gets cached alongside it.
   const datasetSummary = useMemo(
-    () => buildDatasetSummary(dataset, locationId),
-    [dataset, locationId],
+    () => buildDatasetSummary(dataset, locationId, syncedAt),
+    [dataset, locationId, syncedAt],
   );
 
   // ─── Panel updater ──────────────────────────────────────────────────────────
