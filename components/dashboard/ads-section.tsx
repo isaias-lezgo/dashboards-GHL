@@ -391,14 +391,10 @@ export function AdsSection({
     [adRows, join.leadsByAdId]
   )
 
-  if (!ads || ads.status !== "connected") {
-    return (
-      <div className="flex flex-col gap-3">
-        <SectionHeader title="Inversión en pauta (Meta)" />
-        {ads ? <AdsNotice ads={ads} /> : <AdsPendingNotice />}
-      </div>
-    )
-  }
+  // Temporarily hidden: accounts without Meta linked render nothing instead of
+  // the "vincula tu cuenta" / pending notices. To restore, return
+  // `{ads ? <AdsNotice ads={ads} /> : <AdsPendingNotice />}` under the header.
+  if (!ads || ads.status !== "connected") return null
 
   // Includes the year: the clipped window routinely spans a year boundary, and
   // "2 sep – 1 sep" reads as a single day rather than twelve months.
