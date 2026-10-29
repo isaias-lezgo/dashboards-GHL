@@ -272,13 +272,20 @@ export async function getCompanyAccessToken(companyId: string): Promise<string> 
 
 // ── Location tokens (cache) ──────────────────────────────────────────────────
 
-export async function getLocationAccessToken(companyId: string, locationId: string): Promise<string> {
-  const rows = await getSql()`
-    SELECT access_token_enc, expires_at FROM ghl_location_token
-     WHERE location_id = ${locationId} AND company_id = ${companyId}
-  `;
-  if (rows.length > 0 && !needsRefresh(new Date(rows[0].expires_at))) {
-    return decryptToken(rows[0].access_token_enc);
+export async function getLocationAccessToken(
+  companyId: string,
+  locationId: string,
+  opts: { force?: boolean } = {},
+): Promise<{ token: string; expiresAt: Date }> {
+  if (!opts.force) {
+    const rows = await getSql()`
+      SELECT access_token_enc, expires_at FROM ghl_location_token
+       WHERE location_id = ${locationId} AND company_id = ${companyId}
+    `;
+    if (rows.length > 0) {
+      const expiresAt = new Date(rows[0].expires_at);
+      if (!needsRefresh(expiresAt)) return { token: decryptToken(rows[0].access_token_enc), expiresAt };
+    }
   }
 
   const companyToken = await getCompanyAccessToken(companyId);
@@ -287,16 +294,17 @@ export async function getLocationAccessToken(companyId: string, locationId: stri
     { companyId, locationId },
     companyToken,
   );
+  const expiresAt = expiresAtFrom(minted.expires_in);
   await getSql()`
     INSERT INTO ghl_location_token (location_id, company_id, access_token_enc, expires_at, updated_at)
-    VALUES (${locationId}, ${companyId}, ${encryptToken(minted.access_token)}, ${expiresAtFrom(minted.expires_in)}, now())
+    VALUES (${locationId}, ${companyId}, ${encryptToken(minted.access_token)}, ${expiresAt}, now())
     ON CONFLICT (location_id) DO UPDATE SET
       company_id = EXCLUDED.company_id,
       access_token_enc = EXCLUDED.access_token_enc,
       expires_at = EXCLUDED.expires_at,
       updated_at = now()
   `;
-  return minted.access_token;
+  return { token: minted.access_token, expiresAt };
 }
 
 // ── Installed locations ──────────────────────────────────────────────────────

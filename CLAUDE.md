@@ -33,6 +33,7 @@ pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-tr
                          #   (DB assertions run only when DATABASE_URL is set)
 pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
 pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
+pnpm check:oauth-sync <clientId> # read-only: full sync over PIT vs OAuth, diffs every count
 pnpm db:migrate          # creates project_sync + the OAuth token tables (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
@@ -537,9 +538,14 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
   tenant from URL variables like `{{location.id}}` — they are user-editable.
 - The SSO cookie is `SameSite=None; Partitioned`: inside GHL's iframe it is a
   third-party cookie. The password login keeps `Lax`.
-- SSO currently maps `activeLocation` onto the env roster (`findClientByLocationId`),
-  so data still flows through PITs. Not done yet: OAuth tokens in `ghlFetch`, the
-  INSTALL/UNINSTALL webhook.
+- **`ghlFetch` prefers OAuth, falls back to the PIT** (`lib/ghl-token.ts`): the
+  location token when the app is installed on that sub-account, the roster PIT
+  otherwise. In-memory cache + in-flight dedupe + a 5-min negative cache, because
+  ghlFetch runs hundreds of times per sync. A 401 on an OAuth token re-mints once.
+  `GHL_OAUTH_DISABLED=1` is the kill switch. Before trusting OAuth for a client,
+  run `pnpm check:oauth-sync <id>`: a missing scope does not fail the sync, it
+  empties one dataset (sahai, 2026-10-28: identical on every count).
+- SSO maps `activeLocation` onto the env roster (`findClientByLocationId`).
 
 ### Other docs in the repo
 

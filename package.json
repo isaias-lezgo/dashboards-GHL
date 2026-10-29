@@ -19,7 +19,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
     "verify:sync-store": "tsx --env-file-if-exists=.env.local scripts/verify-sync-store.ts",
     "verify:oauth": "tsx --env-file-if-exists=.env.local scripts/verify-oauth.ts",
-    "verify:sso": "tsx scripts/verify-sso.ts"
+    "verify:sso": "tsx scripts/verify-sso.ts",
+    "check:oauth-sync": "tsx --env-file-if-exists=.env.local scripts/check-oauth-sync.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

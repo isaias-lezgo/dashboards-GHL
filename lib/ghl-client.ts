@@ -5,6 +5,7 @@
 // Credentials are per-request, not per-process: ghlFetch reads them from the
 // AsyncLocalStorage context established by the route (see lib/ghl-context.ts).
 import { currentClient } from "./ghl-context";
+import { resolveGhlToken } from "./ghl-token";
 import {
   acquireSlot,
   releaseSlot,
@@ -47,7 +48,13 @@ async function ghlFetch<T>(
 ): Promise<T> {
   // Fails closed if the route forgot to establish the context — never falls back
   // to a default token, because serving the wrong tenant is worse than a 500.
-  const { ghlToken: token, locationId } = currentClient();
+  const client = currentClient();
+  const { locationId } = client;
+  // OAuth location token when the Marketplace app is installed on this
+  // sub-account, the roster PIT otherwise (lib/ghl-token.ts). Resolved before
+  // taking a limiter slot, so a token mint never holds one.
+  let auth = await resolveGhlToken(client);
+  let reauthorized = false;
 
   // Replace :locationId placeholder in endpoint
   const hadLocationPlaceholder = endpoint.includes(":locationId");
@@ -77,14 +84,15 @@ async function ghlFetch<T>(
     body = { ...body, locationId };
   }
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${auth.token}`,
+    Version: options.version ?? GHL_API_VERSION,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
   const requestInit: RequestInit = {
     method: options.method || "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Version: options.version ?? GHL_API_VERSION,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   };
 
@@ -158,6 +166,15 @@ async function ghlFetch<T>(
           const delay = Math.pow(2, attempt) * 1000 + jitter();
           console.warn(`[GHL] 401 timeout — retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
           await sleep(delay);
+          continue;
+        }
+        // An OAuth token can die before its stated expiry (reinstall, scope
+        // change). Mint a fresh one once; a second 401 is a real auth failure.
+        if (response.status === 401 && auth.source === "oauth" && !reauthorized && attempt < MAX_RETRIES) {
+          reauthorized = true;
+          auth = await resolveGhlToken(client, { forceRefresh: true });
+          headers.Authorization = `Bearer ${auth.token}`;
+          console.warn(`[GHL] 401 with OAuth token for ${locationId} — retrying with a fresh ${auth.source} token`);
           continue;
         }
         console.error(`[GHL API Error] ${response.status}: ${errorText}`);
