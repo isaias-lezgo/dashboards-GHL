@@ -1,9 +1,9 @@
 import { withClient } from "@/lib/ghl-context"
-import { getClients } from "@/lib/clients"
+import { getRoster } from "@/lib/clients"
 import { getCustomObjects, getAllCustomObjectRecords, getContacts } from "@/lib/ghl-client"
 
 async function main() {
-  const client = getClients().find((c) => c.name.toLowerCase().includes("grand"))
+  const client = (await getRoster()).find((c) => c.name.toLowerCase().includes("grand"))
   if (!client) throw new Error("Grand Center client not found in roster")
 
   await withClient(client, async () => {

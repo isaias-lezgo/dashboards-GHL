@@ -70,6 +70,10 @@ async function main() {
     )
   `;
 
+  // Login override for one client (lib/clients.ts effectivePassword): NULL means
+  // the location id is the password. The escape hatch when a location id leaks.
+  await sql`ALTER TABLE dashboard_installation ADD COLUMN IF NOT EXISTS password text`;
+
   for (const table of ["project_sync", "ghl_oauth_token", "ghl_location_token", "dashboard_installation"]) {
     const rows = await sql`
       SELECT column_name, data_type

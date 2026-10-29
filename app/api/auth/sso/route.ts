@@ -53,7 +53,7 @@ export async function POST(req: Request) {
   try {
     client = await resolveClientByLocationId(decision.locationId);
   } catch (err) {
-    console.error("[sso] Invalid DASHBOARD_CLIENTS:", err);
+    console.error("[sso] Could not load the client roster:", err);
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
   if (!client) {

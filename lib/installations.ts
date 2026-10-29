@@ -18,14 +18,16 @@ export interface Installation {
   locationId: string;
   clientId: string;
   name: string;
+  /** Optional login override; null = the location id is the password. */
+  password: string | null;
 }
 
-// The session token is dot-delimited and embeds the id: same rule as the env
-// roster's ID_RE in lib/clients.ts.
+// The session token is dot-delimited and embeds the id, so ids are limited to
+// [a-z0-9-] — no dots.
 export function slugify(name: string): string {
   const slug = name
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -33,7 +35,7 @@ export function slugify(name: string): string {
   return slug || "cliente";
 }
 
-// Pure. `taken` holds every id already in use (env roster + table).
+// Pure. `taken` holds every id already in the table.
 export function uniqueClientId(name: string, locationId: string, taken: Set<string>): string {
   const base = slugify(name);
   if (!taken.has(base)) return base;
@@ -44,25 +46,26 @@ export function uniqueClientId(name: string, locationId: string, taken: Set<stri
 
 export async function listActiveInstallations(): Promise<Installation[]> {
   const rows = await getSql()`
-    SELECT location_id, client_id, name FROM dashboard_installation
+    SELECT location_id, client_id, name, password FROM dashboard_installation
      WHERE uninstalled_at IS NULL
   `;
-  return rows.map((r) => ({ locationId: r.location_id, clientId: r.client_id, name: r.name }));
+  return rows.map((r) => ({
+    locationId: r.location_id,
+    clientId: r.client_id,
+    name: r.name,
+    password: r.password ?? null,
+  }));
 }
 
-// Re-reads GHL's list and makes the table match it. A location that is already
-// an env-roster client keeps that client's id (one identity per sub-account,
-// one cache row); every other env id is reserved so an auto-assigned id never
-// shadows a configured client.
-export async function reconcileInstallations(
-  envClients: { id: string; locationId: string }[],
-): Promise<{ added: number; removed: number }> {
+// Re-reads GHL's list and makes the table match it. Ids of locations already in
+// the table are never reassigned — they key live sessions and cached payloads.
+// (The nine sub-accounts migrated from the old env roster kept their env ids.)
+export async function reconcileInstallations(): Promise<{ added: number; removed: number }> {
   const sql = getSql();
   const installed = await listInstalledLocations(AGENCY_COMPANY_ID);
   const known = await sql`SELECT location_id, client_id, uninstalled_at FROM dashboard_installation`;
   const byLoc = new Map(known.map((r) => [r.location_id as string, r]));
-  const envIdByLoc = new Map(envClients.map((c) => [c.locationId, c.id]));
-  const taken = new Set<string>([...envClients.map((c) => c.id), ...known.map((r) => r.client_id as string)]);
+  const taken = new Set<string>(known.map((r) => r.client_id as string));
 
   let added = 0;
   for (const loc of installed) {
@@ -71,7 +74,7 @@ export async function reconcileInstallations(
       // GHL delivers INSTALL in bursts (four in one second on 2026-10-28), so
       // reconciles race. No conflict target: a lost race on location_id OR on
       // client_id is skipped, and the next reconcile settles it.
-      const clientId = envIdByLoc.get(loc._id) ?? uniqueClientId(loc.name ?? loc._id, loc._id, taken);
+      const clientId = uniqueClientId(loc.name ?? loc._id, loc._id, taken);
       taken.add(clientId);
       await sql`
         INSERT INTO dashboard_installation (location_id, client_id, name, company_id)

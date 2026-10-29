@@ -44,8 +44,8 @@ function recordFailure(ip: string): void {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.DASHBOARD_CLIENTS || !process.env.DASHBOARD_AUTH_SECRET) {
-    console.error("[auth] DASHBOARD_CLIENTS or DASHBOARD_AUTH_SECRET not set");
+  if (!process.env.DATABASE_URL || !process.env.DASHBOARD_AUTH_SECRET) {
+    console.error("[auth] DATABASE_URL or DASHBOARD_AUTH_SECRET not set");
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 
@@ -66,10 +66,10 @@ export async function POST(req: Request) {
   // every client with no early return, so timing reveals nothing about the roster.
   let client: ClientConfig | null = null;
   try {
-    client = findClientByPassword(submitted);
+    client = await findClientByPassword(submitted);
   } catch (err) {
-    // A malformed roster must not look like a wrong password.
-    console.error("[auth] Invalid DASHBOARD_CLIENTS:", err);
+    // An unreadable roster must not look like a wrong password.
+    console.error("[auth] Could not load the client roster:", err);
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
   }
 

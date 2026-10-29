@@ -1,86 +1,73 @@
-# Alta de un cliente nuevo
+# Alta y baja de un cliente
 
-Runbook para agregar una sub-cuenta de GHL al despliegue **`dashboards-ghl`**
-(dashboards.lezgosuite.com). Cada paso de aquí está verificado corriéndolo, no
-supuesto.
+Runbook del despliegue **`dashboards-ghl`** (dashboards.lezgosuite.com).
 
-## Lo que se necesita
+Desde el 2026-10-28 un cliente **es** una sub-cuenta con la app de marketplace
+instalada. No hay roster en variables de entorno, ni PITs, ni comando de alta.
 
-Tres datos: **nombre**, **locationId** y **token** (`pit-…`). Opcionales: `id`
-(por defecto es el slug del nombre) y `password` (por defecto es el `locationId`).
+## Alta
 
-## 1. Generar el roster
+1. En GHL, desde la agencia, instala la app en la sub-cuenta.
+2. Listo. GHL avisa por webhook (`INSTALL`), la app relee la lista de
+   instalaciones y registra la sub-cuenta en `dashboard_installation` con un
+   `client_id` sacado de su nombre ("Stanza Navarra" → `stanza-navarra`).
 
-```bash
-pnpm add-client --name "Nombre" --location <locationId> --token pit-…
+Si el aviso no llegara, no pasa nada: la primera vez que alguien abra
+"Dashboard" desde esa sub-cuenta, el SSO consulta a GHL y la registra ahí mismo.
+
+**Cómo entra el cliente:**
+- Desde GHL: menú lateral de la sub-cuenta → **Dashboard**. Sin contraseña.
+- Fuera de GHL: dashboards.lezgosuite.com con su **locationId** como contraseña.
+
+## Baja
+
+Desinstala la app de esa sub-cuenta. En menos de un minuto:
+- su dashboard deja de abrir (SSO y contraseña),
+- se borran su token y su caché (`project_sync`).
+
+La fila en `dashboard_installation` se conserva marcada como desinstalada, así
+que si se reinstala recupera el mismo `client_id`.
+
+## Darle una contraseña propia (si su locationId se filtra)
+
+El locationId no es secreto y no se puede rotar. Para un cliente puntual:
+
+```sql
+UPDATE dashboard_installation SET password = '<contraseña nueva>' WHERE client_id = '<id>';
 ```
 
-Sin banderas pregunta interactivamente.
+Desde ese momento su locationId deja de funcionar como contraseña. Para volver
+al default, `SET password = NULL`.
 
-El script **no escribe nada**: lee el roster actual, le agrega el cliente, lo
-valida con el mismo `parseClients()` que la app usa al arrancar, e imprime el
-blob. Que reuse el validador de la app es lo que garantiza que no pueda emitir
-un roster que la app rechace después.
+## Verificar un alta
 
-> **Revisa siempre la primera línea:** `Current roster (N): …`.
-> Si dice `No DASHBOARD_CLIENTS in this environment — starting a new roster`,
-> **no pegues nada** — ese blob trae un solo cliente y pegarlo borra a los demás.
-> El script carga `.env.local`, así que no debería pasar; la línea es la
-> comprobación de que efectivamente lo cargó.
+- Que aparezca: `SELECT client_id, name, uninstalled_at FROM dashboard_installation;`
+- Que sincronice: abrir su Dashboard desde GHL — nombre de la sub-cuenta,
+  contactos, oportunidades, pautas, citas.
+- Meta: `pnpm check:ads <client_id>` dice si tiene cuenta publicitaria vinculada
+  en GHL. "No conectado" se arregla vinculándola **dentro de GHL**, no aquí.
 
-Rechaza solo: JSON inválido, campos faltantes, `id` mal formado, **`id`
-duplicado** y **password duplicado**. Como el password por defecto es el
-`locationId`, dos clientes con el mismo `locationId` se rechazan — si no, el
-login sería ambiguo.
+## Dejar el caché tibio
 
-## 2. Pegar el blob en los DOS lados
-
-- `.env.local` — para desarrollo
-- **Vercel → `dashboards-ghl` → Settings → Environment Variables →
-  `DASHBOARD_CLIENTS`** (Production)
-
-Son variables independientes: agregar en local no toca producción. **Este es el
-paso que se olvida.**
-
-## 3. Redesplegar
-
-Las variables se leen al construir/arrancar la función.
-
-## 4. Verificar
-
-```bash
-npx tsc --noEmit
-pnpm verify:clients && pnpm verify:auth && pnpm verify:limiter && pnpm verify:sync-store
-```
-
-Y contra la app real: entrar con el password del cliente y confirmar que
-sincroniza — nombre de la sub-cuenta, contactos, oportunidades, pautas, citas.
-Después confirmar en `project_sync` que quedó **su** fila y que no cruzó con
-ningún otro cliente.
-
-## 5. Dejar el caché tibio
-
-La primera apertura de un cliente nuevo no tiene fila en `project_sync`, así que
-va en vivo contra GHL con la pantalla de carga. Medido: 16 s (Rise 29) a 150 s
-(Kapitaliza). **Ábrelo tú una vez después de desplegar** para que esa espera no
-la pague el cliente.
+La primera apertura de un cliente nuevo va en vivo contra GHL con la pantalla de
+carga. Medido: 5 s (FLX) a 160 s (Terrenos en Venta, 51 mil contactos). Ábrelo tú
+una vez después de instalar para que esa espera no la pague el cliente. Una
+reinstalación también borra el caché (GHL manda `UNINSTALL` antes de `INSTALL`).
 
 ## Lo que un alta NO comprueba
 
-Que el cliente sincronice y quede aislado se verifica aquí. Que sus **números
-sean correctos**, no: si sus pautas están bien clasificadas, si su pipeline mapea
-a las etapas esperadas, o si su cuenta nombra el campo de campaña de una forma
-que `resolveCampaignName()` (`lib/pauta.ts`) todavía no conoce. Eso sale mirando
-el dashboard con alguien que conozca la cuenta. Señales de alarma que valen
-mención: 0 pautas, 0 citas, o un pipeline entero cayendo en "Unknown".
+Que el cliente sincronice y quede aislado sí. Que sus **números sean correctos**,
+no: si sus pautas están bien clasificadas, si su pipeline mapea a las etapas
+esperadas, o si su cuenta nombra el campo de campaña de una forma que
+`resolveCampaignName()` (`lib/pauta.ts`) todavía no conoce. Eso sale mirando el
+dashboard con alguien que conozca la cuenta. Señales de alarma: 0 pautas, 0
+citas, o un pipeline entero cayendo en "Unknown".
 
-## Notas del caché
+## Notas
 
-- El `id` del cliente es la **llave primaria** de `project_sync`. No reutilizar
-  un `id` ya existente en este despliegue.
-- Este despliegue tiene su **propia** instancia de Neon. Comparte ids de cliente
-  con `dashboards-internos-lezgo`; una base compartida haría que ambos se
-  pisaran el payload sin avisar.
-- Cuentas grandes: Kapitaliza sincroniza en ~150 s, lo que **exige Fluid Compute**
-  encendido (Settings → Functions). Sin él el techo es 60 s y el refresco en
-  segundo plano se corta en silencio.
+- El `client_id` es la llave de `project_sync` y va dentro de la cookie de
+  sesión. Nunca se reasigna.
+- Este despliegue tiene su **propia** Neon (`ep-frosty-term-awf7asfw`). Ahí viven
+  el roster y los tokens OAuth: ya no es opcional.
+- Cuentas grandes necesitan **Fluid Compute** encendido (Settings → Functions);
+  sin él el techo es 60 s y el refresco en segundo plano se corta en silencio.

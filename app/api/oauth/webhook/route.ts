@@ -14,7 +14,7 @@
 // sub-account's dashboard on — which is why the signature is mandatory.
 import { NextResponse } from "next/server";
 import { verifyGhlWebhook } from "@/lib/ghl-webhook";
-import { getClients, invalidateRosterCache } from "@/lib/clients";
+import { invalidateRosterCache } from "@/lib/clients";
 import { markCompanyUninstalled, markUninstalled, reconcileInstallations } from "@/lib/installations";
 import { getAppConfig } from "@/lib/ghl-oauth";
 import { AGENCY_COMPANY_ID } from "@/lib/ghl-sso";
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
 
   try {
     if (event.type === "INSTALL") {
-      const result = await reconcileInstallations(process.env.DASHBOARD_CLIENTS ? getClients() : []);
+      const result = await reconcileInstallations();
       invalidateRosterCache();
       console.log("[webhook] INSTALL → reconciled", result);
       return NextResponse.json({ ok: true, ...result });

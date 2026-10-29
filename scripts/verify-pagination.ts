@@ -13,7 +13,7 @@
 //   npx tsx --env-file=.env.local scripts/verify-pagination.ts
 import assert from "node:assert/strict"
 import { withClient } from "@/lib/ghl-context"
-import { getClients } from "@/lib/clients"
+import { getRoster } from "@/lib/clients"
 import {
   getAllOpportunities,
   getAllContacts,
@@ -24,8 +24,8 @@ import {
 } from "@/lib/ghl-client"
 
 async function main() {
-  const clients = getClients()
-  assert.ok(clients.length > 0, "roster vacío — ¿falta DASHBOARD_CLIENTS?")
+  const clients = await getRoster()
+  assert.ok(clients.length > 0, "roster vacío — ¿la app no está instalada en ninguna sub-cuenta?")
 
   for (const client of clients) {
     console.log(`\n===== ${client.name} =====`)

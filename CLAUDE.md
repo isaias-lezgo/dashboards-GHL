@@ -11,17 +11,11 @@ pnpm build      # Production build (TypeScript errors are ignored — see next.c
 pnpm start      # Serve production build
 pnpm lint       # Run ESLint
 
-# Multi-client
-pnpm add-client # Add a client to the DASHBOARD_CLIENTS roster (prompts, validates, prints the blob)
-                #   Non-interactive: pnpm add-client --name "X" --location <id> --token pit-…
-                #   It APPENDS to the roster it reads from DASHBOARD_CLIENTS, which is why the
-                #   script loads .env.local. Run it without that env and it silently starts a
-                #   NEW roster of one — paste that blob into Vercel and every other client is
-                #   gone. Always check the "Current roster (N)" line it prints first.
-                #   Full runbook: docs/alta-de-clientes.md
+# Multi-client: a client is added by INSTALLING the GHL Marketplace app on its
+# sub-account — no command, no env var. Runbook: docs/alta-de-clientes.md
 
 # Verification (see below — there is no test framework)
-pnpm verify:clients      # lib/clients.ts   — roster parsing + password lookup
+pnpm verify:clients      # lib/clients.ts   — password lookup (default, override, ambiguity)
 pnpm verify:auth         # lib/auth.ts      — session token; incl. the cookie-tamper rejection
 pnpm verify:limiter      # lib/ghl-limiter.ts — per-location isolation
 pnpm verify:ads          # lib/ads.ts — metric coercion, ratio recomputation, window clipping
@@ -33,9 +27,8 @@ pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-tr
                          #   (DB assertions run only when DATABASE_URL is set)
 pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
 pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
-pnpm check:oauth-sync <clientId> # read-only: full sync over PIT vs OAuth, diffs every count
 pnpm verify:installations # lib/installations.ts + lib/ghl-webhook.ts — ids, Ed25519, uninstall cleanup
-pnpm db:migrate          # creates project_sync + the OAuth token tables (idempotent)
+pnpm db:migrate          # creates project_sync, the OAuth token tables, dashboard_installation (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
@@ -63,25 +56,23 @@ of truth — ignore it.
 ## Environment Variables
 
 Required vars in `.env.local`:
-- `DASHBOARD_CLIENTS` — JSON array of clients, one per GHL sub-account:
-  `[{"id","name","locationId","ghlToken","password"?}]`. `password` is optional and
-  defaults to that client's `locationId`. Use `pnpm add-client` to extend it safely.
 - `DASHBOARD_AUTH_SECRET` — random string used to HMAC-sign the session cookie (`openssl rand -hex 32`)
 - `ANTHROPIC_API_KEY` — used by `app/api/chat` (assistant), `analyze-report` (PDF analyses)
   and `analyze-contact`
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — Neon, injected by the Vercel Marketplace
-  integration. **Optional**: without them the app simply syncs live from GHL on every
-  load, which is exactly how it behaved before the cache existed.
+  integration. **Required**: the client roster and the OAuth tokens live there.
+  (The payload cache in the same database is still optional in behavior — a cache
+  failure falls back to a live sync.)
 - `GHL_APP_CLIENT_ID` / `GHL_APP_CLIENT_SECRET` / `GHL_APP_SSO_KEY` — the GHL
   Marketplace app (OAuth, **agency-only** distribution). `GHL_TOKEN_ENC_KEY` (64 hex,
   `openssl rand -hex 32`) seals the stored tokens; **changing it orphans them** and the
-  agency must reinstall. See `lib/ghl-oauth.ts`. Not yet wired into `ghlFetch` — the
-  roster's PITs still serve every client.
+  agency must reinstall. See `lib/ghl-oauth.ts`.
+- `DASHBOARD_CLIENTS` — **removed 2026-10-28.** It was the JSON roster with one PIT
+  per client. If you find it in an old `.env`, it is dead: nothing reads it.
 - `GHL_API_TOKEN` / `GHL_LOCATION_ID` — **not read by the app.** Kept only so the dev
   GHL MCP server (`.mcp.json`) can point at one sub-account.
 
-All are server-side only. `DASHBOARD_CLIENTS` is read in `lib/clients.ts`;
-`DASHBOARD_AUTH_SECRET` in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
+All are server-side only. `DASHBOARD_AUTH_SECRET` is read in `lib/auth.ts`, `app/api/auth/login/route.ts`, and
 `middleware.ts` — never exposed to the browser.
 
 ## Architecture
@@ -140,13 +131,17 @@ built on `fetch-stream.ts` for the NDJSON routes.
 
 ### Multi-client (multi-tenancy)
 
-One deployment serves every client. **The password IS the client's identity.**
+One deployment serves every client. A client gets in two ways: **SSO** from the
+"Dashboard" entry in its GHL sub-account menu (see "GHL Marketplace app"), or a
+**password** at dashboards.lezgosuite.com — and there the password IS the
+client's identity.
 
-1. `lib/clients.ts` — the roster, parsed from `DASHBOARD_CLIENTS`. This is the
-   **seam**: nothing downstream knows the roster comes from an env var, so swapping
-   in a database later touches only this file.
+1. `lib/clients.ts` — the roster: every sub-account with the Marketplace app
+   installed (`dashboard_installation`, Neon). This is the **seam**: nothing
+   downstream knows where the roster comes from. Cached 60 s per instance.
 2. Login (`app/api/auth/login/route.ts`) looks the submitted password up across the
-   roster (`findClientByPassword` — constant-time, no early return) and HMAC-signs
+   roster (`pickByPassword` — constant-time, no early return; an ambiguous
+   password matches nobody) and HMAC-signs
    the matched client's id into the `dash_session` cookie:
    `<clientId>.<expiryMs>.<hmac>`. The id is inside the signed payload, so a client
    cannot edit their cookie to reach another client's data.
@@ -156,10 +151,11 @@ One deployment serves every client. **The password IS the client's identity.**
    verifies the signature; resolving the client there would drag the roster into the
    Edge bundle.
 4. The route runs its GHL work inside `withClient(client, ...)`
-   (`lib/ghl-context.ts`, an `AsyncLocalStorage`). `ghlFetch` reads credentials via
-   `currentClient()`, which is why none of its ~113 exported functions needed a
-   signature change. `currentClient()` **fails closed** — it throws rather than
-   falling back to a default token.
+   (`lib/ghl-context.ts`, an `AsyncLocalStorage`). `ghlFetch` reads the client via
+   `currentClient()` and gets its OAuth token from `lib/ghl-token.ts`, which is
+   why none of its ~113 exported functions needed a signature change.
+   `currentClient()` **fails closed** — it throws rather than falling back to a
+   default token.
 5. `lib/ghl-limiter.ts` keys the concurrency semaphore, token bucket, and 429
    cooldown **by location id**, because GHL's budget is per location. Shared, one
    client's 429 would freeze every other client's sync.
@@ -172,10 +168,12 @@ silently serve client A's dashboard using client B's token.
 A client's password defaults to their GHL `locationId`. That id is *not* a secret
 (it appears in GHL URLs, embed codes, webhook payloads, Make scenarios) and it
 **cannot be rotated**. The owner accepted this knowingly, for the convenience of
-having nothing extra to manage. The escape hatch is already built in: the optional
-`password` field on a client entry overrides the default, so any single client can be
-given a real, rotatable password by adding one line — no migration, no code change.
-Suggest that if a password leaks; don't rewrite the model on your own initiative.
+having nothing extra to manage, and re-confirmed it on 2026-10-28 when the roster
+moved to the app installs — which extended it to every installed sub-account. The
+escape hatch is built in: `dashboard_installation.password` overrides the default,
+so any single client gets a real, rotatable password with one UPDATE — no code
+change. Suggest that if a password leaks; don't rewrite the model on your own
+initiative.
 
 The two streaming routes (`dashboard`, `dashboard-messages`) enter the context
 **inside** the `ReadableStream` `start()` callback — the stream outlives the
@@ -457,16 +455,18 @@ GET /api/dashboard
 
 | File | Responsibility |
 |---|---|
-| `lib/db.ts` | The Neon client. **The seam** — nothing downstream knows the database is Neon, the same way nothing knows the roster comes from an env var. `getSql()` is lazy: Next evaluates top-level module code at build time, so an eager `neon()` would break `next build` before the database exists. |
+| `lib/db.ts` | The Neon client. **The seam** — nothing downstream knows the database is Neon. `getSql()` is lazy: Next evaluates top-level module code at build time, so an eager `neon()` would break `next build` before the database exists. |
 | `lib/sync-store.ts` | `readSync` / `writeSync` / `claimSync` / `releaseSync` / `isStale`. The only module that knows the table. Compression lives here. |
 | `lib/sync.ts` | `syncProject(client, onFrame?)` — the GHL orchestration, extracted from the route so the route and the background refresh run the **same** code. Two copies would drift, and the background one would drift silently. |
 | `scripts/db-migrate.ts` | `CREATE TABLE IF NOT EXISTS`, idempotent. DDL goes through `DATABASE_URL_UNPOOLED` — pgbouncer in transaction mode interferes with schema changes. |
 
 Invariants, each of which exists because something broke first:
 
-- **The database is an accelerator, never a dependency.** Every failure is logged and
-  falls back to a live sync. Adding the cache must not create a new way for the
-  dashboard to fail to load. Verify by pointing `DATABASE_URL` at an invalid host.
+- **The CACHE is an accelerator, never a dependency.** Every `project_sync` failure
+  is logged and falls back to a live sync; the cache must not create a new way for
+  the dashboard to fail to load. (The database itself stopped being optional on
+  2026-10-28 — the roster and OAuth tokens live there — but a cache read or write
+  failing must still never block a dashboard that the roster resolved.)
 - **The cache is disposable.** One row per client, overwritten whole, present only —
   no history. Drop the table and it refills itself. That property is what keeps this
   one table instead of a schema, and keeps historical personal data from accumulating.
@@ -479,13 +479,10 @@ Invariants, each of which exists because something broke first:
   the primary key and the two deployments have historically used overlapping
   client ids, so a shared database would have them silently overwrite each
   other's payloads. Verify the endpoint before running anything destructive.
-- **Who serves whom.** This deployment serves the *external* clients — as of
-  2026-09-07: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`,
-  `el-fundador-saki`, `sahai`, `terrenos-en-venta-jerry-medina`, `amir-cherit`.
-  Condesa, Lezgo Suite, Plaza Bosques and Grand Center were moved to the internal
-  panel and **deliberately removed** from the env roster. Since the Marketplace
-  app, any sub-account with the app installed has a dashboard here too — Lezgo
-  Suite does again, through its install (2026-10-28).
+- **Who serves whom.** This deployment serves exactly the sub-accounts with the
+  Marketplace app installed — 13 on 2026-10-28, including Condesa Cimatario and
+  Lezgo Suite, which also have the internal panel. Kapitaliza and others were
+  **deliberately left without the app** (owner's call): no app, no dashboard.
 - **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
@@ -518,7 +515,8 @@ Invariants, each of which exists because something broke first:
 
 ### GHL Marketplace app (OAuth + SSO + installs)
 
-A private Marketplace app replaces the per-client PITs and the password login.
+A private Marketplace app replaced the per-client PITs and the env roster
+(2026-10-28). Every GHL call is OAuth; every client is an app install.
 Distribution **Sub-account**, "who can install" **agency only**; agency
 `LkhcnqrWIwMDHdc6oN5F` (`AGENCY_COMPANY_ID` in `lib/ghl-sso.ts`).
 
@@ -540,26 +538,26 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
   tenant from URL variables like `{{location.id}}` — they are user-editable.
 - The SSO cookie is `SameSite=None; Partitioned`: inside GHL's iframe it is a
   third-party cookie. The password login keeps `Lax`.
-- **`ghlFetch` prefers OAuth, falls back to the PIT** (`lib/ghl-token.ts`): the
-  location token when the app is installed on that sub-account, the roster PIT
-  otherwise. In-memory cache + in-flight dedupe + a 5-min negative cache, because
-  ghlFetch runs hundreds of times per sync. A 401 on an OAuth token re-mints once.
-  `GHL_OAUTH_DISABLED=1` is the kill switch. Before trusting OAuth for a client,
-  run `pnpm check:oauth-sync <id>`: a missing scope does not fail the sync, it
-  empties one dataset (sahai, 2026-10-28: identical on every count).
+- **`ghlFetch` uses the app's location token** (`lib/ghl-token.ts`), with an
+  in-memory cache + in-flight dedupe because ghlFetch runs hundreds of times per
+  sync. A 401 re-mints once. There is no PIT fallback anymore.
+- **Before the PITs were removed, every client was diffed PIT vs OAuth**
+  (full sync, every dataset count + Meta spend): all nine identical on
+  2026-10-28. A missing OAuth scope would NOT fail a sync — the caller's catch
+  empties that one dataset — so if a scope is ever removed from the app, re-run a
+  full sync and compare counts against what the dashboard showed before.
 - **Installing the app IS turning the dashboard on** (owner's call, 2026-10-28).
-  The roster is the env `DASHBOARD_CLIENTS` ∪ `dashboard_installation` (Neon),
-  merged only in `lib/clients.ts` (`getRoster`); the env wins on a shared
-  location. Install-only clients have no PIT and no password: they enter through
-  GHL SSO only. The DB stays optional for env clients — if Neon fails, the roster
-  is the env alone.
+  The roster is `dashboard_installation`, read only through `lib/clients.ts`.
+  The nine clients migrated from the old env roster kept their env ids
+  (`stanza-residencial` is the "Stanza Magnolia" sub-account), so sessions and
+  cache rows carried over untouched. New installs get a slug of the GHL name.
 - **GHL's installed-locations list is the authority, not the webhook.** The
   INSTALL webhook (`app/api/oauth/webhook`) only triggers
   `reconcileInstallations()`; SSO from an unknown sub-account triggers it too,
   because GHL may not fire INSTALL for "future locations" installs. UNINSTALL acts
   on the signed payload: stamps `uninstalled_at` (rows are never deleted, so a
   reinstall gets its id back) and drops the location token and `project_sync` row.
-  Live sessions die within `INSTALLS_CACHE_MS` (60 s).
+  Live sessions die within `ROSTER_CACHE_MS` (60 s).
 - Webhooks are verified with GHL's **Ed25519** key (`X-GHL-Signature`); the RSA
   `X-WH-Signature` was retired 2026-09-01 and is not accepted. Verified against
   real GHL deliveries 2026-10-28.

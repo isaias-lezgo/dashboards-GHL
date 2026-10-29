@@ -10,7 +10,7 @@
 // each, and prints the raw integration shape when something looks off.
 //
 // Read-only — it calls GETs only. It prints no tokens.
-import { getClients } from "../lib/clients";
+import { getRoster, type ClientConfig } from "../lib/clients";
 import { withClient } from "../lib/ghl-context";
 import {
   getFacebookIntegration,
@@ -22,7 +22,7 @@ import {
 const DAY_MS = 86_400_000;
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
-async function probe(client: ReturnType<typeof getClients>[number]) {
+async function probe(client: ClientConfig) {
   return withClient(client, async () => {
     // REPORTING FIRST. The integration record is a different feature (Ad Manager
     // publishing) and is routinely absent on accounts whose reporting works —
@@ -83,7 +83,7 @@ async function probe(client: ReturnType<typeof getClients>[number]) {
 
 async function main() {
   const only = process.argv[2];
-  const clients = getClients().filter((c) => !only || c.id === only);
+  const clients = (await getRoster()).filter((c) => !only || c.id === only);
   if (clients.length === 0) {
     console.error(only ? `No client with id "${only}"` : "Empty roster");
     process.exit(1);

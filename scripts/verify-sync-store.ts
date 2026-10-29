@@ -20,13 +20,11 @@ const TEST_A: ClientConfig = {
   id: "__verify_sync_store_a__",
   name: "Verify A",
   locationId: "loc-a",
-  ghlToken: "pit-fake-a",
 };
 const TEST_B: ClientConfig = {
   id: "__verify_sync_store_b__",
   name: "Verify B",
   locationId: "loc-b",
-  ghlToken: "pit-fake-b",
 };
 
 function payloadFixture(marker: string): DashboardPayload {

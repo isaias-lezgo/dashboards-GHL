@@ -50,10 +50,9 @@ async function ghlFetch<T>(
   // to a default token, because serving the wrong tenant is worse than a 500.
   const client = currentClient();
   const { locationId } = client;
-  // OAuth location token when the Marketplace app is installed on this
-  // sub-account, the roster PIT otherwise (lib/ghl-token.ts). Resolved before
-  // taking a limiter slot, so a token mint never holds one.
-  let auth = await resolveGhlToken(client);
+  // The Marketplace app's OAuth location token (lib/ghl-token.ts). Resolved
+  // before taking a limiter slot, so a token mint never holds one.
+  let token = await resolveGhlToken(client);
   let reauthorized = false;
 
   // Replace :locationId placeholder in endpoint
@@ -85,7 +84,7 @@ async function ghlFetch<T>(
   }
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${auth.token}`,
+    Authorization: `Bearer ${token}`,
     Version: options.version ?? GHL_API_VERSION,
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -170,11 +169,11 @@ async function ghlFetch<T>(
         }
         // An OAuth token can die before its stated expiry (reinstall, scope
         // change). Mint a fresh one once; a second 401 is a real auth failure.
-        if (response.status === 401 && auth.source === "oauth" && !reauthorized && attempt < MAX_RETRIES) {
+        if (response.status === 401 && !reauthorized && attempt < MAX_RETRIES) {
           reauthorized = true;
-          auth = await resolveGhlToken(client, { forceRefresh: true });
-          headers.Authorization = `Bearer ${auth.token}`;
-          console.warn(`[GHL] 401 with OAuth token for ${locationId} — retrying with a fresh ${auth.source} token`);
+          token = await resolveGhlToken(client, { forceRefresh: true });
+          headers.Authorization = `Bearer ${token}`;
+          console.warn(`[GHL] 401 for ${locationId} — retrying with a freshly minted token`);
           continue;
         }
         console.error(`[GHL API Error] ${response.status}: ${errorText}`);

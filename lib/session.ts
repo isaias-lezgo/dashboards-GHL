@@ -9,8 +9,8 @@ import { resolveClientById, type ClientConfig } from "./clients";
 // Re-verifies the signed cookie itself rather than trusting a header injected by
 // middleware — a header would be a spoofing surface, and an HMAC verify costs
 // microseconds. Returns null when the cookie is invalid OR when the id no longer
-// resolves, which means removing a client from the roster instantly invalidates
-// their live sessions.
+// resolves, which means uninstalling the app from a sub-account invalidates its
+// live sessions within the roster cache window (60 s, lib/clients.ts).
 export async function requireClient(): Promise<ClientConfig | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const clientId = await verifyToken(token);
