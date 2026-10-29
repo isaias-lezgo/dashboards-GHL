@@ -38,6 +38,6 @@ function denied(req: NextRequest) {
 // the agency installs the app: there is no session yet, the code IS the proof.
 export const config = {
   matcher: [
-    "/((?!login|api/auth|api/oauth|_next/static|_next/image|favicon.ico|icon.png).*)",
+    "/((?!login|embed|api/auth|api/oauth|_next/static|_next/image|favicon.ico|icon.png).*)",
   ],
 };

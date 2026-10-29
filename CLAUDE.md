@@ -32,6 +32,7 @@ pnpm verify:pagination   # lib/ghl-client.ts — offset→cursor handoff (hits l
 pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-trip, lock
                          #   (DB assertions run only when DATABASE_URL is set)
 pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
+pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
 pnpm db:migrate          # creates project_sync + the OAuth token tables (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```

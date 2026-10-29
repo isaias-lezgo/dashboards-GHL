@@ -120,3 +120,12 @@ export function findClientByPassword(password: string): ClientConfig | null {
   }
   return match;
 }
+
+// Used by GHL SSO (app/api/auth/sso), where the sub-account GHL vouches for is
+// the identity. Two roster entries on one location would make that ambiguous, so
+// it fails closed rather than picking one.
+export function findClientByLocationId(locationId: string): ClientConfig | null {
+  if (!locationId) return null;
+  const matches = getClients().filter((c) => c.locationId === locationId);
+  return matches.length === 1 ? matches[0] : null;
+}
