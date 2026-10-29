@@ -68,12 +68,15 @@ export async function reconcileInstallations(
   for (const loc of installed) {
     const row = byLoc.get(loc._id);
     if (!row) {
+      // GHL delivers INSTALL in bursts (four in one second on 2026-10-28), so
+      // reconciles race. No conflict target: a lost race on location_id OR on
+      // client_id is skipped, and the next reconcile settles it.
       const clientId = envIdByLoc.get(loc._id) ?? uniqueClientId(loc.name ?? loc._id, loc._id, taken);
       taken.add(clientId);
       await sql`
         INSERT INTO dashboard_installation (location_id, client_id, name, company_id)
         VALUES (${loc._id}, ${clientId}, ${loc.name ?? loc._id}, ${AGENCY_COMPANY_ID})
-        ON CONFLICT (location_id) DO NOTHING
+        ON CONFLICT DO NOTHING
       `;
       added++;
     } else if (row.uninstalled_at) {

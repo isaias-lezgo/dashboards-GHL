@@ -561,7 +561,16 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
   reinstall gets its id back) and drops the location token and `project_sync` row.
   Live sessions die within `INSTALLS_CACHE_MS` (60 s).
 - Webhooks are verified with GHL's **Ed25519** key (`X-GHL-Signature`); the RSA
-  `X-WH-Signature` was retired 2026-09-01 and is not accepted.
+  `X-WH-Signature` was retired 2026-09-01 and is not accepted. Verified against
+  real GHL deliveries 2026-10-28.
+- INSTALL/UNINSTALL are **not** in the portal's event list: GHL sends them to the
+  Default webhook URL automatically. Do not tick other events — every contact
+  change in every sub-account would hit the route. The portal probes the URL
+  unsigned before saving and refuses anything but 2xx, hence the 200 on
+  GET/HEAD/unsigned POST (which act on nothing).
+- **A reinstall arrives as UNINSTALL then INSTALL**, and INSTALL comes in bursts
+  (four in one second). The UNINSTALL drops that client's `project_sync` row, so
+  the first load after a reinstall is a live sync — expected, not a regression.
 - Verified over OAuth only (no PIT), 2026-10-28: Lezgo Suite synced in full —
   7 288 contacts, Meta `connected` — so `adPublishing.readonly` works via OAuth.
 
