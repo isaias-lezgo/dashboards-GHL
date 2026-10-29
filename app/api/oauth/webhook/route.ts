@@ -28,11 +28,23 @@ interface AppEvent {
   locationId?: string;
 }
 
+// GHL's portal refuses to save a webhook URL that does not answer 2xx to its
+// probe ("WebhookURL must be valid"). The probe is unsigned, so GET/HEAD and
+// unsigned POSTs are acknowledged with 200 — and act on nothing: only a body
+// that passes the signature check ever reaches the handlers below.
+export async function GET() {
+  return NextResponse.json({ ok: true });
+}
+
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 });
+}
+
 export async function POST(req: Request) {
   const raw = await req.text();
   if (!verifyGhlWebhook(raw, req.headers.get("x-ghl-signature"))) {
-    console.warn("[webhook] rejected: bad or missing X-GHL-Signature");
-    return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+    console.warn("[webhook] ignored: bad or missing X-GHL-Signature");
+    return NextResponse.json({ ok: true, ignored: "unsigned" });
   }
 
   let event: AppEvent;
