@@ -31,12 +31,13 @@ function denied(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
-// Match everything EXCEPT: the login page, the auth API routes, and Next static
+// Match everything EXCEPT: the login page, the auth and OAuth API routes, and Next static
 // assets / favicon. Note `/login` and `/api/auth` are excluded so they stay
 // reachable while unauthenticated — as must the favicon, which the browser
-// requests on the login page itself.
+// requests on the login page itself. `/api/oauth` is GHL redirecting back after
+// the agency installs the app: there is no session yet, the code IS the proof.
 export const config = {
   matcher: [
-    "/((?!login|api/auth|_next/static|_next/image|favicon.ico|icon.png).*)",
+    "/((?!login|api/auth|api/oauth|_next/static|_next/image|favicon.ico|icon.png).*)",
   ],
 };

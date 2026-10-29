@@ -31,7 +31,8 @@ pnpm verify:attachments  # lib/attachments.ts + lib/attachment-tools.ts — tabu
 pnpm verify:pagination   # lib/ghl-client.ts — offset→cursor handoff (hits live GHL, read-only)
 pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-trip, lock
                          #   (DB assertions run only when DATABASE_URL is set)
-pnpm db:migrate          # creates the project_sync cache table (idempotent)
+pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
+pnpm db:migrate          # creates project_sync + the OAuth token tables (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
@@ -68,6 +69,11 @@ Required vars in `.env.local`:
 - `DATABASE_URL` / `DATABASE_URL_UNPOOLED` — Neon, injected by the Vercel Marketplace
   integration. **Optional**: without them the app simply syncs live from GHL on every
   load, which is exactly how it behaved before the cache existed.
+- `GHL_APP_CLIENT_ID` / `GHL_APP_CLIENT_SECRET` / `GHL_APP_SSO_KEY` — the GHL
+  Marketplace app (OAuth, **agency-only** distribution). `GHL_TOKEN_ENC_KEY` (64 hex,
+  `openssl rand -hex 32`) seals the stored tokens; **changing it orphans them** and the
+  agency must reinstall. See `lib/ghl-oauth.ts`. Not yet wired into `ghlFetch` — the
+  roster's PITs still serve every client.
 - `GHL_API_TOKEN` / `GHL_LOCATION_ID` — **not read by the app.** Kept only so the dev
   GHL MCP server (`.mcp.json`) can point at one sub-account.
 
