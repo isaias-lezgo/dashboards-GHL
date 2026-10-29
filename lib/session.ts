@@ -4,7 +4,7 @@
 // would pull it into the Edge bundle.
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifyToken } from "./auth";
-import { getClientById, type ClientConfig } from "./clients";
+import { resolveClientById, type ClientConfig } from "./clients";
 
 // Re-verifies the signed cookie itself rather than trusting a header injected by
 // middleware — a header would be a spoofing surface, and an HMAC verify costs
@@ -16,7 +16,7 @@ export async function requireClient(): Promise<ClientConfig | null> {
   const clientId = await verifyToken(token);
   if (!clientId) return null;
   try {
-    return getClientById(clientId);
+    return await resolveClientById(clientId);
   } catch (err) {
     // Roster missing/invalid — fail closed rather than serving anyone.
     console.error("[session] Could not load client roster:", err);

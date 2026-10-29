@@ -34,6 +34,7 @@ pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-tr
 pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
 pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
 pnpm check:oauth-sync <clientId> # read-only: full sync over PIT vs OAuth, diffs every count
+pnpm verify:installations # lib/installations.ts + lib/ghl-webhook.ts — ids, Ed25519, uninstall cleanup
 pnpm db:migrate          # creates project_sync + the OAuth token tables (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
@@ -482,8 +483,9 @@ Invariants, each of which exists because something broke first:
   2026-09-07: `hausmen`, `kapitaliza`, `rise-29`, `stanza-residencial`,
   `el-fundador-saki`, `sahai`, `terrenos-en-venta-jerry-medina`, `amir-cherit`.
   Condesa, Lezgo Suite, Plaza Bosques and Grand Center were moved to the internal
-  panel and **deliberately removed** from this roster. A login that fails for one
-  of those is the intended behavior, not an outage.
+  panel and **deliberately removed** from the env roster. Since the Marketplace
+  app, any sub-account with the app installed has a dashboard here too — Lezgo
+  Suite does again, through its install (2026-10-28).
 - **`claimSync` decides inside the `WHERE` of the UPDATE**, never read-then-write in
   TypeScript: that would leave a window where two requests both see the lock free.
   The lock self-heals after 10 minutes so a function dying mid-sync cannot freeze a
@@ -514,7 +516,7 @@ Invariants, each of which exists because something broke first:
   visible lies by omission. The loading screen waits 300 ms before appearing so a
   cached read does not flash it.
 
-### GHL Marketplace app (OAuth + SSO) — in progress
+### GHL Marketplace app (OAuth + SSO + installs)
 
 A private Marketplace app replaces the per-client PITs and the password login.
 Distribution **Sub-account**, "who can install" **agency only**; agency
@@ -545,7 +547,23 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
   `GHL_OAUTH_DISABLED=1` is the kill switch. Before trusting OAuth for a client,
   run `pnpm check:oauth-sync <id>`: a missing scope does not fail the sync, it
   empties one dataset (sahai, 2026-10-28: identical on every count).
-- SSO maps `activeLocation` onto the env roster (`findClientByLocationId`).
+- **Installing the app IS turning the dashboard on** (owner's call, 2026-10-28).
+  The roster is the env `DASHBOARD_CLIENTS` ∪ `dashboard_installation` (Neon),
+  merged only in `lib/clients.ts` (`getRoster`); the env wins on a shared
+  location. Install-only clients have no PIT and no password: they enter through
+  GHL SSO only. The DB stays optional for env clients — if Neon fails, the roster
+  is the env alone.
+- **GHL's installed-locations list is the authority, not the webhook.** The
+  INSTALL webhook (`app/api/oauth/webhook`) only triggers
+  `reconcileInstallations()`; SSO from an unknown sub-account triggers it too,
+  because GHL may not fire INSTALL for "future locations" installs. UNINSTALL acts
+  on the signed payload: stamps `uninstalled_at` (rows are never deleted, so a
+  reinstall gets its id back) and drops the location token and `project_sync` row.
+  Live sessions die within `INSTALLS_CACHE_MS` (60 s).
+- Webhooks are verified with GHL's **Ed25519** key (`X-GHL-Signature`); the RSA
+  `X-WH-Signature` was retired 2026-09-01 and is not accepted.
+- Verified over OAuth only (no PIT), 2026-10-28: Lezgo Suite synced in full —
+  7 288 contacts, Meta `connected` — so `adPublishing.readonly` works via OAuth.
 
 ### Other docs in the repo
 

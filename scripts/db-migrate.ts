@@ -55,7 +55,22 @@ async function main() {
     )
   `;
 
-  for (const table of ["project_sync", "ghl_oauth_token", "ghl_location_token"]) {
+  // Sub-accounts with the app installed = sub-accounts with a dashboard
+  // (lib/installations.ts). Rows are never deleted, only stamped uninstalled,
+  // so a reinstall gets its client id back.
+  await sql`
+    CREATE TABLE IF NOT EXISTS dashboard_installation (
+      location_id    text PRIMARY KEY,
+      client_id      text        NOT NULL UNIQUE,
+      name           text        NOT NULL,
+      company_id     text,
+      installed_at   timestamptz NOT NULL DEFAULT now(),
+      uninstalled_at timestamptz,
+      updated_at     timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+
+  for (const table of ["project_sync", "ghl_oauth_token", "ghl_location_token", "dashboard_installation"]) {
     const rows = await sql`
       SELECT column_name, data_type
         FROM information_schema.columns

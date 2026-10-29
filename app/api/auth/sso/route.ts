@@ -10,7 +10,7 @@
 // which also keeps it from leaking into a direct visit to the dashboard.
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signToken } from "@/lib/auth";
-import { findClientByLocationId } from "@/lib/clients";
+import { resolveClientByLocationId } from "@/lib/clients";
 import { decideSso, decryptUserContext } from "@/lib/ghl-sso";
 
 export const runtime = "nodejs";
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
   let client;
   try {
-    client = findClientByLocationId(decision.locationId);
+    client = await resolveClientByLocationId(decision.locationId);
   } catch (err) {
     console.error("[sso] Invalid DASHBOARD_CLIENTS:", err);
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 });
