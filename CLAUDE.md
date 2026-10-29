@@ -513,6 +513,34 @@ Invariants, each of which exists because something broke first:
   visible lies by omission. The loading screen waits 300 ms before appearing so a
   cached read does not flash it.
 
+### GHL Marketplace app (OAuth + SSO) — in progress
+
+A private Marketplace app replaces the per-client PITs and the password login.
+Distribution **Sub-account**, "who can install" **agency only**; agency
+`LkhcnqrWIwMDHdc6oN5F` (`AGENCY_COMPANY_ID` in `lib/ghl-sso.ts`).
+
+| Piece | File |
+|---|---|
+| Install callback → Company token, sealed in Neon | `app/api/oauth/callback`, `lib/ghl-oauth.ts` |
+| Custom Page (sub-account left menu) → SSO | `app/embed/page.tsx`, `app/api/auth/sso`, `lib/ghl-sso.ts` |
+
+- **An agency install yields ONE Company token**; location tokens are minted from
+  it (`/oauth/locationToken`) and cached in `ghl_location_token`. The Company
+  refresh token is single-use — `claimRefresh` serializes it in the UPDATE's WHERE.
+  `ghl_oauth_token` is NOT disposable like `project_sync`: drop it and the agency
+  must reinstall.
+- **No "ghl"/"highlevel" in any URL registered with the app** — GHL rejects them
+  for white-label apps. That is why the Custom Page is `/embed`, not `/ghl`.
+- **SSO decides the tenant by `activeLocation` only, never by `type`.** `type`
+  describes the user: an agency admin inside a sub-account arrives as
+  `type: "agency"` with `activeLocation` set (verified 2026-10-28). Never take the
+  tenant from URL variables like `{{location.id}}` — they are user-editable.
+- The SSO cookie is `SameSite=None; Partitioned`: inside GHL's iframe it is a
+  third-party cookie. The password login keeps `Lax`.
+- SSO currently maps `activeLocation` onto the env roster (`findClientByLocationId`),
+  so data still flows through PITs. Not done yet: OAuth tokens in `ghlFetch`, the
+  INSTALL/UNINSTALL webhook.
+
 ### Other docs in the repo
 
 - `README.md` is **stale** (says Next 15, SWR, a "Conversaciones" tab). Trust this file
