@@ -19,9 +19,9 @@ function summarize(p: DashboardPayload): Record<string, string | number> {
   for (const [k, v] of Object.entries(p)) {
     if (Array.isArray(v)) out[k] = v.length;
   }
-  const ads = (p as { ads?: { status?: string; days?: { spend?: number }[] } }).ads;
-  out["ads.status"] = ads?.status ?? "(none)";
-  out["ads.spend"] = Math.round((ads?.days ?? []).reduce((s, d) => s + (d.spend ?? 0), 0) * 100) / 100;
+  out["ads.status"] = p.ads?.status ?? "(none)";
+  out["ads.days"] = p.ads?.daily.length ?? 0;
+  out["ads.spend"] = Math.round((p.ads?.daily ?? []).reduce((s, d) => s + (d.spend ?? 0), 0) * 100) / 100;
   return out;
 }
 
@@ -32,16 +32,31 @@ async function run(clientId: string, mode: "pit" | "oauth") {
   process.env.GHL_OAUTH_DISABLED = mode === "pit" ? "1" : "0";
   const { source } = await resolveGhlToken(client);
   if (source !== mode) throw new Error(`Asked for ${mode} but resolved ${source} — is the app installed on ${clientId}?`);
+  // Count GHL's 429s for this run: a slow run with many 429s is the shared
+  // per-location rate budget talking, not the token type.
+  let throttled = 0;
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith("[GHL] 429")) throttled++;
+    else warn(...args);
+  };
   const t0 = Date.now();
-  const payload = await syncProject(client);
-  return { summary: summarize(payload), seconds: Math.round((Date.now() - t0) / 100) / 10 };
+  try {
+    const payload = await syncProject(client);
+    return { summary: summarize(payload), seconds: Math.round((Date.now() - t0) / 100) / 10, throttled };
+  } finally {
+    console.warn = warn;
+  }
 }
 
 async function main() {
   const clientId = process.argv[2];
   if (!clientId) throw new Error("Usage: pnpm check:oauth-sync <clientId>");
-  const pit = await run(clientId, "pit");
+  // OAuth first, then a pause, then the PIT: the two runs share the location's
+  // rate budget, so whichever goes second inherits the first one's 429s.
   const oauth = await run(clientId, "oauth");
+  await new Promise((r) => setTimeout(r, 30_000));
+  const pit = await run(clientId, "pit");
 
   const keys = [...new Set([...Object.keys(pit.summary), ...Object.keys(oauth.summary)])].sort();
   let diffs = 0;
@@ -53,7 +68,7 @@ async function main() {
     if (!same) diffs++;
     console.log(`${k.padEnd(22)}${String(a).padStart(12)}${String(b).padStart(12)}${same ? "" : "   ← DIFERENTE"}`);
   }
-  console.log(`\nPIT ${pit.seconds}s · OAuth ${oauth.seconds}s`);
+  console.log(`\nOAuth ${oauth.seconds}s (${oauth.throttled}× 429) · PIT ${pit.seconds}s (${pit.throttled}× 429) — OAuth corrió primero`);
   // Counts that move between two live reads seconds apart (a new lead, a new
   // message) are expected; an OAuth zero against a PIT non-zero is not.
   console.log(diffs === 0 ? "✅ idénticos" : `⚠️  ${diffs} diferencia(s) — revisa si son datos nuevos o un scope faltante`);

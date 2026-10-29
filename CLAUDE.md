@@ -571,6 +571,11 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
 - **A reinstall arrives as UNINSTALL then INSTALL**, and INSTALL comes in bursts
   (four in one second). The UNINSTALL drops that client's `project_sync` row, so
   the first load after a reinstall is a live sync — expected, not a regression.
+- **OAuth is not slower than a PIT.** Same GHL limits (100 req/10 s, 200k/day per
+  location), each token with its OWN counter, same per-request latency. hausmen
+  alternating PIT/OAuth/OAuth/PIT: 30.6 / 31.2 / 41.2 / 31.0 s, zero 429s; the
+  outlier was GHL variance in one phase. Single back-to-back runs are noise —
+  compare alternating runs before concluding anything about speed.
 - Verified over OAuth only (no PIT), 2026-10-28: Lezgo Suite synced in full —
   7 288 contacts, Meta `connected` — so `adPublishing.readonly` works via OAuth.
 
