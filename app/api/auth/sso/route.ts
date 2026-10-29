@@ -30,14 +30,22 @@ export async function POST(req: Request) {
   }
   if (!encrypted) return NextResponse.json({ error: "missing_payload" }, { status: 400 });
 
-  let decision;
+  let ctx;
   try {
-    decision = decideSso(decryptUserContext(encrypted, key));
+    ctx = decryptUserContext(encrypted, key);
   } catch (err) {
     console.warn("[sso] rejected payload:", String(err));
     return NextResponse.json({ error: "invalid_payload" }, { status: 401 });
   }
+  const decision = decideSso(ctx);
   if (!decision.ok) {
+    // Shape only, no name or email: enough to see what GHL actually sends.
+    console.warn("[sso] refused:", decision.reason, {
+      type: ctx.type,
+      role: ctx.role,
+      hasActiveLocation: Boolean(ctx.activeLocation),
+      companyMatches: decision.reason !== "wrong_agency",
+    });
     return NextResponse.json({ error: decision.reason }, { status: 403 });
   }
 

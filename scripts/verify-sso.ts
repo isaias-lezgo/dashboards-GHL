@@ -49,6 +49,11 @@ async function main() {
     { ok: false, reason: "agency_view" },
   );
   assert.deepEqual(
+    decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ type: "agency" }), KEY), KEY)),
+    { ok: true, locationId: "loc-1" },
+    "an agency user inside a sub-account gets that sub-account",
+  );
+  assert.deepEqual(
     decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ activeLocation: "" }), KEY), KEY)),
     { ok: false, reason: "agency_view" },
   );

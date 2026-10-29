@@ -80,7 +80,11 @@ export type SsoDecision =
 // Pure, so the tenancy rule is testable without a request.
 export function decideSso(ctx: GhlUserContext): SsoDecision {
   if (ctx.companyId !== AGENCY_COMPANY_ID) return { ok: false, reason: "wrong_agency" };
-  // In the agency menu GHL sends no activeLocation: there is no client to show.
-  if (ctx.type !== "location" || !ctx.activeLocation) return { ok: false, reason: "agency_view" };
+  // Decided by activeLocation alone, NOT by `type`. `type` describes the USER:
+  // an agency admin opening the Dashboard inside a sub-account arrives as
+  // type "agency" with that sub-account in activeLocation — gating on
+  // type === "location" locked every agency user out (Lezgo Suite, 2026-10-28).
+  // Only the agency menu itself sends no activeLocation: no client to show.
+  if (!ctx.activeLocation) return { ok: false, reason: "agency_view" };
   return { ok: true, locationId: ctx.activeLocation };
 }
