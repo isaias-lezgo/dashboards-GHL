@@ -4,12 +4,17 @@
 // the doc hook's commit, after the same validation the manual UI uses, so the
 // model can never save a widget the engine cannot compute.
 //
-// Strict tool use: the API caps strict schemas at 16 union-typed parameters per
-// REQUEST (anyOf / type arrays, nullable included) and 20 strict tools. The
-// widget spec alone has 11 nullable fields and three tools carry it, so those
-// three are NOT strict — zod + validateWidget check them before any commit and
-// send the issues back as an is_error result. The rest are strict and add up to
-// 13 unions; scripts/verify-widgets.ts keeps that count under the cap.
+// Strict tool use has two API limits. The documented one is per REQUEST: 20
+// strict tools and 16 union-typed params (anyOf / type arrays, every nullable)
+// across all strict schemas — the widget spec alone has 11 nullables and three
+// tools carry it. The undocumented one is the size of the compiled grammar:
+// on 2026-10-30 these 9 compiled and ANY 10th (set_panel_filters or
+// apply_filters) failed with "The compiled grammar is too large", which 400s
+// every copilot request. So only the small tools are strict; the widget-spec
+// and filter tools are validated here (zod + validateWidget, shape guards)
+// before any commit, and invalid input goes back as an is_error result.
+// `pnpm check:strict-tools` asks the API whether the set still compiles —
+// run it after touching any strict schema.
 import type Anthropic from "@anthropic-ai/sdk";
 import { parseISO } from "date-fns";
 import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
@@ -23,6 +28,7 @@ import {
   SIZES,
   WIDGET_SPEC_JSON_SCHEMA,
   arr,
+  filterClauseSchema,
   enumOf,
   nullable,
   obj,
@@ -155,7 +161,6 @@ export const PANEL_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     name: "set_panel_filters",
     description:
       "SAVES the panel's global filters: the default date, the default pipelines (by NAME) and the added controls. Replaces the whole list — send the existing controls too (get_dashboard) when adding one. Use it when the user wants a filter to stay ('agrega un filtro de asesor', 'que siempre…'). The saved defaults are applied to the current view.",
-    strict: true,
     input_schema: obj({
       defaultDate: nullable(enumOf(RANGE_PRESETS, "Default date range ('all' = todo el historial). null = keep the saved default as is.")),
       defaultPipelines: nullable(arr(str(), "Pipeline NAMES selected by default; [] = todos. null = keep the saved default as is.")),
@@ -166,7 +171,6 @@ export const PANEL_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     name: "apply_filters",
     description:
       "Changes what the user sees NOW, for this session only — nothing is saved: date, pipelines (by name), values of field controls, and conditions. A value or condition with no saved control appears as a temporary chip the user can pin. Use it for 'por ahora', 'muéstrame solo…'.",
-    strict: true,
     input_schema: obj({
       date: nullable(
         obj({
@@ -323,6 +327,38 @@ function absoluteDate(from: string | null, to: string | null, now: Date): DateFi
 
 const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const asString = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+
+/**
+ * The non-strict tools' input is not schema-guaranteed: a wrong enum or a
+ * missing string becomes an issue the model can fix, never an exception.
+ */
+function shapeIssue(
+  path: string,
+  value: unknown,
+  enums: Record<string, readonly string[]>,
+  strings: string[] = [],
+  stringArrays: string[] = []
+): ValidationIssue | null {
+  if (!value || typeof value !== "object") return { path, message: "Se esperaba un objeto.", suggestion: null };
+  const o = value as Record<string, unknown>;
+  for (const [key, allowed] of Object.entries(enums)) {
+    if (!allowed.includes(o[key] as string)) return { path: `${path}.${key}`, message: `«${String(o[key])}» no es válido; usa uno de: ${allowed.join(", ")}.`, suggestion: null };
+  }
+  for (const key of strings) {
+    if (typeof o[key] !== "string" || !o[key]) return { path: `${path}.${key}`, message: `Falta \`${key}\` (texto).`, suggestion: null };
+  }
+  for (const key of stringArrays) {
+    if (!Array.isArray(o[key]) || (o[key] as unknown[]).some((x) => typeof x !== "string")) {
+      return { path: `${path}.${key}`, message: `\`${key}\` debe ser una lista de textos.`, suggestion: null };
+    }
+  }
+  return null;
+}
+
+function clauseShapeIssue(path: string, clause: unknown): ValidationIssue | null {
+  const parsed = filterClauseSchema.safeParse(clause);
+  return parsed.success ? null : { path, message: `Cláusula inválida: ${parsed.error.issues[0]?.message ?? "forma incorrecta"}.`, suggestion: null };
+}
 
 export async function executePanelTool(name: string, input: Record<string, unknown>, deps: PanelToolDeps): Promise<unknown> {
   switch (name) {
@@ -488,6 +524,8 @@ export async function executePanelTool(name: string, input: Record<string, unkno
       const controls: Omit<FilterControl, "id">[] = [];
       asArray<Omit<FilterControl, "id" | "label"> & { label: string | null }>(input.controls).forEach((c, i) => {
         const path = `controls[${i}]`;
+        const shape = shapeIssue(path, c, { kind: ["field", "condition"], entity: ENTITIES });
+        if (shape) return issues.push(shape);
         if (c.kind === "field") {
           if (!c.field) return issues.push({ path: `${path}.field`, message: "Un control de campo necesita `field`.", suggestion: null });
           const issue = validateEntityField(c.entity, c.field, catalog, `${path}.field`);
@@ -495,6 +533,8 @@ export async function executePanelTool(name: string, input: Record<string, unkno
           controls.push({ ...c, label: c.label?.trim() || controlLabel(c.entity, c.field), clause: null, defaultOn: false });
         } else {
           if (!c.clause) return issues.push({ path: `${path}.clause`, message: "Una condición necesita `clause`.", suggestion: null });
+          const clauseShape = clauseShapeIssue(`${path}.clause`, c.clause);
+          if (clauseShape) return issues.push(clauseShape);
           if (!c.label?.trim()) return issues.push({ path: `${path}.label`, message: "Una condición necesita una etiqueta («Perdidos»).", suggestion: null });
           issues.push(...validateEntityClauses(c.entity, [c.clause], catalog, `${path}.clause`));
           controls.push({ ...c, label: c.label.trim(), field: null, defaultValues: [] });
@@ -560,6 +600,8 @@ export async function executePanelTool(name: string, input: Record<string, unkno
       }
 
       asArray<{ entity: EntityId; field: string; values: string[] }>(input.values).forEach((v, i) => {
+        const shape = shapeIssue(`values[${i}]`, v, { entity: ENTITIES }, ["field"], ["values"]);
+        if (shape) return issues.push(shape);
         const issue = validateEntityField(v.entity, v.field, catalog, `values[${i}].field`);
         if (issue) return issues.push(issue);
         const control = doc.filters.controls.find((c) => c.kind === "field" && c.entity === v.entity && c.field === v.field);
@@ -574,6 +616,8 @@ export async function executePanelTool(name: string, input: Record<string, unkno
       });
 
       asArray<{ entity: EntityId; label: string; clause: FilterClause }>(input.conditions).forEach((c, i) => {
+        const shape = shapeIssue(`conditions[${i}]`, c, { entity: ENTITIES }, ["label"]) ?? clauseShapeIssue(`conditions[${i}].clause`, c.clause);
+        if (shape) return issues.push(shape);
         const found = validateEntityClauses(c.entity, [c.clause], catalog, `conditions[${i}].clause`);
         if (found.length) return issues.push(...found);
         const key = c.label.trim().toLowerCase();

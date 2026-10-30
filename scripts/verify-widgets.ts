@@ -1425,6 +1425,20 @@ async function panelToolsSection(): Promise<void> {
     for (const t of PANEL_TOOL_DEFINITIONS) visit(t.input_schema, t.name);
   });
 
+  check("strict solo en el conjunto que la API compiló (2026-10-30: 10 strict → «compiled grammar is too large»)", () => {
+    const strict = PANEL_MODE_TOOLS.filter((t) => (t as { strict?: boolean }).strict === true).map((t) => t.name).sort();
+    assert.deepEqual(strict, ["arrange_tab", "delete_tab", "delete_widgets", "forget_term", "get_dashboard", "get_widget_data", "move_widgets", "save_term", "upsert_tab"]);
+  });
+
+  await checkAsync("set_panel_filters / apply_filters (sin strict) rechazan una forma inválida con issues, sin lanzar", async () => {
+    const h = makePanelHarness(ctx);
+    const bad = (await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: null, controls: [{ kind: "campo", entity: "persona" }] })) as { error?: string; issues?: unknown[] };
+    assert.ok(bad.error && bad.issues?.length, JSON.stringify(bad));
+    const bad2 = (await h.run("apply_filters", { date: null, pipelines: null, values: [{ entity: "persona", field: "x", values: "Meta" }], conditions: [{ entity: "opportunity", label: "X" }] })) as { error?: string; issues?: unknown[] };
+    assert.ok(bad2.error && bad2.issues?.length, JSON.stringify(bad2));
+    assert.equal(h.version, 0);
+  });
+
   check("las herramientas strict caben en los límites de la API (≤20 strict, ≤16 uniones, 0 opcionales)", () => {
     // platform.claude.com/docs/en/build-with-claude/structured-outputs: limits are
     // per REQUEST, across every strict schema; past them the request is a 400.

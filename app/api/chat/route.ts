@@ -34,6 +34,10 @@ function translateAnthropicError(error: InstanceType<typeof Anthropic.APIError>)
     return "El servicio de IA está sobrecargado. Espera un momento e intenta de nuevo.";
   if (/invalid api key/i.test(inner))
     return "API key de Anthropic inválida. Revisa la configuración del servidor.";
+  // Before "too large": a strict-tool grammar the API refuses to compile is a
+  // configuration error, not a long conversation (pnpm check:strict-tools).
+  if (/compiled grammar|schema is too complex/i.test(inner))
+    return "La IA no aceptó la configuración de herramientas del panel. Avísale al equipo de Lezgo Suite.";
   if (/context length|too many tokens|too large/i.test(inner))
     return "La conversación es demasiado larga. Reinicia el chat para continuar.";
   if (/not found/i.test(inner) && error.status === 404)

@@ -33,6 +33,7 @@ pnpm verify:dashboard-store # lib/dashboard-store.ts — conditional write, hist
 pnpm check:widget-parity [clientId…] # read-only: the panel engine vs the hand-built dashboards on real caches
 pnpm eval:panel <clientId…> # COSTS API MONEY (~$8 for 2 accounts): the copilot's natural-language eval.
                          #   Never run it without the owner approving the budget.
+pnpm check:strict-tools  # ~$0.05: does the API still compile the copilot's strict tools? (see the panel section)
 pnpm db:migrate          # creates project_sync, the OAuth token tables, dashboard_installation,
                          #   dashboard_doc(+_version) and the ai_panel column (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
@@ -296,12 +297,16 @@ Invariants:
   copilot appends "=== PANEL ACTUAL ===" (tabs, widgets with their rule, selection,
   filters, glossary) as a second text block of the user's message; the UI hides it.
   Putting it in `system` would rebuild the cached prefix on every edit.
-- **Strict tool use has per-REQUEST limits** (20 strict tools, 16 union-typed params
-  across all strict schemas — each nullable counts). The widget spec alone has 11
-  nullables, so `preview_widget` / `create_widgets` / `update_widget` are NOT strict;
-  zod + `validateWidget` check them before any commit. `verify-widgets` asserts the
-  strict ones stay under the cap — adding a nullable to a strict tool can 400 every
-  copilot request.
+- **Strict tool use has per-REQUEST limits, one of them undocumented.** Documented: 20
+  strict tools, 16 union-typed params across all strict schemas (each nullable
+  counts) — the widget spec alone has 11. Undocumented: the compiled grammar's size.
+  On 2026-10-30 nine small strict tools compiled and ANY tenth (`set_panel_filters`
+  or `apply_filters`) 400'd with "The compiled grammar is too large" — and that fails
+  EVERY copilot request, not one tool. So only the small tools are strict; the
+  widget-spec and filter tools are validated in `executePanelTool` (zod,
+  `validateWidget`, shape guards) and bad input goes back as `is_error`.
+  `verify-widgets` pins the strict set; **after touching any strict schema run
+  `pnpm check:strict-tools`** (one real request, ~$0.05) — nothing local can test it.
 - **The copilot stays mounted while hidden**, like the Asistente IA tab, and only shows
   on the client's own tabs.
 
