@@ -37,6 +37,20 @@ import { runQuery, type QueryResult } from "../lib/widgets/engine";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
 import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot, describeWidget } from "../lib/widgets/describe";
 import { resolveTerm, termRoots } from "../lib/widgets/terms";
+import {
+  DocOpError,
+  addWidgets,
+  arrangeTab,
+  deleteTab,
+  deleteWidgets,
+  forgetTerm,
+  moveWidgets,
+  saveTerm,
+  setPanelFilters,
+  updateWidget,
+  upsertTab,
+  type OpMeta,
+} from "../lib/widgets/doc-ops";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
 import type { QuerySpec } from "../lib/widgets/spec";
 
@@ -890,6 +904,88 @@ function assistantSection(): void {
   });
 }
 
+function docOpsSection(): void {
+  section("doc-ops");
+  let n = 0;
+  const meta: OpMeta = { now: "2026-10-30T00:00:00Z", by: "ai", id: () => `id${++n}` };
+  const spec = apptsByStageSpec();
+  const throwsDocOp = (fn: () => unknown, includes?: string) =>
+    assert.throws(fn, (err: unknown) => err instanceof DocOpError && (!includes || err.message.includes(includes)));
+
+  check("addWidgets en pestaña nueva crea la pestaña y devuelve 2 ids", () => {
+    const start = emptyDoc();
+    const before = structuredClone(start);
+    const res = addWidgets(start, { tabId: null, newTabTitle: "Citas", widgets: [spec, spec], position: "end" }, meta);
+    assert.equal(res.doc.tabs.length, 1);
+    assert.equal(res.widgetIds.length, 2);
+    assert.equal(res.doc.tabs[0].id, res.tabId);
+    assert.deepEqual(start, before);
+  });
+
+  check("límites: widget 25 en una pestaña y pestaña 13 lanzan", () => {
+    const full = addWidgets(emptyDoc(), { tabId: null, newTabTitle: "Llena", widgets: Array(DOC_LIMITS.maxWidgetsPerTab).fill(spec), position: "end" }, meta);
+    throwsDocOp(() => addWidgets(full.doc, { tabId: full.tabId, newTabTitle: null, widgets: [spec], position: "end" }, meta));
+    let doc = emptyDoc();
+    for (let i = 0; i < DOC_LIMITS.maxTabs; i++) doc = upsertTab(doc, { tabId: null, title: `T${i}`, position: null }, meta.id).doc;
+    throwsDocOp(() => upsertTab(doc, { tabId: null, title: "Una más", position: null }, meta.id));
+  });
+
+  check("arrangeTab exige una permutación exacta", () => {
+    const res = addWidgets(emptyDoc(), { tabId: null, newTabTitle: "A", widgets: [spec, spec], position: "end" }, meta);
+    const [w1, w2] = res.widgetIds;
+    const arranged = arrangeTab(res.doc, res.tabId, [{ widgetId: w2, size: "s", height: "compact" }, { widgetId: w1, size: "xl", height: "tall" }]);
+    assert.deepEqual(arranged.tabs[0].widgets.map((w) => [w.id, w.size]), [[w2, "s"], [w1, "xl"]]);
+    throwsDocOp(() => arrangeTab(res.doc, res.tabId, [{ widgetId: w1, size: "s", height: "compact" }]));
+  });
+
+  check("ids que ya no existen → DocOpError «ya no existe»; el doc queda intacto", () => {
+    const res = addWidgets(emptyDoc(), { tabId: null, newTabTitle: "A", widgets: [spec], position: "end" }, meta);
+    const before = structuredClone(res.doc);
+    throwsDocOp(() => updateWidget(res.doc, "no-existe", spec, meta), "ya no existe");
+    throwsDocOp(() => deleteTab(res.doc, "no-existe"), "ya no existe");
+    throwsDocOp(() => deleteWidgets(res.doc, ["no-existe"]), "ya no existe");
+    throwsDocOp(() => moveWidgets(res.doc, res.widgetIds, "no-existe"), "ya no existe");
+    assert.deepEqual(res.doc, before);
+  });
+
+  check("updateWidget conserva id y createdAt; moveWidgets mueve", () => {
+    const res = addWidgets(emptyDoc(), { tabId: null, newTabTitle: "A", widgets: [spec], position: "end" }, meta);
+    const b = upsertTab(res.doc, { tabId: null, title: "B", position: null }, meta.id);
+    const updated = updateWidget(b.doc, res.widgetIds[0], { ...spec, title: "Otro" }, { ...meta, now: "2026-11-01T00:00:00Z" });
+    const w = updated.tabs[0].widgets[0];
+    assert.equal(w.id, res.widgetIds[0]);
+    assert.equal(w.createdAt, "2026-10-30T00:00:00Z");
+    assert.equal(w.updatedAt, "2026-11-01T00:00:00Z");
+    assert.equal(w.title, "Otro");
+    const moved = moveWidgets(updated, res.widgetIds, b.tabId);
+    assert.equal(moved.tabs[0].widgets.length, 0);
+    assert.equal(moved.tabs[1].widgets.length, 1);
+  });
+
+  check("setPanelFilters: 9 controles lanza; re-guardar conserva el id", () => {
+    const control = { kind: "field" as const, entity: "opportunity" as const, label: "Asesor", field: "assignedTo", defaultValues: [], clause: null, defaultOn: false };
+    const one = setPanelFilters(emptyDoc(), { defaultDate: null, defaultPipelines: [], controls: [control] }, meta.id);
+    const id = one.filters.controls[0].id;
+    const again = setPanelFilters(one, { defaultDate: "this_month", defaultPipelines: [], controls: [{ ...control, defaultValues: ["Ana"] }] }, meta.id);
+    assert.equal(again.filters.controls[0].id, id);
+    assert.deepEqual(again.filters.controls[0].defaultValues, ["Ana"]);
+    const nine = Array.from({ length: 9 }, (_, i) => ({ ...control, field: `cf:F${i}`, label: `F${i}` }));
+    throwsDocOp(() => setPanelFilters(emptyDoc(), { defaultDate: null, defaultPipelines: [], controls: nine }, meta.id));
+  });
+
+  check("glosario: «perdido» y luego «Perdidos» (alias perdido) → una entrada; forgetTerm la borra", () => {
+    const meaning = lostContactsSpec().query!.relatedFilters[0].conditions;
+    const a = saveTerm(emptyDoc(), { term: "perdido", aliases: [], entity: "opportunity", meaning, note: "estado perdida" }, meta);
+    const id = a.glossary[0].id;
+    const b = saveTerm(a, { term: "Perdidos", aliases: ["perdido"], entity: "opportunity", meaning, note: "estado perdida o etapa «Negocio Perdido»" }, meta);
+    assert.equal(b.glossary.length, 1);
+    assert.equal(b.glossary[0].id, id);
+    assert.equal(b.glossary[0].term, "Perdidos");
+    assert.equal(forgetTerm(b, "PERDIDO").glossary.length, 0);
+    throwsDocOp(() => forgetTerm(b, "inexistente"));
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -903,6 +999,7 @@ function main(): void {
   describeSection();
   termsSection();
   assistantSection();
+  docOpsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
