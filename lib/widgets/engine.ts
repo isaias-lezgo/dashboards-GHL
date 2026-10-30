@@ -27,6 +27,8 @@ import {
   startOfYear,
   subDays,
   subMonths,
+  subYears,
+  differenceInCalendarDays,
 } from "date-fns";
 import { es } from "date-fns/locale";
 import type { AdsStatus, Opportunity } from "@/lib/types";
@@ -708,7 +710,35 @@ function runAdsQuery(q: QuerySpec, ctx: EngineContext, r: ResolvedCtx, range: Re
   };
 }
 
+const NO_PREVIOUS = "Sin periodo anterior: el filtro es «Todo el historial»";
+
+/** The earlier window a KPI is compared against. */
+function previousRange(range: ResolvedDateRange, mode: "previous_period" | "previous_year"): ResolvedDateRange {
+  if (mode === "previous_year") return { from: subYears(range.from, 1), to: subYears(range.to, 1) };
+  const days = differenceInCalendarDays(range.to, range.from) + 1;
+  return { from: startOfDay(subDays(range.from, days)), to: endOfDay(subDays(range.from, 1)) };
+}
+
+/**
+ * KPI delta: the same query — same filters, same globals — over the earlier
+ * window. Only for ungrouped widgets with a real range; "Todo el historial" has
+ * no "before", and saying so beats printing a delta against nothing.
+ */
+function withCompare(result: QueryResult, q: QuerySpec, ctx: EngineContext): QueryResult {
+  if (q.time.compare === "none" || q.groupBy.length > 0) return result;
+  const range = resolveWidgetRange(q.time, ctx);
+  if (!range) return { ...result, meta: { ...result.meta, warnings: [...result.meta.warnings, NO_PREVIOUS] } };
+  const prev = previousRange(range, q.time.compare);
+  const prevKeys = { from: dayKey(prev.from), to: dayKey(prev.to) };
+  const prevResult = runQuery({ ...q, time: { ...q.time, range: "absolute", ...prevKeys, compare: "none" } }, ctx);
+  return { ...result, compare: { totals: prevResult.totals, range: prevKeys } };
+}
+
 export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
+  return withCompare(runQueryOnce(q, ctx), q, ctx);
+}
+
+function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
   validateFields(q, ctx);
   const r = resolveCtx(ctx);
   const def = SOURCE_DEFS[q.source];

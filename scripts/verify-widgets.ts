@@ -678,6 +678,29 @@ function adsSection(): void {
   });
 }
 
+function compareSection(): void {
+  section("compare");
+  const { ctx } = makeFixture();
+
+  check("previous_period de octubre = 31 ago–30 sep → 1 oportunidad (o1)", () => {
+    const res = runQuery(q({ time: { field: "createdAt", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "previous_period" } }), ctx);
+    assert.ok(res.compare);
+    assert.equal(res.compare!.totals[0], 1);
+    assert.deepEqual(res.compare!.range, { from: "2026-08-31", to: "2026-09-30" });
+  });
+
+  check("sin periodo (Todo el historial) → compare null con advertencia", () => {
+    const res = runQuery(q({ time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "previous_period" } }), { ...ctx, dateRange: null });
+    assert.equal(res.compare, null);
+    assert.ok(res.meta.warnings.includes("Sin periodo anterior: el filtro es «Todo el historial»"));
+  });
+
+  check("con dimensiones no hay comparación", () => {
+    const res = runQuery(q({ groupBy: [dim("stage")], time: { field: "createdAt", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "previous_period" } }), ctx);
+    assert.equal(res.compare, null);
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -686,6 +709,7 @@ function main(): void {
   engineSection();
   joinSection();
   adsSection();
+  compareSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
