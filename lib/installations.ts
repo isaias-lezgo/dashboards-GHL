@@ -20,6 +20,8 @@ export interface Installation {
   name: string;
   /** Optional login override; null = the location id is the password. */
   password: string | null;
+  /** The AI-managed panel is on for this client (dashboard_installation.ai_panel). */
+  aiPanel: boolean;
 }
 
 // The session token is dot-delimited and embeds the id, so ids are limited to
@@ -46,7 +48,7 @@ export function uniqueClientId(name: string, locationId: string, taken: Set<stri
 
 export async function listActiveInstallations(): Promise<Installation[]> {
   const rows = await getSql()`
-    SELECT location_id, client_id, name, password FROM dashboard_installation
+    SELECT location_id, client_id, name, password, ai_panel FROM dashboard_installation
      WHERE uninstalled_at IS NULL
   `;
   return rows.map((r) => ({
@@ -54,6 +56,7 @@ export async function listActiveInstallations(): Promise<Installation[]> {
     clientId: r.client_id,
     name: r.name,
     password: r.password ?? null,
+    aiPanel: r.ai_panel === true,
   }));
 }
 

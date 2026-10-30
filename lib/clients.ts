@@ -21,6 +21,9 @@ export interface ClientConfig {
   // escape hatch that makes a single client's password rotatable — set it in
   // dashboard_installation.password.
   password?: string;
+  // The AI-managed panel is on (dashboard_installation.ai_panel). Rolled out one
+  // client at a time: `UPDATE dashboard_installation SET ai_panel = true WHERE client_id = …`.
+  aiPanel?: boolean;
 }
 
 export function effectivePassword(c: ClientConfig): string {
@@ -66,6 +69,7 @@ export async function getRoster(): Promise<ClientConfig[]> {
       name: r.name,
       locationId: r.locationId,
       ...(r.password ? { password: r.password } : {}),
+      ...(r.aiPanel ? { aiPanel: true } : {}),
     }));
     rosterCache = { at: Date.now(), clients };
     return clients;
