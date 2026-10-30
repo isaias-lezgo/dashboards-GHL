@@ -231,10 +231,46 @@ function applyGlobals(source: SourceId, rows: Row[], plan: GlobalPlan, ctx: Reso
  * (Task 6). Same precedence as the row filters.
  */
 export function passesGlobalOpportunityFilters(opp: Opportunity, q: QuerySpec, ctx: ResolvedCtx): boolean {
-  const plan = globalPlan(q, ctx);
+  return passesPlan(opp, globalPlan(q, ctx), ctx);
+}
+
+function passesPlan(opp: Opportunity, plan: GlobalPlan, ctx: ResolvedCtx): boolean {
   if (plan.applyPipeline && !ctx.pipelineFilter.includes(opp.pipelineId)) return false;
   const row = opp as unknown as Row;
   return plan.active.filter((g) => g.entity === "opportunity").every((g) => matchesClause("opportunities", row, g.clause, ctx));
+}
+
+// ─── Related dimensions (lookup join through the contact) ─────────────────────
+
+export const NO_OPPORTUNITY = "Sin oportunidad";
+
+/**
+ * Values of an "opportunity.*" / "contact.*" dimension for a row of another
+ * source (spec §6.4). For "opportunity.*" the candidates are ALL the contact's
+ * opportunities — never the date-filtered slice — narrowed only by the
+ * opportunity-level global filters (pipeline included). "latest" (the default)
+ * picks the most recent, so the bars add up to the row count; "each" counts the
+ * row once per candidate. A row with no candidate lands in "Sin oportunidad",
+ * never silently dropped.
+ */
+export function relatedResolver(q: QuerySpec, ctx: ResolvedCtx): (row: Row, spec: GroupBySpec) => string[] {
+  const plan = globalPlan(q, ctx);
+  const contactIdOf = SOURCE_DEFS[q.source].contactIdOf;
+  return (row, spec) => {
+    const cid = contactIdOf(row);
+    if (spec.dimension.startsWith("contact.")) {
+      const field = spec.dimension.slice("contact.".length);
+      const contact = cid ? ctx.index.contactById.get(cid) : undefined;
+      return contact ? dimensionValues("contacts", contact as unknown as Row, field, ctx) : [EMPTY_VALUE];
+    }
+    const field = spec.dimension.slice("opportunity.".length);
+    let cands = cid ? (ctx.index.oppsByContact.get(cid) ?? []) : [];
+    if (q.globalFilters === "inherit") cands = cands.filter((o) => passesPlan(o, plan, ctx));
+    if (cands.length === 0) return [NO_OPPORTUNITY];
+    if (spec.join === "each") return cands.flatMap((o) => dimensionValues("opportunities", o as unknown as Row, field, ctx));
+    const latest = cands.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+    return dimensionValues("opportunities", latest as unknown as Row, field, ctx);
+  };
 }
 
 // ─── Field validation ─────────────────────────────────────────────────────────
@@ -247,7 +283,16 @@ function assertField(source: SourceId, field: string, ctx: EngineContext): void 
 
 function validateFields(q: QuerySpec, ctx: EngineContext): void {
   for (const g of q.groupBy) {
-    if (isRelatedDimension(g.dimension)) continue; // resolved by the related-dimension join
+    if (isRelatedDimension(g.dimension)) {
+      const [prefix, ...rest] = g.dimension.split(".");
+      const field = rest.join(".");
+      const target: SourceId = prefix === "contact" ? "contacts" : "opportunities";
+      if (target === q.source || q.source === "ads_daily") {
+        throw new QueryError("invalid", `«${g.dimension}» no aplica a ${q.source}: usa el campo propio`);
+      }
+      assertField(target, field, ctx);
+      continue;
+    }
     if (g.bucket || isDateField(q.source, g.dimension)) {
       if (!isDateField(q.source, g.dimension)) throw new QueryError("invalid", `«${g.dimension}» no es una fecha de ${q.source}`);
       continue;
@@ -578,11 +623,7 @@ export function groupAndMeasure(
 const APPT_WINDOW_DAYS = 90;
 const APPT_WARNING = "Las citas solo cubren 90 días hacia atrás y 90 hacia adelante; fuera de eso no hay datos.";
 
-export interface RunOptions {
-  relatedValues?: (row: Row, spec: GroupBySpec, q: QuerySpec, ctx: ResolvedCtx) => string[];
-}
-
-export function runQuery(q: QuerySpec, ctx: EngineContext, runOpts: RunOptions = {}): QueryResult {
+export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
   validateFields(q, ctx);
   const r = resolveCtx(ctx);
   const def = SOURCE_DEFS[q.source];
@@ -609,7 +650,7 @@ export function runQuery(q: QuerySpec, ctx: EngineContext, runOpts: RunOptions =
     limit: q.limit,
     fold: true,
     range,
-    relatedValues: runOpts.relatedValues ? (row, spec) => runOpts.relatedValues!(row, spec, q, r) : undefined,
+    relatedValues: relatedResolver(q, r),
   });
 
   return {

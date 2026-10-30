@@ -575,12 +575,48 @@ function engineSection(): void {
   });
 }
 
+function joinSection(): void {
+  section("join");
+  const { ctx } = makeFixture();
+  const appts = (over: Partial<QuerySpec>, c: EngineContext = ctx) =>
+    runQuery(q({ source: "appointments", time: { field: "startTime", range: "inherit", from: null, to: null, compare: "none" }, ...over }), c);
+
+  check("citas por opportunity.stage (latest) → Propuesta 3, Sin oportunidad 1; suma = total", () => {
+    const res = appts({ groupBy: [dim("opportunity.stage", null, "latest")] });
+    assert.deepEqual(byLabel(res), { Propuesta: 3, "Sin oportunidad": 1 });
+    assert.equal(res.rows.reduce((acc, r) => acc + (r.values[0] ?? 0), 0), res.meta.recordCount);
+  });
+
+  check("con pipeline p1 → Primera Cita 3 (la más reciente de c1 dentro de p1 es o1)", () => {
+    const res = appts({ groupBy: [dim("opportunity.stage", null, "latest")] }, { ...ctx, pipelineFilter: ["p1"] });
+    assert.deepEqual(byLabel(res), { "Primera Cita": 3 });
+  });
+
+  check("join each → cada cita una vez por oportunidad; fanOut", () => {
+    const res = appts({ groupBy: [dim("opportunity.stage", null, "each")] });
+    assert.deepEqual(byLabel(res), { "Primera Cita": 3, Propuesta: 3, "Sin oportunidad": 1 });
+    assert.equal(res.meta.fanOut, true);
+  });
+
+  check("global de etapa sobre la oportunidad: candidatos = los que pasan el filtro", () => {
+    const g: ActiveGlobalFilter = { entity: "opportunity", label: "Etapa", clause: { anyOf: [{ field: "stage", op: "in", values: ["Primera Cita"] }] } };
+    const res = appts({ groupBy: [dim("opportunity.stage", null, "latest")] }, { ...ctx, globalFilters: [g] });
+    assert.deepEqual(byLabel(res), { "Primera Cita": 3 });
+  });
+
+  check("opps por contact.cf:Origen de Lead → o1 y o2 en Facebook e Instagram; o3, o4 sin valor", () => {
+    const res = runQuery(q({ groupBy: [dim("contact.cf:Origen de Lead")] }), ctx);
+    assert.deepEqual(byLabel(res), { Facebook: 2, Instagram: 2, "(sin valor)": 2 });
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
   semanticSection();
   metricsSection();
   engineSection();
+  joinSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
