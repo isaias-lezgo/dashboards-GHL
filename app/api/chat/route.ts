@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
-import { ASSISTANT_SYSTEM_PROMPT } from "@/lib/ai-context";
+import { buildChatRequest, type ChatMode } from "@/lib/chat-request";
 
 // Server-side, one Anthropic turn per request. The client runs the agent
 // loop: when we return tool_use blocks, the client executes them locally
@@ -18,6 +17,8 @@ interface ChatRequestBody {
   maxTokens?: number;
   // IANA timezone from the user's browser. Falls back to America/Mexico_City.
   userTimezone?: string;
+  // "panel" = the AI panel's copilot (panel tools + its prompt section).
+  mode?: ChatMode;
 }
 
 export const runtime = "nodejs";
@@ -38,36 +39,6 @@ function translateAnthropicError(error: InstanceType<typeof Anthropic.APIError>)
   if (/not found/i.test(inner) && error.status === 404)
     return "Modelo o recurso no encontrado. Revisa la configuración.";
   return `Error del servicio de IA (código ${error.status}). Intenta de nuevo.`;
-}
-
-// Attach a rolling cache breakpoint to the most-recently-appended turn. In the
-// agent loop the message history is append-only, so the cached prefix stays
-// byte-stable and every turn reads the prior conversation from cache (~0.1x)
-// instead of reprocessing the accumulated tool_use/tool_result history at full
-// input price. The static system+tools prefix keeps its own breakpoint; this is
-// the second of the 4 allowed per request.
-function withRollingCacheBreakpoint(
-  messages: Anthropic.MessageParam[]
-): Anthropic.MessageParam[] {
-  if (messages.length === 0) return messages;
-  const lastIndex = messages.length - 1;
-  const last = messages[lastIndex];
-
-  const blocks: Anthropic.ContentBlockParam[] =
-    typeof last.content === "string"
-      ? [{ type: "text", text: last.content }]
-      : [...last.content];
-
-  if (blocks.length === 0) return messages;
-
-  blocks[blocks.length - 1] = {
-    ...blocks[blocks.length - 1],
-    cache_control: { type: "ephemeral" },
-  } as Anthropic.ContentBlockParam;
-
-  const next = [...messages];
-  next[lastIndex] = { ...last, content: blocks };
-  return next;
 }
 
 export async function POST(req: Request) {
@@ -95,54 +66,15 @@ export async function POST(req: Request) {
   const client = new Anthropic();
 
   try {
-    const tz = body.userTimezone ?? "America/Mexico_City";
-    const now = new Date();
-    const today = now.toLocaleDateString("es-MX", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      timeZone: tz,
-    });
-    const time = now.toLocaleTimeString("es-MX", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: tz,
-    });
-
-    const response = await client.messages.create({
-      model: "claude-sonnet-5",
-      // Sonnet 5 piensa por defecto: omitir `thinking` ya NO significa
-      // pensamiento apagado como en 4.6. Se deja explícito para que se lea como
-      // decisión y no como descuido — un asistente con ~22 herramientas se
-      // beneficia de que razone antes de elegir cuál llamar, y con el
-      // pensamiento apagado el modelo es notablemente menos propenso a usarlas.
-      thinking: { type: "adaptive" },
-      // El pensamiento sale de este mismo techo, y el tokenizador nuevo produce
-      // ~30% más tokens para el mismo texto. Con los 4096 de antes, una
-      // respuesta larga se cortaba y el loop la parchaba mandando "Continúa."
-      // Es un tope, no un objetivo: no sube el costo típico, evita el corte.
-      max_tokens: body.maxTokens ?? 16000,
-      system: [
-        {
-          type: "text",
-          text: ASSISTANT_SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-        {
-          type: "text",
-          text: body.datasetSummary,
-          cache_control: { type: "ephemeral" },
-        },
-        {
-          type: "text",
-          text: `Fecha y hora actuales: ${today}, ${time} (zona horaria ${tz}). Usa esto para resolver referencias relativas como "hoy", "ayer", "esta semana", "esta mañana" o "ahora".`,
-        },
-      ],
-      tools: TOOL_DEFINITIONS as unknown as Anthropic.Tool[],
-      messages: withRollingCacheBreakpoint(body.messages),
-    });
+    const response = await client.messages.create(
+      buildChatRequest({
+        mode: body.mode === "panel" ? "panel" : "assistant",
+        datasetSummary: body.datasetSummary,
+        messages: body.messages,
+        userTimezone: body.userTimezone ?? "America/Mexico_City",
+        maxTokens: body.maxTokens,
+      })
+    );
 
     return NextResponse.json({
       stopReason: response.stop_reason,

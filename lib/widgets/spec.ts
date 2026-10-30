@@ -428,21 +428,23 @@ export function parseDoc(raw: unknown): DashboardDoc {
 
 // ─── JSON Schema for the model (strict tool use) ──────────────────────────────
 
-const str = (description?: string) => ({ type: "string", ...(description ? { description } : {}) });
-const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
-const enumOf = (values: readonly string[], description?: string) => ({
+// Exported for the panel tools' input schemas (lib/widgets/tools.ts): every
+// object strict-shaped, every property required, "not applicable" as null.
+export const str = (description?: string) => ({ type: "string", ...(description ? { description } : {}) });
+export const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
+export const enumOf = (values: readonly string[], description?: string) => ({
   type: "string",
   enum: [...values],
   ...(description ? { description } : {}),
 });
-const obj = (properties: Record<string, unknown>, description?: string) => ({
+export const obj = (properties: Record<string, unknown>, description?: string) => ({
   type: "object",
   properties,
   required: Object.keys(properties),
   additionalProperties: false,
   ...(description ? { description } : {}),
 });
-const arr = (items: Record<string, unknown>, description?: string) => ({
+export const arr = (items: Record<string, unknown>, description?: string) => ({
   type: "array",
   items,
   ...(description ? { description } : {}),

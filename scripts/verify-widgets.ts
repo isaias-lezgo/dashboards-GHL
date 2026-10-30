@@ -52,6 +52,11 @@ import {
   type OpMeta,
 } from "../lib/widgets/doc-ops";
 import { buildSuggestions } from "../lib/widgets/suggestions";
+import { PANEL_MODE_TOOLS, PANEL_TOOL_DEFINITIONS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
+import { buildChatRequest } from "../lib/chat-request";
+import { TOOL_DEFINITIONS } from "../lib/ai-tools";
+import { ASSISTANT_SYSTEM_PROMPT, PANEL_PROMPT_SECTION } from "../lib/ai-context";
+import type { PanelFilterState } from "../lib/widgets/filter-state";
 import { activeGlobalFilters, describeFilterState, initialFilterState, stateAsDefaults, staleValues } from "../lib/widgets/filter-state";
 import type { FilterControl, PanelFilters } from "../lib/widgets/spec";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
@@ -65,6 +70,15 @@ function section(name: string): void {
 function check(name: string, fn: () => void): void {
   try {
     fn();
+  } catch (err) {
+    console.error(`  ✗ [${currentSection}] ${name}`);
+    throw err;
+  }
+  console.log(`  ✓ ${name}`);
+}
+async function checkAsync(name: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
   } catch (err) {
     console.error(`  ✗ [${currentSection}] ${name}`);
     throw err;
@@ -1087,7 +1101,322 @@ function suggestionsSection(): void {
   });
 }
 
-function main(): void {
+// In-memory deps: commit applies the mutation and versions, like useDashboardDoc.
+function makePanelHarness(ctx: EngineContext, opts: { conflict?: boolean } = {}) {
+  let doc = emptyDoc();
+  let version = 0;
+  let n = 0;
+  let filterState: PanelFilterState = initialFilterState(doc.filters, ctx.now);
+  const seen = { activeTabs: [] as string[], applied: [] as PanelFilterState[] };
+  const deps: PanelToolDeps = {
+    getDoc: () => doc,
+    commit: async (mutate) => {
+      if (opts.conflict) return { ok: false, reason: "conflict", message: "El panel cambió en otra sesión; ya se recargó." };
+      try {
+        doc = mutate(doc);
+      } catch (err) {
+        if (err instanceof DocOpError) return { ok: false, reason: "invalid", message: err.message };
+        throw err;
+      }
+      version++;
+      return { ok: true, version };
+    },
+    engineCtx: () => ctx,
+    activeTabId: () => doc.tabs[0]?.id ?? null,
+    selectedWidgetId: () => null,
+    setActiveTab: (id) => seen.activeTabs.push(id),
+    getFilterState: () => filterState,
+    applyFilterState: (next) => {
+      filterState = next;
+      seen.applied.push(next);
+    },
+    now: () => "2026-10-29T12:00:00.000Z",
+    newId: () => `id${++n}`,
+  };
+  return {
+    deps,
+    seen,
+    get doc() {
+      return doc;
+    },
+    get version() {
+      return version;
+    },
+    run: (name: string, input: Record<string, unknown>) => executePanelTool(name, input, deps) as Promise<Record<string, unknown>>,
+  };
+}
+
+const LOST_CLAUSE = {
+  anyOf: [
+    { field: "status", op: "eq", values: ["lost"] },
+    { field: "stage", op: "in", values: ["Negocio Perdido"] },
+  ],
+};
+
+async function panelToolsSection(): Promise<void> {
+  section("panel-tools");
+  const ctx = makeFixture().ctx;
+
+  await checkAsync("create_widgets con el ejemplo del dueño → pestaña nueva «Citas», 1 widget, y se activa", async () => {
+    const h = makePanelHarness(ctx);
+    const res = await h.run("create_widgets", { tabId: null, newTabTitle: "Citas", widgets: [apptsByStageSpec()], position: "end" });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(h.doc.tabs.length, 1);
+    assert.equal(h.doc.tabs[0].title, "Citas");
+    assert.equal(h.doc.tabs[0].widgets.length, 1);
+    assert.deepEqual(res.widgetIds, [h.doc.tabs[0].widgets[0].id]);
+    assert.deepEqual(h.seen.activeTabs, [h.doc.tabs[0].id]);
+  });
+
+  await checkAsync("create_widgets con «cf:Origen» → error con sugerencia y el panel sin cambios", async () => {
+    const h = makePanelHarness(ctx);
+    const base = apptsByStageSpec();
+    const spec: WidgetSpec = {
+      ...base,
+      query: { ...base.query!, source: "contacts", groupBy: [{ dimension: "cf:Origen", bucket: null, join: null }], time: { ...base.query!.time, field: "createdAt" } },
+    };
+    const res = (await h.run("create_widgets", { tabId: null, newTabTitle: "X", widgets: [spec], position: "end" })) as { error?: string; issues?: { suggestion: string | null }[] };
+    assert.ok(res.error);
+    assert.equal(res.issues?.[0].suggestion, "cf:Origen de Lead");
+    assert.equal(h.doc.tabs.length, 0);
+    assert.equal(h.version, 0);
+  });
+
+  await checkAsync("create_widgets con forma inválida (zod) → error con issues, sin lanzar", async () => {
+    const h = makePanelHarness(ctx);
+    const res = (await h.run("create_widgets", { tabId: null, newTabTitle: "X", widgets: [{ title: "x" }], position: "end" })) as { error?: string; issues?: unknown[] };
+    assert.ok(res.error && res.issues && res.issues.length > 0);
+  });
+
+  await checkAsync("update_widget sobre un widget borrado → { error } «ya no existe», sin lanzar", async () => {
+    const h = makePanelHarness(ctx);
+    const res = await h.run("update_widget", { widgetId: "borrado", widget: apptsByStageSpec() });
+    assert.match(String(res.error), /ya no existe/);
+  });
+
+  await checkAsync("commit en conflicto → { error } que pide get_dashboard", async () => {
+    const h = makePanelHarness(ctx, { conflict: true });
+    const res = await h.run("create_widgets", { tabId: null, newTabTitle: "Citas", widgets: [apptsByStageSpec()], position: "end" });
+    assert.match(String(res.error), /get_dashboard/);
+  });
+
+  await checkAsync("preview_widget: scope = describeWidget, ≤15 filas, no guarda nada", async () => {
+    const h = makePanelHarness(ctx);
+    const spec = apptsByStageSpec();
+    const res = (await h.run("preview_widget", { widget: spec })) as { scope: string; rows: { label: string; values: unknown[] }[]; recordCount: number };
+    assert.equal(res.scope, describeWidget(spec));
+    assert.ok(res.rows.length > 0 && res.rows.length <= 15);
+    assert.equal(typeof res.rows[0].label, "string");
+    assert.equal(res.recordCount, 4);
+    assert.equal(h.version, 0);
+  });
+
+  await checkAsync("set_panel_filters: control de asesor sin etiqueta → «Asesor»; pipeline desconocido → error con los nombres válidos", async () => {
+    const h = makePanelHarness(ctx);
+    const control = { kind: "field", entity: "opportunity", label: null, field: "assignedTo", defaultValues: [], clause: null, defaultOn: false };
+    const ok = await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: [], controls: [control] });
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+    assert.equal(h.doc.filters.controls.length, 1);
+    assert.equal(h.doc.filters.controls[0].label, "Asesor");
+    const bad = await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: ["No Existe"], controls: [] });
+    assert.match(String(bad.error), /No Existe/);
+    assert.match(String(bad.error), /p1/);
+    const named = await h.run("set_panel_filters", { defaultDate: "last_30d", defaultPipelines: ["p2"], controls: [control] });
+    assert.equal(named.ok, true);
+    assert.deepEqual(h.doc.filters.defaultPipelines, ["p2"]);
+  });
+
+  await checkAsync("set_panel_filters: un campo inexistente en un control → error con sugerencia", async () => {
+    const h = makePanelHarness(ctx);
+    const control = { kind: "field", entity: "contact", label: null, field: "cf:Origen", defaultValues: [], clause: null, defaultOn: false };
+    const res = (await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: [], controls: [control] })) as { error?: string; issues?: { suggestion: string | null }[] };
+    assert.ok(res.error);
+    assert.equal(res.issues?.[0].suggestion, "cf:Origen de Lead");
+  });
+
+  await checkAsync("set_panel_filters con condición «Perdidos» encendida → activeGlobalFilters la incluye", async () => {
+    const h = makePanelHarness(ctx);
+    const cond = { kind: "condition", entity: "opportunity", label: "Perdidos", field: null, defaultValues: [], clause: LOST_CLAUSE, defaultOn: true };
+    const res = await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: [], controls: [cond] });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    const active = activeGlobalFilters(initialFilterState(h.doc.filters, ctx.now), h.doc.filters);
+    assert.deepEqual(active.map((a) => a.label), ["Perdidos"]);
+  });
+
+  await checkAsync("apply_filters: un valor sin control → chip temporal contact.source; el doc no cambia de versión", async () => {
+    const h = makePanelHarness(ctx);
+    const res = (await h.run("apply_filters", { date: null, pipelines: null, values: [{ entity: "contact", field: "source", values: ["Meta"] }], conditions: [] })) as { ok?: boolean; filters?: string };
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(h.version, 0);
+    const last = h.seen.applied.at(-1)!;
+    assert.equal(last.temporary.length, 1);
+    assert.equal(last.temporary[0].entity, "contact");
+    assert.equal(last.temporary[0].field, "source");
+    assert.deepEqual(last.temporary[0].defaultValues, ["Meta"]);
+    assert.match(String(res.filters), /temporal/);
+  });
+
+  await checkAsync("apply_filters: valor sobre un control existente lo usa; fecha y pipeline por nombre", async () => {
+    const h = makePanelHarness(ctx);
+    const control = { kind: "field", entity: "opportunity", label: null, field: "assignedTo", defaultValues: [], clause: null, defaultOn: false };
+    await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: [], controls: [control] });
+    const id = h.doc.filters.controls[0].id;
+    const res = await h.run("apply_filters", {
+      date: { range: "last_30d", from: null, to: null },
+      pipelines: ["p1"],
+      values: [{ entity: "opportunity", field: "assignedTo", values: ["Ana"] }],
+      conditions: [],
+    });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    const last = h.seen.applied.at(-1)!;
+    assert.deepEqual(last.values[id], ["Ana"]);
+    assert.equal(last.temporary.length, 0);
+    assert.deepEqual(last.pipelines, ["p1"]);
+    assert.equal(last.date.preset, "month");
+    const bad = await h.run("apply_filters", { date: null, pipelines: ["Nada"], values: [], conditions: [] });
+    assert.ok(bad.error);
+  });
+
+  await checkAsync("save_term guarda en el glosario y el snapshot lo muestra; un campo inexistente → error con issues", async () => {
+    const h = makePanelHarness(ctx);
+    const res = await h.run("save_term", { term: "perdido", aliases: ["perdidos"], entity: "opportunity", meaning: [LOST_CLAUSE], note: "estado perdida o etapa «Negocio Perdido»" });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(h.doc.glossary.length, 1);
+    assert.match(buildPanelSnapshot(h.doc, null, null, "Fecha = todo"), /«perdido».*Negocio Perdido/);
+    const bad = (await h.run("save_term", {
+      term: "frío",
+      aliases: [],
+      entity: "opportunity",
+      meaning: [{ anyOf: [{ field: "temperatura", op: "eq", values: ["fría"] }] }],
+      note: "x",
+    })) as { error?: string; issues?: unknown[] };
+    assert.ok(bad.error && bad.issues?.length);
+    assert.equal(h.doc.glossary.length, 1);
+    const gone = await h.run("forget_term", { term: "Perdidos" });
+    assert.equal(gone.ok, true);
+    assert.equal(h.doc.glossary.length, 0);
+  });
+
+  await checkAsync("get_dashboard: pestañas, widgets con su regla, filtros y controles con valores", async () => {
+    const h = makePanelHarness(ctx);
+    await h.run("create_widgets", { tabId: null, newTabTitle: "Citas", widgets: [apptsByStageSpec()], position: "end" });
+    await h.run("set_panel_filters", {
+      defaultDate: null,
+      defaultPipelines: [],
+      controls: [{ kind: "field", entity: "opportunity", label: null, field: "stage", defaultValues: [], clause: null, defaultOn: false }],
+    });
+    const res = (await h.run("get_dashboard", { tabId: null })) as {
+      tabs: { title: string }[];
+      tab: { widgets: { scope: string }[] } | null;
+      filters: string;
+      controls: { available: { value: string }[] }[];
+    };
+    assert.deepEqual(res.tabs.map((t) => t.title), ["Citas"]);
+    assert.equal(res.tab?.widgets[0].scope, describeWidget(apptsByStageSpec()));
+    assert.match(res.filters, /Etapa = todos/);
+    assert.ok(res.controls[0].available.some((v) => v.value === "Propuesta"));
+  });
+
+  await checkAsync("delete_widgets / upsert_tab / arrange_tab / move_widgets / delete_tab devuelven versión; ids desconocidos → error", async () => {
+    const h = makePanelHarness(ctx);
+    const created = await h.run("create_widgets", { tabId: null, newTabTitle: "A", widgets: [apptsByStageSpec(), apptsByStageSpec()], position: "end" });
+    const [w1, w2] = created.widgetIds as string[];
+    const tabA = h.doc.tabs[0].id;
+    const tabB = await h.run("upsert_tab", { tabId: null, title: "B", position: null });
+    assert.equal(tabB.ok, true);
+    const arranged = await h.run("arrange_tab", { tabId: tabA, items: [{ widgetId: w2, size: "s", height: "compact" }, { widgetId: w1, size: "l", height: "tall" }] });
+    assert.equal(arranged.ok, true, JSON.stringify(arranged));
+    assert.deepEqual(h.doc.tabs[0].widgets.map((w) => w.id), [w2, w1]);
+    const moved = await h.run("move_widgets", { widgetIds: [w1], toTabId: tabB.tabId as string });
+    assert.equal(moved.ok, true);
+    assert.equal(h.doc.tabs[1].widgets.length, 1);
+    assert.equal((await h.run("delete_widgets", { widgetIds: [w2] })).ok, true);
+    assert.match(String((await h.run("delete_widgets", { widgetIds: [w2] })).error), /ya no existe/);
+    assert.equal((await h.run("delete_tab", { tabId: tabA })).ok, true);
+    assert.equal(h.doc.tabs.length, 1);
+  });
+
+  await checkAsync("get_widget_data: filas del widget guardado; id desconocido → error", async () => {
+    const h = makePanelHarness(ctx);
+    const created = await h.run("create_widgets", { tabId: null, newTabTitle: "A", widgets: [apptsByStageSpec()], position: "end" });
+    const res = (await h.run("get_widget_data", { widgetId: (created.widgetIds as string[])[0], limit: 1 })) as { rows: unknown[] };
+    assert.equal(res.rows.length, 1);
+    assert.match(String((await h.run("get_widget_data", { widgetId: "x", limit: null })).error), /ya no existe/);
+  });
+
+  check("esquemas: cada objeto con additionalProperties false y required completo", () => {
+    const visit = (node: unknown, path: string): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach((x, i) => visit(x, `${path}[${i}]`));
+      const o = node as Record<string, unknown>;
+      if (o.type === "object") {
+        assert.equal(o.additionalProperties, false, `${path}: additionalProperties`);
+        assert.deepEqual([...((o.required as string[]) ?? [])].sort(), Object.keys((o.properties as object) ?? {}).sort(), `${path}: required`);
+      }
+      for (const [k, v] of Object.entries(o)) visit(v, `${path}.${k}`);
+    };
+    for (const t of PANEL_TOOL_DEFINITIONS) visit(t.input_schema, t.name);
+  });
+
+  check("las herramientas strict caben en los límites de la API (≤20 strict, ≤16 uniones, 0 opcionales)", () => {
+    // platform.claude.com/docs/en/build-with-claude/structured-outputs: limits are
+    // per REQUEST, across every strict schema; past them the request is a 400.
+    const strict = PANEL_MODE_TOOLS.filter((t) => (t as { strict?: boolean }).strict === true);
+    let unions = 0;
+    const visit = (node: unknown): void => {
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) return node.forEach(visit);
+      const o = node as Record<string, unknown>;
+      if (Array.isArray(o.anyOf) || Array.isArray(o.type)) unions++;
+      for (const v of Object.values(o)) visit(v);
+    };
+    for (const t of strict) visit(t.input_schema);
+    assert.ok(strict.length > 0 && strict.length <= 20, `strict: ${strict.length}`);
+    assert.ok(unions <= 16, `uniones: ${unions}`);
+  });
+
+  check("PANEL_MODE_TOOLS: el asistente sin gráficas de chat/PDF/adjuntos, resolve_term incluido, luego las del panel", () => {
+    const names = PANEL_MODE_TOOLS.map((t) => t.name);
+    for (const gone of ["render_chart", "show_in_panel", "create_pdf", "list_uploaded_files", "query_uploaded_table", "join_uploaded_table"]) {
+      assert.equal(names.includes(gone), false, gone);
+    }
+    assert.ok(names.includes("resolve_term") && names.includes("ask_user"));
+    assert.deepEqual(names.slice(-PANEL_TOOL_DEFINITIONS.length), PANEL_TOOL_DEFINITIONS.map((t) => t.name));
+    assert.equal(new Set(names).size, names.length);
+  });
+
+  check("buildChatRequest(assistant) = el cuerpo que armaba la ruta; panel agrega su sección y sus herramientas", () => {
+    const now = new Date("2026-10-29T18:30:00Z");
+    const tz = "America/Mexico_City";
+    const messages = [{ role: "user" as const, content: "hola" }];
+    const today = now.toLocaleDateString("es-MX", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: tz });
+    const time = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: tz });
+    // Literal of app/api/chat/route.ts before the change.
+    const expected = {
+      model: "claude-sonnet-5",
+      thinking: { type: "adaptive" },
+      max_tokens: 16000,
+      system: [
+        { type: "text", text: ASSISTANT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+        { type: "text", text: "DS", cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: `Fecha y hora actuales: ${today}, ${time} (zona horaria ${tz}). Usa esto para resolver referencias relativas como "hoy", "ayer", "esta semana", "esta mañana" o "ahora".`,
+        },
+      ],
+      tools: TOOL_DEFINITIONS,
+      messages: [{ role: "user", content: [{ type: "text", text: "hola", cache_control: { type: "ephemeral" } }] }],
+    };
+    const got = buildChatRequest({ mode: "assistant", datasetSummary: "DS", messages, userTimezone: tz, now });
+    assert.deepEqual(JSON.parse(JSON.stringify(got)), JSON.parse(JSON.stringify(expected)));
+    const panel = buildChatRequest({ mode: "panel", datasetSummary: "DS", messages, userTimezone: tz, now });
+    assert.equal((panel.system as { text: string }[])[0].text, `${ASSISTANT_SYSTEM_PROMPT}\n\n${PANEL_PROMPT_SECTION}`);
+    assert.deepEqual(panel.tools, PANEL_MODE_TOOLS);
+    assert.equal(buildChatRequest({ mode: "assistant", datasetSummary: "DS", messages, userTimezone: tz, now, maxTokens: 900 }).max_tokens, 900);
+  });
+}
+
+async function main(): Promise<void> {
   specSection();
   domainSection();
   semanticSection();
@@ -1103,7 +1432,11 @@ function main(): void {
   docOpsSection();
   filterStateSection();
   suggestionsSection();
+  await panelToolsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

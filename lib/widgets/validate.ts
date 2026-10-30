@@ -113,6 +113,39 @@ function entityFields(entity: EntityId, catalog: Catalog): Set<string> {
   return set;
 }
 
+/** The issue for a field this account does not have, with the closest real one; null when it exists. */
+function fieldIssue(path: string, field: string, known: Set<string>, where: string): ValidationIssue | null {
+  if (known.has(field)) return null;
+  if (field.startsWith("cf:")) {
+    const target = field.slice(3).trim().toLowerCase();
+    for (const k of known) if (k.toLowerCase() === `cf:${target}`) return null;
+  }
+  const suggestion = suggestField(field, known);
+  return { path, message: `El campo «${field}» no existe en ${where}${suggestion ? `; ¿quisiste «${suggestion}»?` : "."}`, suggestion };
+}
+
+/**
+ * Fields of clauses that stand on their own — a glossary meaning, a condition
+ * control, a filter chip — checked against the object's fields with the same
+ * rules and suggestions as a widget's filters.
+ */
+export function validateEntityClauses(entity: EntityId, clauses: FilterClause[], catalog: Catalog, basePath: string): ValidationIssue[] {
+  const known = entityFields(entity, catalog);
+  const out: ValidationIssue[] = [];
+  clauses.forEach((c, i) =>
+    c.anyOf.forEach((f, j) => {
+      const issue = fieldIssue(`${basePath}[${i}].anyOf[${j}].field`, f.field, known, ENTITY_SOURCE[entity]);
+      if (issue) out.push(issue);
+    })
+  );
+  return out;
+}
+
+/** One field of an object (a filter control's field). */
+export function validateEntityField(entity: EntityId, field: string, catalog: Catalog, path: string): ValidationIssue | null {
+  return fieldIssue(path, field, entityFields(entity, catalog), ENTITY_SOURCE[entity]);
+}
+
 export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const q = spec.query;
@@ -121,13 +154,8 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
   const own = catalog.fields[q.source];
 
   const checkField = (path: string, field: string, known: Set<string>, where: string) => {
-    if (known.has(field)) return;
-    if (field.startsWith("cf:")) {
-      const target = field.slice(3).trim().toLowerCase();
-      for (const k of known) if (k.toLowerCase() === `cf:${target}`) return;
-    }
-    const suggestion = suggestField(field, known);
-    add(path, `El campo «${field}» no existe en ${where}${suggestion ? `; ¿quisiste «${suggestion}»?` : "."}`, suggestion);
+    const issue = fieldIssue(path, field, known, where);
+    if (issue) issues.push(issue);
   };
 
   // Metrics
