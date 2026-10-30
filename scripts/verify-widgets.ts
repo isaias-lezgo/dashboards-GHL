@@ -35,6 +35,7 @@ import {
 import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
 import { runQuery, type QueryResult } from "../lib/widgets/engine";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
+import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot, describeWidget } from "../lib/widgets/describe";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
 import type { QuerySpec } from "../lib/widgets/spec";
 
@@ -743,6 +744,60 @@ function validateSection(): void {
   });
 }
 
+function describeSection(): void {
+  section("describe");
+  const { ctx } = makeFixture();
+
+  check("el ejemplo del dueño en palabras", () => {
+    assert.equal(describeWidget(apptsByStageSpec()), "Citas · conteo · por etapa de la oportunidad más reciente · hereda fechas");
+  });
+
+  check("join each lo dice", () => {
+    const s = apptsByStageSpec();
+    const each = { ...s, query: { ...s.query!, groupBy: [dim("opportunity.stage", null, "each")] } };
+    assert.ok(describeWidget(each).includes("cuenta una vez por cada oportunidad"));
+  });
+
+  check("cpl dice que ignora los filtros de CRM y qué es un lead", () => {
+    const s = apptsByStageSpec();
+    const cpl = { ...s, viz: "kpi" as const, query: { ...s.query!, source: "ads_daily" as const, metrics: [{ metric: "cpl" as const, label: null }], groupBy: [], time: { field: "date", range: "inherit" as const, from: null, to: null, compare: "none" as const } } };
+    const text = describeWidget(cpl);
+    assert.ok(text.includes("ignora los filtros de CRM"), text);
+    assert.ok(text.includes("leads = oportunidades de pauta"), text);
+  });
+
+  check("filtros entre objetos en palabras (OR con «o»; none sin condiciones)", () => {
+    const text = describeWidget(lostContactsSpec());
+    assert.ok(text.includes("con alguna oportunidad con (estado = perdida o etapa = «Negocio Perdido»)"), text);
+    const spec = lostContactsSpec();
+    const none = { ...spec, query: { ...spec.query!, relatedFilters: [{ entity: "opportunity" as const, quantifier: "none" as const, conditions: [] }] } };
+    assert.ok(describeWidget(none).includes("sin ninguna oportunidad"));
+  });
+
+  const widget = (id: string, spec: WidgetSpec) => ({ ...spec, id, createdAt: "2026-10-29T00:00:00Z", createdBy: "ai" as const, updatedAt: "2026-10-29T00:00:00Z" });
+  const doc: DashboardDoc = {
+    ...emptyDoc(),
+    tabs: [
+      { id: "t1", title: "Marketing", widgets: [] },
+      { id: "t2", title: "Ventas", widgets: [widget("w8", apptsByStageSpec())] },
+    ],
+    glossary: [{ id: "g1", term: "perdido", aliases: ["perdidos"], entity: "opportunity", meaning: lostContactsSpec().query!.relatedFilters[0].conditions, note: "estado perdida o etapa «Negocio Perdido»", createdAt: "2026-10-29T00:00:00Z" }],
+  };
+
+  check("snapshot: marcador, seleccionado y glosario", () => {
+    const snap = buildPanelSnapshot(doc, "t2", "w8", "Fecha = todo el historial · Pipeline = todos");
+    assert.ok(snap.startsWith(PANEL_SNAPSHOT_MARKER));
+    assert.ok(snap.includes("Seleccionado: [w8]"));
+    assert.ok(snap.includes("Glosario del cliente: «perdido»"));
+    assert.ok(!buildPanelSnapshot({ ...doc, glossary: [] }, "t2", null, "x").includes("Glosario"));
+  });
+
+  check("catálogo estable entre llamadas", () => {
+    assert.equal(buildPanelCatalogSummary(ctx), buildPanelCatalogSummary(ctx));
+    assert.ok(buildPanelCatalogSummary(ctx).includes("Primera Cita"));
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -753,6 +808,7 @@ function main(): void {
   adsSection();
   compareSection();
   validateSection();
+  describeSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
