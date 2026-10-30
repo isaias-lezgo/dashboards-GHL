@@ -21,7 +21,7 @@ import {
 import { sourceCategory } from "../lib/source-platform";
 import { rankPautasByContact } from "../lib/pauta";
 import type { AdsReport, Appointment, Contact, Opportunity, Pauta, Pipeline } from "../lib/types";
-import type { ChatDataset } from "../lib/ai-tools";
+import { executeTool, type ChatDataset } from "../lib/ai-tools";
 import {
   dimensionValues,
   funnelState,
@@ -854,6 +854,42 @@ function termsSection(): void {
   });
 }
 
+function assistantSection(): void {
+  section("assistant");
+  const { ctx } = makeFixture();
+  const ds = ctx.dataset;
+  const lostDs = makeLostFixture().dataset;
+  const groups = (res: unknown) =>
+    Object.fromEntries(((res as { groups: { key: string; count: number }[] }).groups).map((g) => [g.key, g.count]));
+
+  check("aggregate de citas por opportunity.stage cuenta CITAS", () => {
+    assert.deepEqual(groups(executeTool("aggregate", { entity: "appointments", groupBy: "opportunity.stage", metric: "count" }, ds)), { Propuesta: 3, "Sin oportunidad": 1 });
+  });
+
+  check("status won usa isWonOpp (o3 ganada por etapa)", () => {
+    assert.equal((executeTool("aggregate", { entity: "opportunities", groupBy: "none", metric: "count", filters: { status: "won" } }, ds) as { total: number }).total, 1);
+  });
+
+  check("no regresión: tags, relate y sum con contactIds idénticos a main", () => {
+    assert.deepEqual(executeTool("aggregate", { entity: "contacts", groupBy: "tags", metric: "count" }, ds), {"groups":[{"key":"(sin tag)","count":3},{"key":"vip","count":1}],"total":4,"truncated":false});
+    assert.deepEqual(executeTool("relate", { from: { entity: "appointments" }, to: { entity: "opportunities" }, groupBy: "stage", metric: "count" }, ds), {"groups":[{"key":"Primera Cita","count":1},{"key":"Propuesta","count":1}],"total":2,"truncated":false,"matchedContacts":1});
+    assert.deepEqual(executeTool("aggregate", { entity: "opportunities", groupBy: "pipelineName", metric: "sum", includeContactIds: true }, ds), {"groups":[{"key":"p1","count":3,"sum":1000,"contactIds":["c1","c2","c3"]},{"key":"p2","count":1,"sum":0,"contactIds":["c1"]}],"total":4,"truncated":false});
+  });
+
+  const either = [{ anyOf: [{ field: "status", op: "eq", values: ["lost"] }, { field: "stage", op: "in", values: ["Negocio Perdido"] }] }];
+
+  check("filtro clauses (OR entre campos) en aggregate y relate", () => {
+    assert.equal((executeTool("aggregate", { entity: "opportunities", groupBy: "none", metric: "count", filters: { clauses: either } }, lostDs) as { total: number }).total, 2);
+    assert.equal((executeTool("relate", { from: { entity: "opportunities", filters: { clauses: either } }, to: { entity: "contacts" }, metric: "count" }, lostDs) as { matchedContacts: number }).matchedContacts, 2);
+  });
+
+  check("resolve_term devuelve candidatos con su cláusula", () => {
+    const res = executeTool("resolve_term", { term: "perdidos", entityHint: null }, lostDs) as { candidates: { clause: unknown }[] };
+    assert.ok(res.candidates.length >= 2);
+    assert.ok(res.candidates.every((c) => c.clause));
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -866,6 +902,7 @@ function main(): void {
   validateSection();
   describeSection();
   termsSection();
+  assistantSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 

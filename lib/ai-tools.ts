@@ -14,6 +14,12 @@ import type {
 import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
 import { campaignTitle, isDePauta, resolveCampaignName } from "@/lib/pauta";
 import { cfValues, customFieldName, type CustomFieldsResolved } from "@/lib/custom-fields";
+import { isWonOpp } from "@/lib/opportunity-status";
+import { z } from "zod";
+import { filterClauseSchema, type FilterClause, type GroupBySpec, type MetricId, type QuerySpec, type SourceId } from "@/lib/widgets/spec";
+import { matchesAll, resolveCtx, type EngineContext } from "@/lib/widgets/semantic";
+import { groupAndMeasure, relatedResolver } from "@/lib/widgets/engine";
+import { resolveTerm } from "@/lib/widgets/terms";
 import { buildCsv } from "@/lib/csv";
 
 export interface ChatDataset {
@@ -213,7 +219,9 @@ export const TOOL_DEFINITIONS = [
         dePauta: { type: "boolean", description: "Filter to paid-advertising opportunities (\"de pauta\"). true = only opps whose contact is linked to a Pauta record OR that carry a paid-traffic source/medium signal; false = only opps that are NOT de pauta. This is the SAME definition the Marketing dashboard's 'por pauta' charts use. Prefer this over source/campaign guesses when the user asks about pauta / tráfico pagado / anuncios." },
         pipeline: { type: "string", description: "Exact pipeline name." },
         stage: { type: "string", description: "Exact stage name." },
-        status: { type: "string", enum: ["open", "won", "lost", "abandoned"] },
+        status: { type: "string", enum: ["open", "won", "lost", "abandoned"], description: "'won' = won by status OR moved to a 'won' stage (e.g. 'Negocio Ganado'), the dashboards' definition; 'open' excludes those. 'lost'/'abandoned' are the GHL status only." },
+        won: { type: "boolean", description: "Won by status OR by a 'won' stage (same as status:'won')." },
+        clauses: { type: "array", items: { type: "object" }, description: "OR-clauses AND'ed together: [{ anyOf: [{ field, op, values }] }]. For conditions across different fields (e.g. status = lost OR stage = 'Negocio Perdido'). Get them from resolve_term." },
         source: { type: "string" },
         campaign: { type: "string", description: "Campaign substring match, case-insensitive. NOTE: usually empty (esp. WhatsApp/Meta paid) — the real ad identity lives in adId/attributionUrl. When the user asks 'por campaña', also break down by adId and attributionUrl." },
         adId: { type: "string", description: "Ad ID match, case-insensitive exact. The de-facto campaign identifier when `campaign` is empty. Discover values with list_values field='adId'." },
@@ -302,7 +310,7 @@ export const TOOL_DEFINITIONS = [
         groupBy: {
           type: "string",
           description:
-            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Opportunities also support 'dePauta' (true/false — paid-advertising universe) and 'campaignResolved' (best-effort campaign name via the fallback chain — PREFER this over raw 'campaign' for 'por campaña' breakdowns of pauta). Tasks: 'status' (pending/completed), 'assignedTo', 'assignedToName'. CAMPAIGN questions: raw 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)' — use 'campaignResolved' instead, or ALSO group by 'adId' and 'attributionUrl' which hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. Use 'none' for a single total.",
+            "Field to group by. Common: 'source', 'campaign', 'adId', 'attributionUrl', 'adType', 'attributionMedium' (the real platform — whatsapp/facebook/instagram/tiktok; use THIS for 'leads por plataforma', not tags), 'assignedTo', 'status', 'stage', 'pipelineName', 'priority', 'archived', 'companyName', 'city', 'state', 'country', 'tipo', 'tags' (tags fans out per tag). Opportunities also support 'dePauta' (true/false — paid-advertising universe) and 'campaignResolved' (best-effort campaign name via the fallback chain — PREFER this over raw 'campaign' for 'por campaña' breakdowns of pauta). Tasks: 'status' (pending/completed), 'assignedTo', 'assignedToName'. CAMPAIGN questions: raw 'campaign' is empty for most leads (esp. WhatsApp/Meta paid), so a groupBy:'campaign' typically returns only '(sin valor)' — use 'campaignResolved' instead, or ALSO group by 'adId' and 'attributionUrl' which hold the real ad/campaign identity. To group by a custom field (contacts/opportunities) use 'cf:<Field Name>' (e.g. 'cf:Servicio Técnico', 'cf:Origen de Lead') — multi-option fields fan out per option value. CROSS-OBJECT: 'opportunity.<field>' groups each record by its contact's MOST RECENT opportunity — e.g. entity 'appointments' + groupBy 'opportunity.stage' counts APPOINTMENTS per stage (contacts with no opportunity land in 'Sin oportunidad'); 'contact.<field>' groups by the record's contact. DATES: '<dateField>:<bucket>' with bucket day|week|month|quarter|weekday|hour, e.g. 'createdAt:month', 'startTime:weekday'. Use 'none' for a single total.",
         },
         metric: {
           type: "string",
@@ -312,7 +320,7 @@ export const TOOL_DEFINITIONS = [
         filters: {
           type: "object",
           description:
-            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: dePauta (boolean — paid-advertising universe), status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
+            "Optional filters: same keys as search_* tools. Contacts: source, campaign, adId, attributionUrl, adType, attributionMedium, assignedTo, tags, companyName, city, state, country, dnd, customFields, createdAfter, createdBefore, contactIds (array). Opportunities: dePauta (boolean — paid-advertising universe), status, source, campaign, adId, attributionUrl, attributionMedium, assignedTo, stage, pipeline, priority, archived, minValue, maxValue, minProbability, maxProbability, customFields, createdAfter, createdBefore, closedAfter, closedBefore, contactIds (array — use to cross-join from appointments/pautas). Pautas: tipo, contactId, createdAfter, createdBefore. Appointments: status, assignedTo, startAfter, startBefore. Tasks: status (pending/completed), assignedTo, contactId, contactIds, dueAfter, dueBefore, overdue (boolean). Opportunities also: won (boolean — won by status OR by a 'won' stage, the dashboards' definition). Any entity: clauses — an array of OR-clauses that are AND'ed together, each { anyOf: [{ field, op, values }] } with op eq|neq|in|not_in|contains|is_empty|is_not_empty|gt|gte|lt|lte. Use it when a condition combines DIFFERENT fields (e.g. status = lost OR stage = 'Negocio Perdido'). resolve_term returns ready-made clauses. customFields is an object { \"Field Name\": \"value\" | [\"a\",\"b\"] } matched exactly per option (case-insensitive); pass \"(sin valor)\" to match records where the field is empty/unset.",
           additionalProperties: true,
         },
         includeContactIds: {
@@ -660,6 +668,23 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "resolve_term",
+    description:
+      "Finds WHERE a business concept the user named lives in THIS account's data — e.g. 'perdidos', 'clientes activos', 'leads calificados', 'citas efectivas'. Searches statuses (with Spanish labels: lost=perdida, won=ganada, showed=asistió…), stages, pipelines, lost reasons, sources, tags, custom-field options and custom-field NAMES. Returns candidates (object, field, values, a ready-made `clause`, records, contacts), their pairwise contact overlap, the union, and a `materiallyDifferent` hint. Use it BEFORE filtering by a business concept that is not a literal field (rule 6 of 'Cuándo preguntar'). It only gathers evidence: you decide whether to ask.",
+    input_schema: {
+      type: "object",
+      properties: {
+        term: { type: "string", description: "The concept as the user said it, e.g. 'negocio perdido'." },
+        entityHint: {
+          type: ["string", "null"],
+          enum: ["contact", "opportunity", "appointment", "task", "pauta", null],
+          description: "Object the user is asking about, if clear (candidates of that object come first). null otherwise.",
+        },
+      },
+      required: ["term", "entityHint"],
+    },
+  },
+  {
     name: "ask_user",
     description:
       "Hace UNA pregunta de opción múltiple al usuario y PAUSA hasta que responda. Úsalo SOLO cuando un término sea genuinamente ambiguo entre rutas de datos distintas que darían respuestas materialmente diferentes y el contexto no lo aclare (ver la sección 'Cuándo preguntar' del prompt). Llama esta herramienta SOLA (sin otras herramientas en el mismo turno). NO la uses para ambigüedades triviales ni si el usuario ya especificó la ruta — en esos casos elige el valor por defecto y dilo en una línea.",
@@ -704,6 +729,37 @@ export const TOOL_DEFINITIONS = [
 ] as const;
 
 export type ToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
+
+// ─── Panel engine bridge ──────────────────────────────────────────────────────
+// aggregate/relate group and measure through lib/widgets/engine.ts — the same
+// code the AI panel's widgets run — so the chat and a saved widget can never
+// answer the same question with two different numbers.
+
+const ENGINE_SOURCES = new Set(["contacts", "opportunities", "appointments", "tasks", "pautas"]);
+
+function engineCtxFor(data: ChatDataset): EngineContext {
+  return { dataset: data, pipelines: [], ads: undefined, dateRange: null, pipelineFilter: [], globalFilters: [], now: new Date() };
+}
+
+const clausesSchema = z.array(filterClauseSchema).max(5);
+
+// The `clauses` filter: a conjunction of OR-clauses that may span different
+// fields ("status = lost OR stage = Negocio Perdido"). Returns null when the
+// filter is absent; throws (→ is_error tool_result) when it is malformed.
+function clausePredicate(entity: string, filters: ToolInput, data: ChatDataset): ((row: Record<string, unknown>) => boolean) | null {
+  if (filters.clauses === undefined) return null;
+  if (!ENGINE_SOURCES.has(entity)) return null;
+  const parsed = clausesSchema.safeParse(filters.clauses);
+  if (!parsed.success) throw new Error(`clauses inválido: ${parsed.error.issues[0]?.message ?? "forma incorrecta"}`);
+  const clauses: FilterClause[] = parsed.data;
+  const ctx = resolveCtx(engineCtxFor(data));
+  return (row) => matchesAll(entity as SourceId, row, clauses, ctx);
+}
+
+function withClauses<T>(entity: string, rows: T[], filters: ToolInput, data: ChatDataset): T[] {
+  const pass = clausePredicate(entity, filters, data);
+  return pass ? rows.filter((r) => pass(r as unknown as Record<string, unknown>)) : rows;
+}
 
 // ─── Executor ─────────────────────────────────────────────────────────────────
 
@@ -932,6 +988,12 @@ export function executeTool(
       return aggregate(input, data);
     case "relate":
       return relate(input, data, getChatIndex(data));
+    case "resolve_term": {
+      const term = typeof input.term === "string" ? input.term : "";
+      const hints = ["contact", "opportunity", "appointment", "task", "pauta"];
+      const hint = typeof input.entityHint === "string" && hints.includes(input.entityHint) ? (input.entityHint as Parameters<typeof resolveTerm>[1]) : null;
+      return resolveTerm(term, hint, engineCtxFor(data));
+    }
     case "show_in_panel": {
       // UI-only directive. The real panel update happens client-side in the
       // chat component's onToolExecuted handler (it reads contactIds from the
@@ -998,7 +1060,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
 
   switch (entity) {
     case "contacts": {
-      const filtered = applyContactFilters(data.contacts, filters);
+      const filtered = withClauses("contacts", applyContactFilters(data.contacts, filters), filters, data);
       headers = userColumns ?? CSV_COLUMNS.contacts;
       rows = filtered.map((c) => ({
         name: c.name,
@@ -1020,7 +1082,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
       break;
     }
     case "opportunities": {
-      const filtered = applyOppFilters(data.opportunities, filters, getChatIndex(data));
+      const filtered = withClauses("opportunities", applyOppFilters(data.opportunities, filters, getChatIndex(data)), filters, data);
       headers = userColumns ?? CSV_COLUMNS.opportunities;
       rows = filtered.map((o) => ({
         name: o.name,
@@ -1044,7 +1106,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
       break;
     }
     case "appointments": {
-      const filtered = applyApptFilters(data.appointments, filters);
+      const filtered = withClauses("appointments", applyApptFilters(data.appointments, filters), filters, data);
       headers = userColumns ?? CSV_COLUMNS.appointments;
       rows = filtered.map((a) => ({
         contactId: a.contactId,
@@ -1057,7 +1119,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
       break;
     }
     case "pautas": {
-      const filtered = applyPautaFilters(data.pautas, filters);
+      const filtered = withClauses("pautas", applyPautaFilters(data.pautas, filters), filters, data);
       const propKeys = new Set<string>();
       for (const p of filtered) {
         if (p.properties) for (const k of Object.keys(p.properties)) propKeys.add(k);
@@ -1080,7 +1142,7 @@ export function executeExportCsv(input: ToolInput, data: ChatDataset): ExportCsv
       break;
     }
     case "tasks": {
-      const filtered = applyTaskFilters(data.tasks, filters);
+      const filtered = withClauses("tasks", applyTaskFilters(data.tasks, filters), filters, data);
       headers = userColumns ?? CSV_COLUMNS.tasks;
       rows = filtered.map((t) => ({
         id: t.id,
@@ -1155,8 +1217,15 @@ function listFields(input: ToolInput, data: ChatDataset) {
     },
   };
 
-  if (entity === "all") return all;
-  return (all as Record<string, unknown>)[entity] ?? { error: `Unknown entity: ${entity}` };
+  // What aggregate/relate can do beyond the plain fields above (panel engine).
+  const semantic = {
+    crossObjectGroupBy: "aggregate.groupBy accepts 'opportunity.<field>' (the record's contact's most recent opportunity; no opportunity → 'Sin oportunidad') and 'contact.<field>' (the record's contact).",
+    dateBuckets: "aggregate.groupBy accepts '<dateField>:<bucket>', bucket = day|week|month|quarter|weekday|hour (e.g. 'createdAt:month').",
+    clauses: "Every filter object accepts `clauses`: OR-clauses AND'ed together, for conditions across different fields. resolve_term returns ready-made clauses for a business concept.",
+  };
+  if (entity === "all") return { ...all, semantic };
+  const one = (all as Record<string, unknown>)[entity];
+  return one ? { ...(one as object), semantic } : { error: `Unknown entity: ${entity}` };
 }
 
 // ─── list_values ──────────────────────────────────────────────────────────────
@@ -1243,9 +1312,11 @@ function searchContacts(input: ToolInput, data: ChatDataset) {
   const before = typeof input.createdBefore === "string" ? endBound(input.createdBefore) : undefined;
   const limit = clampLimit(input.limit);
 
+  const pass = clausePredicate("contacts", input, data);
   const out: Contact[] = [];
   for (const c of data.contacts) {
     if (contactIds && !contactIds.has(c.id)) continue;
+    if (pass && !pass(c as unknown as Record<string, unknown>)) continue;
     if (q) {
       const hay = `${lc(c.name)} ${lc(c.email)} ${lc(c.phone)}`;
       if (!hay.includes(q)) continue;
@@ -1333,7 +1404,7 @@ function searchOpportunities(input: ToolInput, data: ChatDataset) {
 
   // All structured filters (incl. dePauta + resolved-campaign) live in the shared
   // applyOppFilters; only the free-text name query is search-specific.
-  const filtered = applyOppFilters(data.opportunities, input, index)
+  const filtered = withClauses("opportunities", applyOppFilters(data.opportunities, input, index), input, data)
     .filter((o) => !q || lc(o.name).includes(q));
   const truncated = filtered.length > limit;
   const rows = truncated ? filtered.slice(0, limit) : filtered;
@@ -1358,6 +1429,7 @@ function searchPautas(input: ToolInput, data: ChatDataset, index: ChatIndex) {
   const contactId = typeof input.contactId === "string" ? input.contactId : undefined;
   const limit = clampLimit(input.limit);
 
+  const pass = clausePredicate("pautas", input, data);
   const out: Pauta[] = [];
   for (const p of data.pautas) {
     if (q) {
@@ -1366,6 +1438,7 @@ function searchPautas(input: ToolInput, data: ChatDataset, index: ChatIndex) {
     }
     if (tipo && p.tipo !== tipo) continue;
     if (contactId && p.contactId !== contactId) continue;
+    if (pass && !pass(p as unknown as Record<string, unknown>)) continue;
     out.push(p);
     if (out.length > limit) break;
   }
@@ -1394,11 +1467,13 @@ function listAppointments(input: ToolInput, data: ChatDataset, index: ChatIndex)
   const before = typeof input.startBefore === "string" ? endBound(input.startBefore) : undefined;
   const limit = clampLimit(input.limit);
 
+  const pass = clausePredicate("appointments", input, data);
   const out: Appointment[] = [];
   for (const a of data.appointments) {
     if (status && a.status !== status) continue;
     if (assignedTo && a.assignedTo !== assignedTo) continue;
     if (contactId && a.contactId !== contactId) continue;
+    if (pass && !pass(a as unknown as Record<string, unknown>)) continue;
     if (after !== undefined || before !== undefined) {
       const t = +new Date(a.startTime);
       if (after !== undefined && t < after) continue;
@@ -1420,6 +1495,14 @@ function listAppointments(input: ToolInput, data: ChatDataset, index: ChatIndex)
 
 // Resolve an entity + filters to filtered rows. Shared by `aggregate` and `relate`.
 function filteredRows(
+  entity: string,
+  filters: ToolInput,
+  data: ChatDataset
+): Array<Record<string, unknown>> {
+  return withClauses(entity, legacyFilteredRows(entity, filters, data), filters, data);
+}
+
+function legacyFilteredRows(
   entity: string,
   filters: ToolInput,
   data: ChatDataset
@@ -1455,7 +1538,8 @@ function aggregateRows(
   metric: string,
   entity: string,
   limit: number,
-  includeContactIds = false
+  includeContactIds: boolean,
+  data: ChatDataset
 ) {
   if (groupBy === "none") {
     return {
@@ -1470,44 +1554,54 @@ function aggregateRows(
     };
   }
 
-  const cfName = customFieldName(groupBy);
-  const buckets = new Map<string, Array<Record<string, unknown>>>();
-  for (const r of rows) {
-    if (cfName) {
-      // group by a custom field — fan out per option value (multi-option fields)
-      const vals = cfValues(r.customFieldsResolved as CustomFieldsResolved, cfName);
-      if (vals.length === 0) push(buckets, "(sin valor)", r);
-      else for (const v of vals) push(buckets, v, r);
-      continue;
-    }
-    const raw = r[groupBy];
-    if (groupBy === "tags" && Array.isArray(raw)) {
-      // fan out per tag
-      if (raw.length === 0) push(buckets, "(sin tag)", r);
-      for (const t of raw) push(buckets, String(t), r);
-    } else {
-      const rawStr = raw === undefined || raw === null || raw === "" ? "(sin valor)" : String(raw);
-      // Strip URL+ID suffix from nombrePauta-style values ("TITLE - https://... - ID")
-      const key = rawStr.includes(" - http") ? (campaignTitle(rawStr) ?? rawStr) : rawStr;
-      push(buckets, key, r);
-    }
-  }
+  // Grouping and measuring go through the panel engine. Legacy semantics kept:
+  // groups ordered by the requested metric (empties NOT pushed last, so a
+  // dominant "(sin valor)" bucket survives the limit) and the tail is cut, not
+  // folded into "Otros".
+  const spec = legacyGroupBy(groupBy);
+  const isOpp = entity === "opportunities";
+  const valueMetric: MetricId | null = isOpp && metric === "sum" ? "value_sum" : isOpp && metric === "avg" ? "value_avg" : null;
+  const metrics: MetricId[] = valueMetric ? [valueMetric, "count"] : ["count"];
+  const countAt = valueMetric ? 1 : 0;
+  const r = resolveCtx(engineCtxFor(data));
+  const res = groupAndMeasure(rows, entity as SourceId, [spec], metrics, { ...r, source: entity as SourceId, range: null }, {
+    sort: { by: "value", dir: "desc" },
+    limit: null,
+    fold: false,
+    emptyLast: false,
+    relatedValues: relatedResolver(legacyQuery(entity as SourceId), r),
+  });
+  const groups = res.rows.slice(0, limit).map((row) => ({
+    key: row.key[0],
+    count: row.values[countAt] ?? 0,
+    ...(valueMetric ? { [metric]: row.values[0] ?? 0 } : {}),
+    ...(includeContactIds ? { contactIds: contactIdsOf(entity, row.records) } : {}),
+  }));
+  return { groups, total: rows.length, truncated: res.rows.length > limit };
+}
 
-  const groups = Array.from(buckets.entries())
-    .map(([key, items]) => ({
-      key,
-      count: items.length,
-      ...metricValue(items, metric, entity),
-      ...(includeContactIds ? { contactIds: contactIdsOf(entity, items) } : {}),
-    }))
-    .sort((a, b) => {
-      const av = metric === "count" ? a.count : (a as { sum?: number; avg?: number }).sum ?? (a as { avg?: number }).avg ?? 0;
-      const bv = metric === "count" ? b.count : (b as { sum?: number; avg?: number }).sum ?? (b as { avg?: number }).avg ?? 0;
-      return bv - av;
-    })
-    .slice(0, limit);
+// aggregate's groupBy string → an engine dimension. "<dateField>:<bucket>"
+// buckets a date; "opportunity.<field>" takes the contact's most recent
+// opportunity (so "citas por etapa" counts CITAS); anything else is a field.
+function legacyGroupBy(groupBy: string): GroupBySpec {
+  const bucketed = /^([A-Za-z]+):(day|week|month|quarter|weekday|hour)$/.exec(groupBy);
+  if (bucketed) return { dimension: bucketed[1], bucket: bucketed[2] as GroupBySpec["bucket"], join: null };
+  if (groupBy.startsWith("opportunity.")) return { dimension: groupBy, bucket: null, join: "latest" };
+  return { dimension: groupBy, bucket: null, join: null };
+}
 
-  return { groups, total: rows.length, truncated: buckets.size > limit };
+function legacyQuery(source: SourceId): QuerySpec {
+  return {
+    source,
+    metrics: [{ metric: "count", label: null }],
+    groupBy: [],
+    filters: [],
+    relatedFilters: [],
+    time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" },
+    globalFilters: "inherit",
+    sort: { by: "value", dir: "desc" },
+    limit: null,
+  };
 }
 
 function aggregate(input: ToolInput, data: ChatDataset) {
@@ -1523,7 +1617,7 @@ function aggregate(input: ToolInput, data: ChatDataset) {
   }
 
   const rows = filteredRows(entity, filters, data);
-  return aggregateRows(rows, groupBy, metric, entity, limit, includeContactIds);
+  return aggregateRows(rows, groupBy, metric, entity, limit, includeContactIds, data);
 }
 
 // ─── relate (cross-entity join through the shared contact) ──────────────────────
@@ -1642,10 +1736,10 @@ function relate(input: ToolInput, data: ChatDataset, index: ChatIndex) {
 
   // 3. related rows via index, then 4. apply to-filters
   const related = rowsForContacts(toEntity, contactIds, index);
-  const toRows = applyEntityFilters(toEntity, related, toFilters, index);
+  const toRows = withClauses(toEntity, applyEntityFilters(toEntity, related, toFilters, index), toFilters, data);
 
   // 5. aggregate
-  const agg = aggregateRows(toRows, groupBy, metric, toEntity, limit);
+  const agg = aggregateRows(toRows, groupBy, metric, toEntity, limit, false, data);
 
   // distinct contacts present on BOTH sides (the join count)
   const matched = new Set<string>();
@@ -1657,12 +1751,6 @@ function relate(input: ToolInput, data: ChatDataset, index: ChatIndex) {
   const result: Record<string, unknown> = { ...agg, matchedContacts: matched.size };
   if (includeContactIds) result.contactIds = Array.from(matched).slice(0, limit);
   return result;
-}
-
-function push<T>(map: Map<string, T[]>, key: string, val: T) {
-  const arr = map.get(key);
-  if (arr) arr.push(val);
-  else map.set(key, [val]);
 }
 
 function metricValue(
@@ -1711,7 +1799,18 @@ function applyOppFilters(rows: Opportunity[], f: ToolInput, index: ChatIndex): O
     if (typeof f.dePauta === "boolean" && isDePauta(o, index.pautasByContact) !== f.dePauta) return false;
     if (typeof f.pipeline === "string" && !ieq(o.pipelineName, f.pipeline)) return false;
     if (typeof f.stage === "string" && !ieq(o.stage, f.stage)) return false;
-    if (typeof f.status === "string" && !ieq(o.status, f.status)) return false;
+    // "won" and "open" follow isWonOpp, like every dashboard: some sub-accounts
+    // record the sale by moving the opportunity to a "Negocio Ganado" stage and
+    // leave GHL's status on "open". lost/abandoned stay status-only.
+    if (typeof f.status === "string") {
+      const st = f.status.trim().toLowerCase();
+      if (st === "won") {
+        if (!isWonOpp(o)) return false;
+      } else if (st === "open") {
+        if (o.status !== "open" || isWonOpp(o)) return false;
+      } else if (!ieq(o.status, f.status)) return false;
+    }
+    if (typeof f.won === "boolean" && isWonOpp(o) !== f.won) return false;
     if (typeof f.source === "string" && !ieq(o.source, f.source)) return false;
     // Match the campaign filter against BOTH the raw joined campaign and the
     // resolved name (utmCampaign → "Nombre pauta" CF → utmContent → Pauta record).
@@ -1778,7 +1877,7 @@ function applyTaskFilters(rows: Task[], f: ToolInput): Task[] {
 
 function searchTasks(input: ToolInput, data: ChatDataset) {
   const limit = clampLimit(input.limit);
-  const filtered = applyTaskFilters(data.tasks, input);
+  const filtered = withClauses("tasks", applyTaskFilters(data.tasks, input), input, data);
   const truncated = filtered.length > limit;
   const rows = truncated ? filtered.slice(0, limit) : filtered;
   return {

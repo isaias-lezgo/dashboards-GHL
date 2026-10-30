@@ -410,6 +410,8 @@ export interface GroupOptions {
   range?: ResolvedDateRange | null;
   /** Extra resolver for related dimensions (Task 6). */
   relatedValues?: (row: Row, spec: GroupBySpec) => string[];
+  /** Push "(sin valor)" to the end regardless of its value (default true). The assistant's legacy shape keeps it in value order. */
+  emptyLast?: boolean;
 }
 
 export interface GroupResult {
@@ -545,7 +547,8 @@ export function groupAndMeasure(
   const dir = opts.sort.dir === "asc" ? 1 : -1;
   const rank0 = naturalRank(dims[0], source, ctx);
   const cmpLabel = (a: string, b: string) => labelFor(a, dims[0]).localeCompare(labelFor(b, dims[0]), "es");
-  const emptyLast = (a: string, b: string) => (a === EMPTY_VALUE ? 1 : 0) - (b === EMPTY_VALUE ? 1 : 0);
+  const emptyLast = (a: string, b: string) =>
+    opts.emptyLast === false ? 0 : (a === EMPTY_VALUE ? 1 : 0) - (b === EMPTY_VALUE ? 1 : 0);
   let k0Order = [...byK0.keys()].sort((a, b) => {
     const e = emptyLast(a, b);
     if (e !== 0) return e;
