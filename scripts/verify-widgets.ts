@@ -34,6 +34,7 @@ import {
 } from "../lib/widgets/semantic";
 import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
 import { runQuery, type QueryResult } from "../lib/widgets/engine";
+import { buildCatalog, validateWidget } from "../lib/widgets/validate";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
 import type { QuerySpec } from "../lib/widgets/spec";
 
@@ -701,6 +702,47 @@ function compareSection(): void {
   });
 }
 
+function validateSection(): void {
+  section("validate");
+  const { ctx } = makeFixture();
+  const catalog = buildCatalog(ctx);
+  const base = apptsByStageSpec();
+  const withQuery = (over: Partial<QuerySpec>, viz: WidgetSpec["viz"] = base.viz): WidgetSpec => ({ ...base, viz, query: { ...base.query!, ...over } });
+
+  check("cf:Origen → sugiere cf:Origen de Lead", () => {
+    const issues = validateWidget(withQuery({ source: "contacts", groupBy: [dim("cf:Origen")], time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "none" } }), catalog);
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].suggestion, "cf:Origen de Lead");
+  });
+
+  check("line sin dimensión de fecha → issue en viz", () => {
+    const issues = validateWidget(withQuery({ source: "opportunities", groupBy: [dim("stage")], time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "none" } }, "line"), catalog);
+    assert.ok(issues.some((i) => i.path === "viz"));
+  });
+
+  check("show_rate sobre oportunidades → issue", () => {
+    const issues = validateWidget(withQuery({ source: "opportunities", groupBy: [], metrics: [{ metric: "show_rate", label: null }], time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "none" } }, "kpi"), catalog);
+    assert.equal(issues.length, 1);
+  });
+
+  check("el ejemplo del dueño y contactos con negocio perdido son válidos", () => {
+    assert.deepEqual(validateWidget(base, catalog), []);
+    assert.deepEqual(validateWidget(lostContactsSpec(), catalog), []);
+  });
+
+  check("relatedFilters con un cf inexistente → issue", () => {
+    const spec = lostContactsSpec();
+    const bad = { ...spec, query: { ...spec.query!, relatedFilters: [{ entity: "opportunity" as const, quantifier: "any" as const, conditions: [{ anyOf: [{ field: "cf:No Existe", op: "in" as const, values: ["x"] }] }] }] } };
+    assert.equal(validateWidget(bad, catalog).length, 1);
+  });
+
+  check("relatedFilters sobre el mismo objeto de la fuente → issue (usa filters)", () => {
+    const spec = lostContactsSpec();
+    const bad = { ...spec, query: { ...spec.query!, relatedFilters: [{ entity: "contact" as const, quantifier: "any" as const, conditions: [] }] } };
+    assert.ok(validateWidget(bad, catalog).some((i) => i.message.includes("filters")));
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -710,6 +752,7 @@ function main(): void {
   joinSection();
   adsSection();
   compareSection();
+  validateSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
