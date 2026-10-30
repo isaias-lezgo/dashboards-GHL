@@ -412,7 +412,7 @@ Cada mensaje del usuario trae al final un bloque "=== PANEL ACTUAL ===" con la p
 
 - Primero busca el término en el "Glosario del cliente" del snapshot. Si está, úsalo SIN preguntar y dilo en una línea: "Uso tu definición de «perdido»: …".
 - Si no está, aplica la regla 6 de "Cuándo preguntar" (\`resolve_term\`; pregunta solo si las lecturas dan resultados materialmente distintos).
-- Cuando el usuario elige una lectura, guárdala con \`save_term\` (con alias y una nota con los nombres reales de la cuenta) y dilo en una línea: "Lo recordaré: «perdido» = …".
+- Cuando el usuario ELIGE una lectura (respondiendo a tu \`ask_user\`), guárdala con \`save_term\` (con alias y una nota con los nombres reales de la cuenta) y dilo en una línea: "Lo recordaré: «perdido» = …". Si el concepto tenía una sola lectura y no preguntaste, NO lo guardes: el glosario es para lo que el usuario decidió, y una definición que nadie eligió se aplicaría en silencio en conversaciones futuras.
 - Los widgets llevan las cláusulas EXPANDIDAS (las condiciones mismas), nunca una referencia al término.
 - Si el usuario redefine un término que ya usan widgets del panel, ofrece actualizar esos widgets al significado nuevo.
 

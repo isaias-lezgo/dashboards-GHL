@@ -93,6 +93,10 @@ export function WidgetCard({
   const crmFilterActive = ctx.pipelineFilter.length > 0 || ctx.globalFilters.length > 0
   const height = PLOT_HEIGHT[widget.height]
   const currency = ctx.ads?.currency
+  // A 3-column card has no room for the title, a labelled pill, ✨ and ⋯ side by
+  // side (they overlapped): the pill keeps only its ⓘ — the rule is in its
+  // tooltip — and "Editar con IA" stays in the ⋯ menu.
+  const narrow = widget.size === "s"
 
   const body = (() => {
     if (widget.viz === "text") return <VizText text={widget.text ?? ""} createdAt={widget.createdAt} />
@@ -165,10 +169,12 @@ export function WidgetCard({
         title={widget.title}
         actions={
           <div className="flex items-center gap-1">
-            <ScopePill label={pillLabel(widget)} tooltip={describeWidget(widget)} />
-            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Editar con IA" onClick={() => onEditWithAi(widget.id)}>
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-            </Button>
+            <ScopePill label={narrow ? "" : pillLabel(widget)} tooltip={describeWidget(widget)} />
+            {!narrow && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Editar con IA" onClick={() => onEditWithAi(widget.id)}>
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+              </Button>
+            )}
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Más opciones">

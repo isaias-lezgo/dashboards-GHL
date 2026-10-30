@@ -30,7 +30,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       )}
     >
       {children}
-      {active && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary" />}
+      {/* bottom-0, not -bottom-px: inside the scrolling row a 1px overhang shows a vertical scrollbar. */}
+      {active && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary" />}
     </button>
   )
 }
@@ -59,7 +60,7 @@ export function PanelTabs({
 
   return (
     <nav className="border-b border-border bg-card px-4 sm:px-6" aria-label="Vistas del panel">
-      <div className="flex items-center gap-6 overflow-x-auto sm:gap-8">
+      <div className="flex items-center gap-6 overflow-x-auto overflow-y-hidden sm:gap-8">
         {tabs.length === 0 && (
           <TabButton active={activeId === EMPTY_TAB_ID} onClick={() => onSelect(EMPTY_TAB_ID)}>
             <LayoutGrid className="h-4 w-4 shrink-0" aria-hidden />

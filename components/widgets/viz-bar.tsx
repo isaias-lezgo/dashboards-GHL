@@ -48,7 +48,9 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
             />
           )}
           {horizontal ? (
-            <YAxis type="category" dataKey="label" width={150} tick={CHART_TICK} tickLine={false} axisLine={false} tickFormatter={(v) => shortLabel(String(v), 22)} />
+            // interval 0: Recharts otherwise drops labels when rows are tight, and the
+            // biggest bar can end up nameless. Short enough not to wrap in 150px.
+            <YAxis type="category" dataKey="label" width={150} interval={0} tick={CHART_TICK} tickLine={false} axisLine={false} tickFormatter={(v) => shortLabel(String(v), 20)} />
           ) : (
             <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => formatTick(Number(v), metric)} />
           )}
