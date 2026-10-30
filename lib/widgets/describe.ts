@@ -173,9 +173,12 @@ export function buildPanelSnapshot(
   }
   if (selectedWidgetId) lines.push(`Seleccionado: [${selectedWidgetId}]`);
   if (doc.glossary.length) {
-    lines.push(
-      `Glosario del cliente: ${doc.glossary.map((g) => `«${g.term}» (${ENTITY_NOUNS[g.entity]}) = ${g.note}`).join(" · ")}`
-    );
+    // The clauses go verbatim: rebuilt from the prose note, "estado perdida"
+    // becomes status = "perdida" instead of "lost" — a valid field, a zero count.
+    lines.push("Glosario del cliente (usa estas cláusulas tal cual):");
+    for (const g of doc.glossary) {
+      lines.push(` - «${g.term}» (${ENTITY_NOUNS[g.entity]}) = ${g.note} · cláusulas: ${JSON.stringify(g.meaning)}`);
+    }
   }
   return lines.join("\n");
 }

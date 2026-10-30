@@ -820,8 +820,14 @@ function describeSection(): void {
     const snap = buildPanelSnapshot(doc, "t2", "w8", "Fecha = todo el historial · Pipeline = todos");
     assert.ok(snap.startsWith(PANEL_SNAPSHOT_MARKER));
     assert.ok(snap.includes("Seleccionado: [w8]"));
-    assert.ok(snap.includes("Glosario del cliente: «perdido»"));
+    assert.ok(/Glosario del cliente[^\n]*\n - «perdido»/.test(snap), snap);
     assert.ok(!buildPanelSnapshot({ ...doc, glossary: [] }, "t2", null, "x").includes("Glosario"));
+  });
+
+  check("snapshot: cada término del glosario lleva sus cláusulas exactas (valores crudos, no la nota en prosa)", () => {
+    const snap = buildPanelSnapshot(doc, "t2", null, "x");
+    const line = snap.split("\n").find((l) => l.includes("«perdido»")) ?? "";
+    assert.ok(line.includes(JSON.stringify(doc.glossary[0].meaning)), line);
   });
 
   check("chips de filtros propios: periodo fijo y filtros entre objetos", () => {
