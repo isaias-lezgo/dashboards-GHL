@@ -9,7 +9,7 @@
 // writes racing for the same expectedVersion would make one of them a conflict
 // with ourselves.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { emptyDoc, parseDoc, type DashboardDoc } from "@/lib/widgets/spec";
+import { docProblem, emptyDoc, parseDoc, type DashboardDoc } from "@/lib/widgets/spec";
 import { DocOpError } from "@/lib/widgets/doc-ops";
 
 export type CommitResult =
@@ -161,6 +161,8 @@ export function useDashboardDoc(): DashboardDocApi {
           if (err instanceof DocOpError) return { ok: false, reason: "invalid", message: err.message };
           throw err;
         }
+        const problem = docProblem(next);
+        if (problem) return { ok: false, reason: "invalid", message: problem };
         return save(prev, next, change, source, true);
       }),
     [enqueue, save]

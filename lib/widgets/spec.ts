@@ -406,6 +406,18 @@ export const dashboardDocSchema: z.ZodType<DashboardDoc> = z
   })
   .strict();
 
+/**
+ * Why a doc would be refused by the server (same schema), as "path: message" —
+ * or null. The browser checks before the PUT so the model hears WHICH field
+ * broke a limit ("glossary.0.note: …") instead of a bare "Panel inválido".
+ */
+export function docProblem(doc: DashboardDoc): string | null {
+  const parsed = dashboardDocSchema.safeParse(doc);
+  if (parsed.success) return null;
+  const issue = parsed.error.issues[0];
+  return `El panel no se guardó: ${issue.path.join(".")}: ${issue.message}`;
+}
+
 export function emptyDoc(): DashboardDoc {
   return {
     schemaVersion: 1,

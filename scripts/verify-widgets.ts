@@ -53,6 +53,7 @@ import {
 } from "../lib/widgets/doc-ops";
 import { buildSuggestions } from "../lib/widgets/suggestions";
 import { panelSettled, withRetry } from "../hooks/use-dashboard-doc";
+import { docProblem } from "../lib/widgets/spec";
 import { PANEL_MODE_TOOLS, PANEL_TOOL_DEFINITIONS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
 import { buildChatRequest } from "../lib/chat-request";
 import { TOOL_DEFINITIONS } from "../lib/ai-tools";
@@ -1499,6 +1500,15 @@ async function panelToolsSection(): Promise<void> {
 
 async function docLoadSection(): Promise<void> {
   section("doc-load");
+
+  check("docProblem: dice QUÉ campo del doc rompe un límite, antes de mandarlo al servidor", () => {
+    assert.equal(docProblem(emptyDoc()), null);
+    const longNote: DashboardDoc = {
+      ...emptyDoc(),
+      glossary: [{ id: "g1", term: "activo", aliases: [], entity: "contact", meaning: [{ anyOf: [{ field: "tags", op: "in", values: ["x"] }] }], note: "n".repeat(301), createdAt: "2026-10-30T00:00:00Z" }],
+    };
+    assert.match(String(docProblem(longNote)), /glossary\.0\.note/);
+  });
 
   check("panelSettled: el autoajuste de fecha espera la respuesta del panel, pero no para siempre si falla", () => {
     assert.equal(panelSettled({ enabled: null, error: null }), false);

@@ -27,7 +27,7 @@ import { runQuery, type QueryResult } from "../../lib/widgets/engine";
 import { buildPanelCatalogSummary, buildPanelSnapshot } from "../../lib/widgets/describe";
 import { activeGlobalFilters, describeFilterState, initialFilterState, type PanelFilterState } from "../../lib/widgets/filter-state";
 import { DocOpError, addWidgets, findWidget, randomId, saveTerm, type OpMeta } from "../../lib/widgets/doc-ops";
-import { emptyDoc, type DashboardDoc, type Widget, type WidgetSpec } from "../../lib/widgets/spec";
+import { docProblem, emptyDoc, type DashboardDoc, type Widget, type WidgetSpec } from "../../lib/widgets/spec";
 import type { EngineContext } from "../../lib/widgets/semantic";
 import { CASES, type EvalCase } from "./corpus";
 
@@ -104,12 +104,17 @@ async function runCase(c: EvalCase, clientId: string, payload: DashboardPayload,
   const deps: PanelToolDeps = {
     getDoc: () => doc,
     commit: async (mutate) => {
+      // Same checks as useDashboardDoc.commit: doc-op errors, then the doc schema.
+      let next: DashboardDoc;
       try {
-        doc = mutate(doc);
+        next = mutate(doc);
       } catch (err) {
         if (err instanceof DocOpError) return { ok: false, reason: "invalid", message: err.message };
         throw err;
       }
+      const problem = docProblem(next);
+      if (problem) return { ok: false, reason: "invalid", message: problem };
+      doc = next;
       mutations++;
       return { ok: true, version: mutations };
     },
