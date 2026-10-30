@@ -939,6 +939,15 @@ function termsSection(): void {
     assert.equal(res.candidates.some((c) => c.field === "cf:Comentarios de Negociación"), false, JSON.stringify(res.candidates.map((c) => c.field)));
   });
 
+  check("«negocio perdido»: «negocio» nombra el objeto, no el concepto — también encuentra el estado perdida", () => {
+    const res = resolveTerm("negocio perdido", null, ctx);
+    assert.ok(has(res, "opportunity", "status", ["lost"]), JSON.stringify(res.candidates.map((c) => [c.field, c.values])));
+    assert.ok(has(res, "opportunity", "stage", ["Negocio Perdido"]));
+    assert.deepEqual(termRoots("clientes activos"), ["client", "activ"]);
+    assert.deepEqual(termRoots("contactos activos"), ["activ"]);
+    assert.deepEqual(termRoots("oportunidades"), ["oportunidad"]);
+  });
+
   check("la raíz se busca al inicio de palabra: «desactivar bot» no es «activo», «pulso-activo» sí", () => {
     const res = resolveTerm("activo", null, lezgoLike());
     const tags = res.candidates.find((c) => c.field === "tags");

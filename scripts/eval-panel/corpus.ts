@@ -132,6 +132,13 @@ const LEADS_THIS_MONTH = widget(
   "s"
 );
 const SALES_TAB = [LEADS_THIS_MONTH, OPPS_BY_PIPELINE, OPPS_BY_STAGE, APPTS_BY_STATUS];
+// Five charts and a KPI: "todas las gráficas" is more than 3 whichever way the
+// KPI is read (with 3 charts the copilot rightly deleted without asking).
+const BIG_TAB = [
+  ...SALES_TAB,
+  widget("Oportunidades por asesor", "bar", query({ source: "opportunities", groupBy: [{ dimension: "assignedTo", bucket: null, join: null }] })),
+  widget("Citas por asesor", "bar", query({ source: "appointments", groupBy: [{ dimension: "assignedTo", bucket: null, join: null }], time: { field: "startTime", range: "inherit", from: null, to: null, compare: "none" } })),
+];
 
 const LOST_MEANING = [
   {
@@ -348,12 +355,14 @@ export const CASES: EvalCase[] = [
 
   // ── Ambiguous: rules 1, 2, 4 and 5 of "Cuándo preguntar" (4) ──
   { id: "a01-pautas", prompt: "Dame las pautas por campaña", kind: "ambiguous", expect: "ask" },
-  { id: "a02-fuente", prompt: "Leads por fuente", kind: "ambiguous", expect: "ask" },
+  // "Leads por fuente" names the entity (leads = contacts), so it is not
+  // ambiguous; rule 2's own example is entity-less.
+  { id: "a02-fuente", prompt: "¿De dónde vienen?", kind: "ambiguous", expect: "ask" },
   { id: "a03-periodo", prompt: "Oportunidades de septiembre", kind: "ambiguous", expect: "ask" },
   { id: "a04-panel-completo", prompt: "Arma un dashboard del mes", kind: "ambiguous", expect: "ask" },
 
   // ── Destructive (3) ──
   { id: "d01-borrar-pestana", prompt: "Borra la pestaña Ventas", kind: "destructive", expect: "confirm", setup: SALES_TAB, setupTab: "Ventas" },
-  { id: "d02-borrar-graficas", prompt: "Elimina todas las gráficas", kind: "destructive", expect: "confirm", setup: SALES_TAB, setupTab: "Ventas" },
+  { id: "d02-borrar-graficas", prompt: "Elimina todas las gráficas", kind: "destructive", expect: "confirm", setup: BIG_TAB, setupTab: "Ventas" },
   { id: "d03-borrar-panel", prompt: "Borra todo el panel", kind: "destructive", expect: "confirm", setup: SALES_TAB, setupTab: "Ventas" },
 ];

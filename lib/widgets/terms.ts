@@ -57,11 +57,23 @@ export function normalizeTerm(s: string): string {
 const SUFFIXES = ["es", "os", "as", "s", "o", "a"];
 const MIN_ROOT = 4;
 
+/**
+ * Words that name the OBJECT, not the concept: in "negocio perdido" the concept
+ * is "perdido". Requiring "negocio" too hid the status «perdida» on amir-cherit
+ * and left only the stage, so the copilot saw one reading where there are two.
+ * Dropped only when another word remains ("oportunidades" alone still searches).
+ */
+const OBJECT_WORDS = new Set([
+  "negocio", "negocios", "oportunidad", "oportunidades", "contacto", "contactos", "lead", "leads",
+  "trato", "tratos", "deal", "deals", "cita", "citas", "tarea", "tareas", "registro", "registros",
+]);
+
 /** Roots of each word of ≥4 letters: the longest listed suffix is dropped while the root keeps ≥4 letters. */
 export function termRoots(s: string): string[] {
   const roots: string[] = [];
-  for (const word of normalizeTerm(s).split(/[^a-z0-9ñ]+/)) {
-    if (word.length < MIN_ROOT) continue;
+  const all = normalizeTerm(s).split(/[^a-z0-9ñ]+/).filter((w) => w.length >= MIN_ROOT);
+  const words = all.some((w) => !OBJECT_WORDS.has(w)) ? all.filter((w) => !OBJECT_WORDS.has(w)) : all;
+  for (const word of words) {
     const suffix = SUFFIXES.filter((x) => word.endsWith(x) && word.length - x.length >= MIN_ROOT).sort((a, b) => b.length - a.length)[0];
     roots.push(suffix ? word.slice(0, -suffix.length) : word);
   }
