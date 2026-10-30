@@ -22,7 +22,8 @@
     "verify:installations": "tsx --env-file-if-exists=.env.local scripts/verify-installations.ts",
     "verify:widgets": "tsx scripts/verify-widgets.ts",
     "check:widget-parity": "tsx --env-file-if-exists=.env.local scripts/check-widget-parity.ts",
-    "verify:dashboard-store": "tsx --env-file-if-exists=.env.local scripts/verify-dashboard-store.ts"
+    "verify:dashboard-store": "tsx --env-file-if-exists=.env.local scripts/verify-dashboard-store.ts",
+    "eval:panel": "tsx --env-file-if-exists=.env.local scripts/eval-panel/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
