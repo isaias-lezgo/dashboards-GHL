@@ -270,11 +270,13 @@ that knows what they cost. Without it there is no CPL, no cost per cita, no ROAS
 
 Verify with `pnpm verify:ads` (pure module, `scripts/verify-ads.ts`).
 
-**Scope: `adPublishing.readonly`.** Verified present on an existing client token
-(kapitaliza) — the roster's PITs were created with it, so no token work was
-needed. A token that lacks it 401s on every call, which `classifyError` maps to
-the `unauthorized` status; the fix is to tick the scope in GHL → Settings →
-Private Integrations.
+**Scope: `adPublishing.readonly`.** Granted to the Marketplace app and verified
+over OAuth (2026-10-28: amir-cherit, hausmen, genaro, Condesa, Lezgo Suite all
+`connected`, spend identical to what the old PITs returned). A token that lacks
+it 401s on every call, which `classifyError` maps to the `unauthorized` status;
+the fix is to tick the scope in the app's Advanced Settings → Auth. Scopes only
+change while the app version is a draft, and an install keeps the scopes it was
+granted — so a new scope means a new version AND reinstalling the app.
 
 **NEVER gate on `/ad-publishing/facebook/integration`.** That endpoint describes
 GHL's Ad Manager *publishing* setup — connected pages, the default page, whether
@@ -407,20 +409,27 @@ desde $1.29 MDP" in the Pauta record. A name join would look like it worked.
   per ad, so summing per pauta multiplies each ad's cost by its own lead count —
   inflating precisely the number read as cost per lead.
 
-**Who actually has Meta spend** (`pnpm check:ads`, 2026-09-01; amir-cherit
-2026-09-07). Five of the eight external clients, not one — the number the
-integration gate was hiding:
+**Who actually has Meta spend** — this CHANGES without anyone telling us; re-run
+`pnpm check:ads` rather than trusting the table. On 2026-09-01 five of eight
+clients reported spend. On 2026-10-28 (full syncs over OAuth, PIT and OAuth
+agreeing on every client):
 
-| Cliente | Reporting | Cuenta | Campañas |
-|---|---|---|---|
-| hausmen | ✅ | Hausmen (MXN) | 167 |
-| amir-cherit | ✅ | Amir Cherit (MXN) | 189 |
-| sahai | ✅ | HAI (MXN) | 91 |
-| el-fundador-saki | ✅ | El Fundador (MXN) | 20 |
-| stanza-residencial | ✅ | Stanza Magnolia (MXN) | 9 |
-| kapitaliza | ❌ `disconnected`, sin ad account | — | — |
-| rise-29 | ❌ `Ad Account not found` | — | — |
-| terrenos-en-venta-jerry-medina | ❌ `Access Token not found` (caducado) | — | — |
+| Cliente | Reporting | Gasto en la ventana (MXN) |
+|---|---|---|
+| amir-cherit | ✅ | 526,779.52 |
+| hausmen | ✅ | 308,505.92 |
+| genaro-bienes-raices | ✅ | 279,390.71 |
+| condesa-cimatario | ✅ | (connected) |
+| lezgo-suite | ✅ | (connected) |
+| sahai | ❌ `Ad Account not found` — was ✅ in September | — |
+| stanza-residencial | ❌ `Ad Account not found` — was ✅ in September | — |
+| el-fundador-saki | ❌ `Ad Account not found` — was ✅ in September | — |
+| rise-29 | ❌ `Ad Account not found` | — |
+| flx-smart-living | ❌ `Ad Account not found` | — |
+| terrenos-en-venta-jerry-medina | ❌ `Access Token not found` (caducado) | — |
+
+The ❌ rows are GHL's Meta link, not this app: they fail identically with a PIT.
+The fix is relinking the ad account inside that sub-account in GHL.
 
 The per-campaign fan-out is one request each and measured **19.9s for sahai's 91
 campaigns** (332 ads) and **23.3s for amir-cherit's 189** (194 ads), so
@@ -683,11 +692,11 @@ opportunities (`contactIdsInPipelines`). Every rule below follows from that.
 - **`lostReasonId`** is only relevant when status is `"lost"`.
 - **`/opportunities/search`** uses snake_case params (`location_id`, `pipeline_id`, etc.) — already handled by `useSnakeCaseLocationId` flag in `ghlFetch`.
 - **Conversation `type`** is numeric in some endpoints: `1=Phone`, `2=Email`, `3=FB Messenger`, `4=Review`, `5=Group SMS`.
-- **Required scopes**: `contacts.readonly/write`, `opportunities.readonly/write`, `conversations.readonly/write`.
+- **Scopes**: the Marketplace app holds only `.readonly` scopes (plus `oauth.readonly/write`, needed to mint location tokens) — the app never writes to GHL. Adding a scope means a new app version and a reinstall (see "Scope: `adPublishing.readonly`").
 
 ## GHL MCP Server
 
-An HTTP MCP server (`ghl-mcp`, configured in `.mcp.json`) connects directly to GoHighLevel's hosted MCP endpoint (`https://services.leadconnectorhq.com/mcp/`). It authenticates with the same `GHL_API_TOKEN` and `GHL_LOCATION_ID` env vars used by `lib/ghl-client.ts`.
+An HTTP MCP server (`ghl-mcp`, configured in `.mcp.json`) connects directly to GoHighLevel's hosted MCP endpoint (`https://services.leadconnectorhq.com/mcp/`). It authenticates with `GHL_API_TOKEN` and `GHL_LOCATION_ID` — a PIT for one sub-account, used ONLY by the MCP server; the app itself never reads them (it is OAuth-only).
 
 - **Purpose**: lets Claude Code query/mutate live GHL data directly during development (inspecting real contacts, opportunities, pipelines, custom fields, conversations) without writing throwaway scripts. It is **not** part of the app's runtime data flow — the app always goes through `app/api/dashboard/route.ts` → `lib/ghl-client.ts`. Never wire MCP calls into application code.
 - **Use it to**: verify real data shapes, discover pipeline/custom-field IDs, confirm API behavior, and validate transforms against production data before coding them in `route.ts`.
