@@ -17,6 +17,9 @@ import { normalizeTerm } from "./terms";
 
 export type IdGen = () => string;
 
+/** Short random id for tabs, widgets, controls and glossary entries. */
+export const randomId: IdGen = () => crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+
 export interface OpMeta {
   now: string;
   by: "ai" | "user";

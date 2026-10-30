@@ -21,7 +21,12 @@ import { format, formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
-import { WidgetsDemo } from "@/components/widgets/widgets-demo"
+import { PanelTabs, EMPTY_TAB_ID } from "@/components/widgets/panel-tabs"
+import { WidgetGrid } from "@/components/widgets/widget-grid"
+import { useDashboardDoc, type CommitResult } from "@/hooks/use-dashboard-doc"
+import { deleteTab, deleteWidgets, findWidget, randomId, upsertTab } from "@/lib/widgets/doc-ops"
+import type { EngineContext } from "@/lib/widgets/semantic"
+import { toast } from "sonner"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { useConversationsData } from "@/hooks/use-conversations-data"
@@ -43,11 +48,18 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-type DashboardTab = "marketing" | "sales" | "conversations"
+// "marketing" | "sales" | "conversations", or — with the AI panel on — the id of
+// one of the client's own tabs, or EMPTY_TAB_ID when the panel has none yet.
+type DashboardTab = string
+
+const FIXED_TABS = new Set(["marketing", "sales", "conversations"])
+
+// Long enough to actually reach the button: sonner's default 4 s is not.
+const UNDO_TOAST_MS = 10_000
 
 // Browser-tab title per view. The app is a single route, so the title is set
 // imperatively — `metadata` in layout.tsx can only give one static fallback.
-const TAB_TITLES: Record<DashboardTab, string> = {
+const TAB_TITLES: Record<string, string> = {
   marketing: "Marketing - Lezgo Suite CRM",
   sales: "Ventas - Lezgo Suite CRM",
   conversations: "Asistente IA - Lezgo Suite CRM",
@@ -59,11 +71,39 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
 
   useEffect(() => { setMounted(true) }, [])
-  // TEMPORARY (Task 17): ?widgets-demo=1 renders the widget gallery. Removed in Task 18.
-  const [widgetsDemo, setWidgetsDemo] = useState(false)
-  useEffect(() => { setWidgetsDemo(new URLSearchParams(window.location.search).has("widgets-demo")) }, [])
 
-  useEffect(() => { document.title = TAB_TITLES[activeTab] }, [activeTab])
+  // The AI-managed panel. `enabled` is null until the server answers, then the
+  // client's dashboard_installation.ai_panel flag; when it is not true the page
+  // below is exactly today's Marketing / Ventas / Asistente IA.
+  const docApi = useDashboardDoc()
+  const panelEnabled = docApi.enabled === true
+  const docTabs = useMemo(() => docApi.doc?.tabs ?? [], [docApi.doc])
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
+
+  // Land on the panel once, when it first loads: its first tab, or the empty
+  // panel. After that the tab belongs to the user.
+  const landedRef = useRef(false)
+  useEffect(() => {
+    if (landedRef.current || !panelEnabled || !docApi.doc) return
+    landedRef.current = true
+    setActiveTab(docApi.doc.tabs[0]?.id ?? EMPTY_TAB_ID)
+  }, [panelEnabled, docApi.doc])
+
+  // A tab deleted elsewhere (another session, an undo) must not leave the page
+  // pointing at nothing.
+  useEffect(() => {
+    if (!panelEnabled || FIXED_TABS.has(activeTab)) return
+    if (activeTab === EMPTY_TAB_ID) {
+      if (docTabs.length > 0) setActiveTab(docTabs[0].id)
+      return
+    }
+    if (!docTabs.some((t) => t.id === activeTab)) setActiveTab(docTabs[0]?.id ?? EMPTY_TAB_ID)
+  }, [panelEnabled, docTabs, activeTab])
+
+  useEffect(() => {
+    const own = docTabs.find((t) => t.id === activeTab)
+    document.title = own ? `${own.title} - Lezgo Suite CRM` : (TAB_TITLES[activeTab] ?? TAB_TITLES.marketing)
+  }, [activeTab, docTabs])
 
   const { data, isLoading, showLoading, isError, progress, locationName, syncedAt, steps, refresh } = useDashboardData({})
   const { messages } = useConversationsData()
@@ -267,6 +307,67 @@ export default function DashboardPage() {
     return () => clearInterval(id)
   }, [])
 
+  // The engine reads the FULL dataset (joins and cross-object filters resolve
+  // against everything) and applies the panel's filters itself. `now` moves once
+  // a minute so relative ranges ("últimos 30 días") stay current.
+  const nowMinute = Math.floor(Date.now() / 60_000)
+  const engineCtx: EngineContext = useMemo(
+    () => ({
+      dataset: {
+        contacts: data?.contacts ?? [],
+        opportunities: data?.opportunities ?? [],
+        pautas: data?.pautas ?? [],
+        appointments: data?.appointments ?? [],
+        messages,
+        tasks: data?.tasks ?? [],
+        calls: data?.calls ?? [],
+      },
+      pipelines: allPipelines,
+      ads: data?.ads,
+      dateRange,
+      pipelineFilter,
+      globalFilters: [],
+      now: new Date(nowMinute * 60_000),
+    }),
+    [data, messages, allPipelines, dateRange, pipelineFilter, nowMinute]
+  )
+
+  const reportFailure = (res: CommitResult) => {
+    if (!res.ok) toast.error(res.message)
+  }
+  const undoChange = async () => reportFailure(await docApi.undo())
+
+  const removeWidget = async (id: string) => {
+    if (!docApi.doc) return
+    const title = findWidget(docApi.doc, id)?.widget.title ?? "la gráfica"
+    const res = await docApi.commit((d) => deleteWidgets(d, [id]), `Eliminó «${title}»`, "user")
+    if (res.ok) toast(`Se eliminó «${title}»`, { duration: UNDO_TOAST_MS, action: { label: "Deshacer", onClick: () => void undoChange() } })
+    else reportFailure(res)
+  }
+  const addTab = async () => {
+    let tabId = ""
+    const res = await docApi.commit(
+      (d) => {
+        const out = upsertTab(d, { tabId: null, title: "Nueva pestaña", position: null }, randomId)
+        tabId = out.tabId
+        return out.doc
+      },
+      "Creó una pestaña",
+      "user"
+    )
+    if (res.ok) setActiveTab(tabId)
+    else reportFailure(res)
+  }
+  const renameTab = async (id: string, title: string) =>
+    reportFailure(await docApi.commit((d) => upsertTab(d, { tabId: id, title, position: d.tabs.findIndex((t) => t.id === id) }, randomId).doc, `Renombró una pestaña a «${title}»`, "user"))
+  const removeTab = async (id: string) => {
+    const title = docTabs.find((t) => t.id === id)?.title ?? "la pestaña"
+    const res = await docApi.commit((d) => deleteTab(d, id), `Eliminó la pestaña «${title}»`, "user")
+    if (res.ok) toast(`Se eliminó la pestaña «${title}»`, { duration: UNDO_TOAST_MS, action: { label: "Deshacer", onClick: () => void undoChange() } })
+    else reportFailure(res)
+  }
+  const activeDocTab = docTabs.find((t) => t.id === activeTab) ?? null
+
   return (
     <>
     <AnimatePresence>
@@ -396,6 +497,16 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {panelEnabled ? (
+        <PanelTabs
+          tabs={docTabs}
+          activeId={activeTab}
+          onSelect={setActiveTab}
+          onRename={renameTab}
+          onDelete={removeTab}
+          onAdd={addTab}
+        />
+      ) : (
       <nav className="border-b border-border bg-card px-4 sm:px-6" aria-label="Vistas del panel">
         <div className="flex gap-6 sm:gap-8">
           {(
@@ -426,6 +537,7 @@ export default function DashboardPage() {
           })}
         </div>
       </nav>
+      )}
 
       {activeTab !== "conversations" && (
         <FilterBar
@@ -456,7 +568,22 @@ export default function DashboardPage() {
 
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
-        {widgetsDemo && data && <WidgetsDemo data={data} messages={messages} />}
+        {panelEnabled && activeDocTab && (
+          <WidgetGrid
+            tab={activeDocTab}
+            ctx={engineCtx}
+            selectedWidgetId={selectedWidgetId}
+            onSelect={setSelectedWidgetId}
+            onEditWithAi={(id) => setSelectedWidgetId(id)}
+            onEditFilters={(id) => setSelectedWidgetId(id)}
+            onDelete={removeWidget}
+          />
+        )}
+        {panelEnabled && activeTab === EMPTY_TAB_ID && (
+          <div className="mx-4 mt-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center sm:mx-6">
+            <p className="text-sm font-medium text-foreground">Tu panel está vacío</p>
+          </div>
+        )}
         {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}
