@@ -36,6 +36,7 @@ import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
 import { runQuery, type QueryResult } from "../lib/widgets/engine";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
 import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot, describeWidget } from "../lib/widgets/describe";
+import { resolveTerm, termRoots } from "../lib/widgets/terms";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
 import type { QuerySpec } from "../lib/widgets/spec";
 
@@ -798,6 +799,61 @@ function describeSection(): void {
   });
 }
 
+function termsSection(): void {
+  section("terms");
+  const base = makeLostFixture();
+  const contacts = base.dataset.contacts.map((c) => (c.id === "k4" ? { ...c, tags: ["perdido"] } : c));
+  contacts.push(mkContact("k5", { customFieldsResolved: { Estatus: "Activo" } }));
+  const ctx: EngineContext = {
+    ...base,
+    dataset: { ...base.dataset, contacts, appointments: [mkAppt("ap1", "k1", "2026-10-20T15:00:00Z", "showed")] },
+  };
+  const has = (res: ReturnType<typeof resolveTerm>, entity: string, field: string, values: string[]) =>
+    res.candidates.some((c) => c.entity === entity && c.field === field && JSON.stringify(c.values) === JSON.stringify(values));
+
+  check("termRoots quita sufijos y deja raíces de ≥4 letras", () => {
+    assert.deepEqual(termRoots("perdidos"), ["perdid"]);
+    assert.deepEqual(termRoots("clientes activos"), ["client", "activ"]);
+  });
+
+  check("«perdidos» aparece en estado (por su etiqueta), etapa y tag", () => {
+    const res = resolveTerm("perdidos", null, ctx);
+    assert.ok(has(res, "opportunity", "status", ["lost"]), JSON.stringify(res.candidates.map((c) => [c.entity, c.field, c.values])));
+    assert.ok(has(res, "opportunity", "stage", ["Negocio Perdido"]));
+    assert.ok(has(res, "contact", "tags", ["perdido"]));
+    assert.equal(res.unionContacts, 3);
+    assert.equal(res.materiallyDifferent, false);
+  });
+
+  check("con volumen y sin traslape → materiallyDifferent", () => {
+    const extraContacts = [...ctx.dataset.contacts];
+    const extraOpps = [...ctx.dataset.opportunities];
+    for (let i = 0; i < 10; i++) {
+      extraContacts.push(mkContact(`L${i}`), mkContact(`M${i}`));
+      extraOpps.push(mkOpp(`ql${i}`, `L${i}`, "A", "Calificado", "2026-10-01T12:00:00Z", { status: "lost" }));
+      extraOpps.push(mkOpp(`qm${i}`, `M${i}`, "A", "Negocio Perdido", "2026-10-01T12:00:00Z"));
+    }
+    const big = { ...ctx, dataset: { ...ctx.dataset, contacts: extraContacts, opportunities: extraOpps } };
+    assert.equal(resolveTerm("perdidos", null, big).materiallyDifferent, true);
+  });
+
+  check("«asistió» con pista appointment → estado showed primero", () => {
+    const res = resolveTerm("asistió", "appointment", ctx);
+    assert.equal(res.candidates[0].entity, "appointment");
+    assert.equal(res.candidates[0].field, "status");
+    assert.deepEqual(res.candidates[0].values, ["showed"]);
+  });
+
+  check("«activo» encuentra el campo personalizado Estatus = Activo", () => {
+    assert.ok(has(resolveTerm("activo", null, ctx), "contact", "cf:Estatus", ["Activo"]));
+  });
+
+  check("término inexistente o de menos de 4 letras → sin candidatos", () => {
+    assert.deepEqual(resolveTerm("xyz123", null, ctx).candidates, []);
+    assert.deepEqual(resolveTerm("pe", null, ctx).candidates, []);
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -809,6 +865,7 @@ function main(): void {
   compareSection();
   validateSection();
   describeSection();
+  termsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
