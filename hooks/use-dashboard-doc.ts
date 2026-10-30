@@ -32,6 +32,33 @@ const CONFLICT_MESSAGE = "El panel cambió en otra sesión; ya se recargó.";
 const NETWORK_MESSAGE = "No se pudo guardar: sin conexión con el servidor.";
 const DISABLED_MESSAGE = "El panel no está activado para esta cuenta.";
 
+/**
+ * Whether the panel's GET has answered — or failed. Whatever waits on knowing if
+ * the panel is on (the large-account date auto-scope) must also stop waiting on
+ * a failure: a DB hiccup must not change the classic dashboard of a client who
+ * does not even have the panel.
+ */
+export function panelSettled(api: { enabled: boolean | null; error: string | null }): boolean {
+  return api.enabled !== null || api.error !== null;
+}
+
+/** Runs `fn` up to `attempts` times, `delayMs` apart; rethrows the last error. */
+export async function withRetry<T>(fn: () => Promise<T>, attempts: number, delayMs: number): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (i < attempts - 1 && delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw last;
+}
+
+const LOAD_ATTEMPTS = 2;
+const LOAD_RETRY_MS = 1500;
+
 interface Snapshot {
   enabled: boolean | null;
   doc: DashboardDoc | null;
@@ -76,7 +103,7 @@ export function useDashboardDoc(): DashboardDocApi {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      await fetchDoc();
+      await withRetry(fetchDoc, LOAD_ATTEMPTS, LOAD_RETRY_MS);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar el panel");

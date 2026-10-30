@@ -52,6 +52,7 @@ import {
   type OpMeta,
 } from "../lib/widgets/doc-ops";
 import { buildSuggestions } from "../lib/widgets/suggestions";
+import { panelSettled, withRetry } from "../hooks/use-dashboard-doc";
 import { PANEL_MODE_TOOLS, PANEL_TOOL_DEFINITIONS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
 import { buildChatRequest } from "../lib/chat-request";
 import { TOOL_DEFINITIONS } from "../lib/ai-tools";
@@ -1482,6 +1483,31 @@ async function panelToolsSection(): Promise<void> {
   });
 }
 
+async function docLoadSection(): Promise<void> {
+  section("doc-load");
+
+  check("panelSettled: el autoajuste de fecha espera la respuesta del panel, pero no para siempre si falla", () => {
+    assert.equal(panelSettled({ enabled: null, error: null }), false);
+    assert.equal(panelSettled({ enabled: false, error: null }), true);
+    assert.equal(panelSettled({ enabled: true, error: null }), true);
+    assert.equal(panelSettled({ enabled: null, error: "HTTP 500" }), true);
+  });
+
+  await checkAsync("withRetry: reintenta una falla pasajera y se rinde después de los intentos", async () => {
+    let calls = 0;
+    const flaky = async () => {
+      calls++;
+      if (calls < 2) throw new Error("red");
+      return "ok";
+    };
+    assert.equal(await withRetry(flaky, 2, 0), "ok");
+    assert.equal(calls, 2);
+    calls = 0;
+    await assert.rejects(withRetry(async () => { calls++; throw new Error("caído"); }, 2, 0), /caído/);
+    assert.equal(calls, 2);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   domainSection();
@@ -1499,6 +1525,7 @@ async function main(): Promise<void> {
   filterStateSection();
   suggestionsSection();
   await panelToolsSection();
+  await docLoadSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 

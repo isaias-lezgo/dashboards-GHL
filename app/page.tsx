@@ -23,7 +23,7 @@ import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { PanelTabs, EMPTY_TAB_ID } from "@/components/widgets/panel-tabs"
 import { WidgetGrid } from "@/components/widgets/widget-grid"
-import { useDashboardDoc, type CommitResult } from "@/hooks/use-dashboard-doc"
+import { panelSettled, useDashboardDoc, type CommitResult } from "@/hooks/use-dashboard-doc"
 import { deleteTab, deleteWidgets, findWidget, randomId, updateWidget, upsertTab } from "@/lib/widgets/doc-ops"
 import { usePanelFilters } from "@/hooks/use-panel-filters"
 import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
@@ -45,6 +45,7 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Sun,
   Moon,
   Users,
@@ -183,8 +184,8 @@ export default function DashboardPage() {
   useEffect(() => {
     // Wait until we know whether the AI panel is on: a panel with a saved
     // default date owns the initial date filter, and the auto-scope must not
-    // overwrite it.
-    if (autoScopedRef.current || !data || docApi.enabled === null) return
+    // overwrite it. A failed panel read counts as an answer (panelSettled).
+    if (autoScopedRef.current || !data || !panelSettled(docApi)) return
     if (docApi.enabled && docApi.doc?.filters.defaultDate != null) {
       autoScopedRef.current = true
       return
@@ -199,7 +200,7 @@ export default function DashboardPage() {
       setDateFilter({ preset: "month" })
       setAutoScoped(true)
     }
-  }, [data, docApi.enabled, docApi.doc])
+  }, [data, docApi.enabled, docApi.error, docApi.doc])
 
   // Human label of the active date filter, for the PDF report cover.
   const periodLabel = useMemo(() => {
@@ -623,6 +624,18 @@ export default function DashboardPage() {
           })}
         </div>
       </nav>
+      )}
+
+      {/* The panel read failed (after its retry): say so instead of silently
+          showing the classic tabs to a client whose own panel is missing. */}
+      {docApi.enabled === null && docApi.error !== null && !docApi.loading && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground sm:px-6">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          No se pudo cargar la configuración del panel.
+          <button type="button" onClick={() => void docApi.reload()} className="font-medium text-foreground underline-offset-2 hover:underline">
+            Reintentar
+          </button>
+        </div>
       )}
 
       {activeTab !== "conversations" && (
