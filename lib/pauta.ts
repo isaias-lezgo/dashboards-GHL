@@ -357,3 +357,12 @@ export function rankPautasByContact(allPautas: Pauta[]): Map<string, number> {
   }
   return ranks
 }
+
+
+// Strip " - URL - NUMERIC_ID" suffix from nombrePauta (e.g. "TITLE - https://... - 120241019662550611")
+// so only the campaign title shows in compact results and aggregate keys.
+export function campaignTitle(s: string | null | undefined): string | undefined {
+  if (!s) return undefined;
+  const idx = s.indexOf(" - http");
+  return idx !== -1 ? s.slice(0, idx).trim() : s;
+}

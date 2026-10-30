@@ -20,7 +20,18 @@ import {
 } from "../lib/widgets/spec";
 import { sourceCategory } from "../lib/source-platform";
 import { rankPautasByContact } from "../lib/pauta";
-import type { Opportunity, Pauta } from "../lib/types";
+import type { Appointment, Contact, Opportunity, Pauta, Pipeline } from "../lib/types";
+import type { ChatDataset } from "../lib/ai-tools";
+import {
+  dimensionValues,
+  funnelState,
+  knownCustomFields,
+  listFieldValues,
+  matchesClause,
+  matchesFilter,
+  resolveCtx,
+  type EngineContext,
+} from "../lib/widgets/semantic";
 
 let currentSection = "";
 function section(name: string): void {
@@ -237,9 +248,120 @@ function domainSection(): void {
   });
 }
 
+
+// ─── Shared dataset fixture (Tasks 3–8) ───────────────────────────────────────
+
+function mkContact(id: string, extra: Partial<Contact> = {}): Contact {
+  return { id, name: id, email: "", phone: "", tags: [], dateAdded: "2026-08-01T12:00:00Z", createdAt: "2026-08-01T12:00:00Z", ...extra };
+}
+function mkOpp(id: string, contactId: string, pipelineId: string, stage: string, createdAt: string, extra: Partial<Opportunity> = {}): Opportunity {
+  return {
+    id, name: id, pipelineId, pipelineStageId: stage, status: "open", createdAt, contactId,
+    value: 0, stage, pipelineName: pipelineId, ...extra,
+  };
+}
+function mkAppt(id: string, contactId: string, startTime: string, status: string): Appointment {
+  return { id, contactId, startTime, endTime: startTime, status };
+}
+
+interface Fixture {
+  ctx: EngineContext;
+  c: Record<string, Contact>;
+  o: Record<string, Opportunity>;
+}
+
+function makeFixture(overrides: Partial<EngineContext> = {}): Fixture {
+  const c = {
+    c1: mkContact("c1", { tags: ["vip"], customFieldsResolved: { "Origen de Lead": ["Facebook", "Instagram"] } }),
+    c2: mkContact("c2"),
+    c3: mkContact("c3"),
+    c4: mkContact("c4"),
+  };
+  const o = {
+    o1: mkOpp("o1", "c1", "p1", "Primera Cita", "2026-09-01T12:00:00Z"),
+    o2: mkOpp("o2", "c1", "p2", "Propuesta", "2026-10-01T12:00:00Z"),
+    o3: mkOpp("o3", "c2", "p1", "Negocio Ganado", "2026-10-05T12:00:00Z", { value: 1000, closedAt: "2026-10-06T12:00:00Z" }),
+    o4: mkOpp("o4", "c3", "p1", "Primera Cita", "2026-10-10T12:00:00Z", { status: "lost", lostReason: "Precio" }),
+  };
+  const pautas: Pauta[] = [
+    { id: "p-a", tipo: "", nombrePauta: "", createdAt: "2026-09-01T12:00:00Z", contactId: "c1" },
+    { id: "p-b", tipo: "", nombrePauta: "", createdAt: "2026-10-02T12:00:00Z", contactId: "c1" },
+    { id: "p-c", tipo: "", nombrePauta: "", createdAt: "2026-10-03T12:00:00Z" },
+  ];
+  const dataset: ChatDataset = {
+    contacts: Object.values(c),
+    opportunities: Object.values(o),
+    pautas,
+    appointments: [
+      mkAppt("a1", "c1", "2026-10-20T15:00:00Z", "showed"),
+      mkAppt("a2", "c1", "2026-10-21T15:00:00Z", "noshow"),
+      mkAppt("a3", "c1", "2026-10-22T15:00:00Z", "showed"),
+      mkAppt("a4", "c4", "2026-10-23T15:00:00Z", "confirmed"),
+    ],
+    messages: [],
+    tasks: [],
+    calls: [],
+  };
+  const pipelines: Pipeline[] = [
+    { id: "p1", name: "p1", stages: ["Primera Cita", "Negocio Ganado"] },
+    { id: "p2", name: "p2", stages: ["Propuesta"] },
+  ];
+  const ctx: EngineContext = {
+    dataset,
+    pipelines,
+    ads: undefined,
+    dateRange: null,
+    pipelineFilter: [],
+    globalFilters: [],
+    now: new Date(2026, 9, 29, 12, 0, 0),
+    ...overrides,
+  };
+  return { ctx, c, o };
+}
+
+function semanticSection(): void {
+  section("semantic");
+  const { ctx, c, o } = makeFixture();
+  const r = resolveCtx(ctx);
+  const row = (x: object) => x as unknown as Record<string, unknown>;
+
+  check("cf multiopción se despliega; tags vacíos → (sin tag)", () => {
+    assert.deepEqual(dimensionValues("contacts", row(c.c1), "cf:Origen de Lead", r), ["Facebook", "Instagram"]);
+    assert.deepEqual(dimensionValues("contacts", row(c.c2), "tags", r), ["(sin tag)"]);
+  });
+
+  check("funnelState: ganada por etapa → Ganado; lost → Perdido", () => {
+    assert.equal(funnelState(o.o3), "Ganado");
+    assert.equal(funnelState(o.o4), "Perdido");
+  });
+
+  check("matchesFilter: cf in (sin mayúsculas) e is_empty", () => {
+    assert.equal(matchesFilter("contacts", row(c.c1), { field: "cf:Origen de Lead", op: "in", values: ["instagram"] }, r), true);
+    assert.equal(matchesFilter("contacts", row(c.c2), { field: "cf:Origen de Lead", op: "is_empty", values: [] }, r), true);
+  });
+
+  check("knownCustomFields y listFieldValues", () => {
+    assert.ok(knownCustomFields("contacts", r).has("Origen de Lead"));
+    assert.ok(listFieldValues("opportunity", "stage", r).some((v) => v.value === "Propuesta" && v.count === 1));
+  });
+
+  check("won derivado: o3 (por etapa) → true, o1 → false", () => {
+    assert.deepEqual(dimensionValues("opportunities", row(o.o3), "won", r), ["true"]);
+    assert.deepEqual(dimensionValues("opportunities", row(o.o1), "won", r), ["false"]);
+  });
+
+  check("matchesClause: OR entre campos distintos", () => {
+    const clause = { anyOf: [{ field: "status", op: "eq" as const, values: ["lost"] }, { field: "stage", op: "in" as const, values: ["Propuesta"] }] };
+    assert.equal(matchesClause("opportunities", row(o.o4), clause, r), true);
+    assert.equal(matchesClause("opportunities", row(o.o2), clause, r), true);
+    assert.equal(matchesClause("opportunities", row(o.o1), clause, r), false);
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
+  semanticSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 

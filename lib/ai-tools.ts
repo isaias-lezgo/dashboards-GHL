@@ -12,7 +12,8 @@ import type {
   Call,
 } from "@/lib/types";
 import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
-import { isDePauta, resolveCampaignName } from "@/lib/pauta";
+import { campaignTitle, isDePauta, resolveCampaignName } from "@/lib/pauta";
+import { cfValues, customFieldName, type CustomFieldsResolved } from "@/lib/custom-fields";
 import { buildCsv } from "@/lib/csv";
 
 export interface ChatDataset {
@@ -767,32 +768,6 @@ function includesAllCI(haystack: string[], needles: string[]): boolean {
 // enumerated by any custom field — accessed via the `customFields` filter and the
 // `cf:<Field Name>` (alias `customField:<Field Name>`) group/field convention.
 
-type CustomFieldsResolved = Record<string, string | string[]> | undefined;
-
-// Case-insensitive lookup of a custom-field value by display name.
-function cfLookup(resolved: CustomFieldsResolved, name: string): string | string[] | undefined {
-  if (!resolved) return undefined;
-  if (name in resolved) return resolved[name];
-  const target = name.trim().toLowerCase();
-  for (const k of Object.keys(resolved)) {
-    if (k.toLowerCase() === target) return resolved[k];
-  }
-  return undefined;
-}
-
-// Normalize a resolved custom-field value to a flat array of trimmed strings.
-function cfValues(resolved: CustomFieldsResolved, name: string): string[] {
-  const v = cfLookup(resolved, name);
-  if (v === undefined) return [];
-  return (Array.isArray(v) ? v : [v]).map((s) => String(s)).filter((s) => s.trim() !== "");
-}
-
-// If `field`/`groupBy` is "cf:Name" or "customField:Name", return the field name.
-function customFieldName(spec: string): string | null {
-  const m = /^(?:cf|customField):(.+)$/.exec(spec);
-  return m ? m[1].trim() : null;
-}
-
 // Sentinel values that mean "this custom field has no value". `list_values` and
 // `aggregate` groupBy both emit "(sin valor)" as the empty bucket, so honoring it
 // here lets the model filter empty fields in one call instead of fanning out to
@@ -889,13 +864,6 @@ function oppRollup(
   return { oppCount: opps.length, oppValueSum: sum };
 }
 
-// Strip " - URL - NUMERIC_ID" suffix from nombrePauta (e.g. "TITLE - https://... - 120241019662550611")
-// so the AI sees only the campaign title in compact results and aggregate keys.
-function campaignTitle(s: string | null | undefined): string | undefined {
-  if (!s) return undefined;
-  const idx = s.indexOf(" - http");
-  return idx !== -1 ? s.slice(0, idx).trim() : s;
-}
 
 function compactPauta(p: Pauta, index: ChatIndex) {
   return {
