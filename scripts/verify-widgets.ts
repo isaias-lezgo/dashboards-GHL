@@ -35,7 +35,7 @@ import {
 import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
 import { runQuery, type QueryResult } from "../lib/widgets/engine";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
-import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot, describeWidget } from "../lib/widgets/describe";
+import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot, describeFilterChips, describeWidget } from "../lib/widgets/describe";
 import { resolveTerm, termRoots } from "../lib/widgets/terms";
 import {
   DocOpError,
@@ -805,6 +805,14 @@ function describeSection(): void {
     assert.ok(snap.includes("Seleccionado: [w8]"));
     assert.ok(snap.includes("Glosario del cliente: «perdido»"));
     assert.ok(!buildPanelSnapshot({ ...doc, glossary: [] }, "t2", null, "x").includes("Glosario"));
+  });
+
+  check("chips de filtros propios: periodo fijo y filtros entre objetos", () => {
+    const spec = lostContactsSpec();
+    assert.deepEqual(describeFilterChips(spec), ["Con alguna oportunidad con (estado = perdida o etapa = «Negocio Perdido»)"]);
+    const fixed = { ...spec, query: { ...spec.query!, time: { ...spec.query!.time, range: "last_month" as const } } };
+    assert.equal(describeFilterChips(fixed)[0], "Mes pasado · fijo");
+    assert.deepEqual(describeFilterChips(apptsByStageSpec()), []);
   });
 
   check("catálogo estable entre llamadas", () => {

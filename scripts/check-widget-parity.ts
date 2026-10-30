@@ -113,7 +113,8 @@ function query(over: Partial<QuerySpec>): QuerySpec {
 
 function engineCounts(ctx: EngineContext, q: QuerySpec, metricIndex = 0): Counts {
   const out: Counts = {};
-  for (const row of runQuery(q, ctx).rows) out[row.label.join(" · ")] = row.values[metricIndex] ?? 0;
+  // Keys, not labels: labels are translated for display ("showed" → "Asistió").
+  for (const row of runQuery(q, ctx).rows) out[row.key.join(" · ")] = row.values[metricIndex] ?? 0;
   return out;
 }
 

@@ -38,6 +38,8 @@ import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
 import { DOC_LIMITS, SOURCE_ENTITY, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
+import { ENUM_LABELS_ES } from "./labels";
+import { catLabel } from "@/lib/source-platform";
 import {
   ENTITY_SOURCE,
   EMPTY_VALUE,
@@ -458,9 +460,22 @@ function valuesFor(row: Row, dim: DimPlan, source: SourceId, ctx: MetricCtx, opt
   return dimensionValues(source, row, dim.spec.dimension, ctx);
 }
 
-function labelFor(key: string, dim: DimPlan): string {
+const capitalize = (t: string): string => (t ? t[0].toUpperCase() + t.slice(1) : t);
+
+// Display text of a group key. Keys stay raw (they are identities: filters,
+// drill-downs and the parity check use them); only the label is translated —
+// GHL enums to Spanish, source categories to the Marketing chart's names,
+// booleans to Sí/No.
+function labelFor(key: string, dim: DimPlan, source: SourceId): string {
   if (key === OTROS_KEY) return OTROS;
-  return dim.bucket ? bucketLabel(key, dim.bucket) : key;
+  if (dim.bucket) return bucketLabel(key, dim.bucket);
+  const related = /^(opportunity|contact)\.(.+)$/.exec(dim.spec.dimension);
+  const field = related ? related[2] : dim.spec.dimension;
+  const entity: EntityId | null = related ? (related[1] as EntityId) : source === "ads_daily" ? null : SOURCE_ENTITY[source];
+  if (field === "sourceCategory") return catLabel(key);
+  if (field === "dePauta" || field === "won") return key === "true" ? "Sí" : key === "false" ? "No" : key;
+  const translated = entity ? ENUM_LABELS_ES[`${entity}.${field}`]?.[key] : undefined;
+  return translated ? capitalize(translated) : key;
 }
 
 const TERMINAL_FUNNEL = ["Ganado", "Abandonado", "Perdido"];
@@ -546,7 +561,7 @@ export function groupAndMeasure(
   for (const [k0, rs] of byK0) k0Value.set(k0, METRICS[metrics[0]].compute(dedupe(rs), ctx));
   const dir = opts.sort.dir === "asc" ? 1 : -1;
   const rank0 = naturalRank(dims[0], source, ctx);
-  const cmpLabel = (a: string, b: string) => labelFor(a, dims[0]).localeCompare(labelFor(b, dims[0]), "es");
+  const cmpLabel = (a: string, b: string) => labelFor(a, dims[0], source).localeCompare(labelFor(b, dims[0], source), "es");
   const emptyLast = (a: string, b: string) =>
     opts.emptyLast === false ? 0 : (a === EMPTY_VALUE ? 1 : 0) - (b === EMPTY_VALUE ? 1 : 0);
   let k0Order = [...byK0.keys()].sort((a, b) => {
@@ -618,7 +633,7 @@ export function groupAndMeasure(
       const g = groups.get(key.join(KEY_SEP));
       if (!g) continue;
       const recs = dedupe(g.records);
-      rows.push({ key, label: key.map((k, i) => labelFor(k, dims[i])), values: measure(recs), records: recs });
+      rows.push({ key, label: key.map((k, i) => labelFor(k, dims[i], source)), values: measure(recs), records: recs });
     }
   }
   if (foldedIntoOtros > 0) {

@@ -21,6 +21,7 @@ import { format, formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import { SalesDashboard } from "@/components/dashboard/sales-dashboard"
 import { ConversationsChat } from "@/components/dashboard/conversations-chat"
+import { WidgetsDemo } from "@/components/widgets/widgets-demo"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { useConversationsData } from "@/hooks/use-conversations-data"
@@ -58,6 +59,9 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("marketing")
 
   useEffect(() => { setMounted(true) }, [])
+  // TEMPORARY (Task 17): ?widgets-demo=1 renders the widget gallery. Removed in Task 18.
+  const [widgetsDemo, setWidgetsDemo] = useState(false)
+  useEffect(() => { setWidgetsDemo(new URLSearchParams(window.location.search).has("widgets-demo")) }, [])
 
   useEffect(() => { document.title = TAB_TITLES[activeTab] }, [activeTab])
 
@@ -452,6 +456,7 @@ export default function DashboardPage() {
 
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
+        {widgetsDemo && data && <WidgetsDemo data={data} messages={messages} />}
         {activeTab === "marketing" && (
           <MarketingDashboard
             opportunities={opportunities}

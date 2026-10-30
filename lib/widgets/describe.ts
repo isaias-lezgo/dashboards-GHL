@@ -115,6 +115,32 @@ export function describeWidget(spec: WidgetSpec): string {
   return parts.join(" · ");
 }
 
+const capitalize = (t: string): string => (t ? t[0].toUpperCase() + t.slice(1) : t);
+
+/**
+ * The widget's OWN filters as short chips under its title: a fixed period
+ * ("Mes pasado · fijo"), own-field clauses, cross-object filters. Global filters
+ * are not here — they live in the panel's bar.
+ */
+export function describeFilterChips(spec: WidgetSpec): string[] {
+  const q = spec.query;
+  if (!q) return [];
+  const chips: string[] = [];
+  if (q.time.range !== "inherit") {
+    const period = q.time.range === "absolute" ? periodText({ ...q, time: { ...q.time, compare: "none" } }) : RANGE_LABELS[q.time.range];
+    chips.push(`${capitalize(period)} · fijo`);
+  }
+  const sourceEntity = q.source === "ads_daily" ? null : SOURCE_ENTITY[q.source];
+  for (const c of q.filters) chips.push(capitalize(clauseText(sourceEntity, c)));
+  for (const rf of q.relatedFilters) {
+    const noun = ENTITY_NOUNS[rf.entity];
+    const masc = rf.entity === "contact";
+    const cond = rf.conditions.length ? ` con ${clausesText(rf.entity, rf.conditions)}` : "";
+    chips.push(capitalize(rf.quantifier === "any" ? `con ${masc ? "algún" : "alguna"} ${noun}${cond}` : `sin ${masc ? "ningún" : "ninguna"} ${noun}${cond}`));
+  }
+  return chips;
+}
+
 /**
  * What the model sees of the panel on every turn, appended to the user's
  * message (never to `system`, which would bust the cached prefix). Ids are in
