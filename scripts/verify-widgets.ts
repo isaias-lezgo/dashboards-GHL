@@ -1271,6 +1271,21 @@ async function panelToolsSection(): Promise<void> {
     assert.deepEqual(h.doc.filters.defaultPipelines, ["p2"]);
   });
 
+  await checkAsync("set_panel_filters con defaultDate/defaultPipelines null conserva los predeterminados guardados", async () => {
+    const h = makePanelHarness(ctx);
+    const control = { kind: "field", entity: "opportunity", label: null, field: "assignedTo", defaultValues: [], clause: null, defaultOn: false };
+    await h.run("set_panel_filters", { defaultDate: "last_30d", defaultPipelines: ["p1"], controls: [] });
+    const res = await h.run("set_panel_filters", { defaultDate: null, defaultPipelines: null, controls: [control] });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(h.doc.filters.defaultDate, "last_30d");
+    assert.deepEqual(h.doc.filters.defaultPipelines, ["p1"]);
+    assert.equal(h.doc.filters.controls.length, 1);
+    const cleared = await h.run("set_panel_filters", { defaultDate: "all", defaultPipelines: [], controls: [control] });
+    assert.equal(cleared.ok, true);
+    assert.equal(h.doc.filters.defaultDate, "all");
+    assert.deepEqual(h.doc.filters.defaultPipelines, []);
+  });
+
   await checkAsync("set_panel_filters: un campo inexistente en un control → error con sugerencia", async () => {
     const h = makePanelHarness(ctx);
     const control = { kind: "field", entity: "contact", label: null, field: "cf:Origen", defaultValues: [], clause: null, defaultOn: false };

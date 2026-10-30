@@ -9,7 +9,7 @@
 // widget spec alone has 11 nullable fields and three tools carry it, so those
 // three are NOT strict — zod + validateWidget check them before any commit and
 // send the issues back as an is_error result. The rest are strict and add up to
-// 12 unions; scripts/verify-widgets.ts keeps that count under the cap.
+// 13 unions; scripts/verify-widgets.ts keeps that count under the cap.
 import type Anthropic from "@anthropic-ai/sdk";
 import { parseISO } from "date-fns";
 import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
@@ -157,8 +157,8 @@ export const PANEL_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       "SAVES the panel's global filters: the default date, the default pipelines (by NAME) and the added controls. Replaces the whole list — send the existing controls too (get_dashboard) when adding one. Use it when the user wants a filter to stay ('agrega un filtro de asesor', 'que siempre…'). The saved defaults are applied to the current view.",
     strict: true,
     input_schema: obj({
-      defaultDate: nullable(enumOf(RANGE_PRESETS, "Default date range. null = keep the bar's own default.")),
-      defaultPipelines: arr(str(), "Pipeline NAMES selected by default; [] = todos."),
+      defaultDate: nullable(enumOf(RANGE_PRESETS, "Default date range ('all' = todo el historial). null = keep the saved default as is.")),
+      defaultPipelines: nullable(arr(str(), "Pipeline NAMES selected by default; [] = todos. null = keep the saved default as is.")),
       controls: arr(CONTROL_SCHEMA, "Up to 8 controls."),
     }) as Anthropic.Tool.InputSchema,
   },
@@ -480,8 +480,10 @@ export async function executePanelTool(name: string, input: Record<string, unkno
     case "set_panel_filters": {
       const ctx = deps.engineCtx();
       const catalog = buildCatalog(ctx);
-      const pipes = pipelineIds(asArray<string>(input.defaultPipelines), ctx);
-      if ("error" in pipes) return pipes;
+      // null keeps what is saved: adding a control must not erase the client's
+      // default month or pipeline.
+      const pipes = Array.isArray(input.defaultPipelines) ? pipelineIds(input.defaultPipelines as string[], ctx) : null;
+      if (pipes && "error" in pipes) return pipes;
       const issues: ValidationIssue[] = [];
       const controls: Omit<FilterControl, "id">[] = [];
       asArray<Omit<FilterControl, "id" | "label"> & { label: string | null }>(input.controls).forEach((c, i) => {
@@ -499,11 +501,15 @@ export async function executePanelTool(name: string, input: Record<string, unkno
         }
       });
       if (issues.length) return invalid(issues, "Los filtros no se guardaron");
-      const defaultDate = (RANGE_PRESETS as readonly string[]).includes(input.defaultDate as string) ? (input.defaultDate as RangePreset) : null;
+      const newDate = (RANGE_PRESETS as readonly string[]).includes(input.defaultDate as string) ? (input.defaultDate as RangePreset) : null;
       let saved: PanelFilters | null = null;
       const res = await deps.commit(
         (d) => {
-          const next = setPanelFilters(d, { defaultDate, defaultPipelines: pipes.ids, controls }, deps.newId);
+          const next = setPanelFilters(
+            d,
+            { defaultDate: newDate ?? d.filters.defaultDate, defaultPipelines: pipes ? pipes.ids : [...d.filters.defaultPipelines], controls },
+            deps.newId
+          );
           saved = next.filters;
           return next;
         },
@@ -521,7 +527,8 @@ export async function executePanelTool(name: string, input: Record<string, unkno
         filters.controls.some((c) => c.kind === t.kind && c.entity === t.entity && (t.kind === "field" ? c.field === t.field : c.label === t.label));
       const next: PanelFilterState = {
         ...init,
-        date: defaultDate === null ? prev.date : init.date,
+        date: newDate === null ? prev.date : init.date,
+        pipelines: pipes ? init.pipelines : prev.pipelines,
         temporary: prev.temporary.filter((t) => !covered(t)),
       };
       deps.applyFilterState(next);
