@@ -80,6 +80,14 @@ const SEARCH_FIELDS: Record<EntityId, string[]> = {
 const ENTITY_ORDER: EntityId[] = ["opportunity", "contact", "appointment", "task", "pauta"];
 const MAX_CANDIDATES = 8;
 const OVERLAP_TOP = 4;
+/**
+ * Longer than this, a value is a note, not a category: lezgo-suite's
+ * "Comentarios de Negociación" turned every word of its sentences into a
+ * "reading" of the concept.
+ */
+const MAX_CATEGORY_LENGTH = 60;
+/** A reading below this share of the largest one's contacts is evidence, not a competing definition. */
+const RELEVANT_SHARE = 0.2;
 
 function labelOf(entity: EntityId, field: string): string {
   return ENTITY_FIELDS[entity].find((f) => f.field === field)?.label ?? fieldLabel(field);
@@ -99,9 +107,13 @@ export function resolveTerm(term: string, entityHint: EntityId | null, ctx: Engi
   const empty: TermResolution = { term, candidates: [], overlaps: [], unionContacts: 0, materiallyDifferent: false };
   if (roots.length === 0) return empty;
 
+  // Each root must START a word: "desactivar bot" is not "activo", while
+  // "pulso-activo" and "Prospecto Perdido" are.
   const matches = (text: string): boolean => {
     const n = normalizeTerm(text);
-    return n === normalized || roots.every((root) => n.includes(root));
+    if (n === normalized) return true;
+    const words = n.split(/[^a-z0-9ñ]+/);
+    return roots.every((root) => words.some((w) => w.startsWith(root)));
   };
 
   type Draft = Omit<TermCandidate, "records" | "contacts">;
@@ -115,7 +127,7 @@ export function resolveTerm(term: string, entityHint: EntityId | null, ctx: Engi
       const hit: string[] = [];
       let matched = "";
       for (const { value } of listFieldValues(entity, field, r)) {
-        if (value === EMPTY_VALUE || value === EMPTY_TAG) continue;
+        if (value === EMPTY_VALUE || value === EMPTY_TAG || value.length > MAX_CATEGORY_LENGTH) continue;
         const label = enumLabels[value];
         if (matches(value) || (label && matches(label))) {
           hit.push(value);
@@ -181,10 +193,14 @@ export function resolveTerm(term: string, entityHint: EntityId | null, ctx: Engi
   const union = new Set<string>();
   for (const s of orderedSets) for (const id of s) union.add(id);
 
-  const maxRecords = Math.max(0, ...ordered.map((c) => c.records));
-  const relevant = ordered
-    .map((c, i) => ({ c, set: orderedSets[i] }))
-    .filter(({ c }) => c.records >= 3 && c.records >= 0.05 * maxRecords);
+  // Only VALUE readings compete as definitions. A field merely NAMED after the
+  // concept ("Motivo de Perdido") describes those records — it stays in the
+  // evidence, but on lezgo-suite it alone made nested readings (stage ⊂ status,
+  // 398 of 419 contacts) look like a question worth asking.
+  const values = ordered.map((c, i) => ({ c, set: orderedSets[i] })).filter(({ c }) => c.kind === "value");
+  const pool = values.length ? values : ordered.map((c, i) => ({ c, set: orderedSets[i] }));
+  const maxContacts = Math.max(0, ...pool.map(({ c }) => c.contacts));
+  const relevant = pool.filter(({ c }) => c.records >= 3 && c.contacts >= RELEVANT_SHARE * maxContacts);
   let materiallyDifferent = false;
   for (let i = 0; i < relevant.length && !materiallyDifferent; i++) {
     for (let j = i + 1; j < relevant.length; j++) {

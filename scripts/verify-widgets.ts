@@ -891,6 +891,51 @@ function termsSection(): void {
     assert.deepEqual(resolveTerm("xyz123", null, ctx).candidates, []);
     assert.deepEqual(resolveTerm("pe", null, ctx).candidates, []);
   });
+
+  // Shapes measured on lezgo-suite (2026-10-30): "perdido" lives in the status
+  // (419 contacts), the stage "Prospecto Perdido" (398, all inside the first)
+  // and in custom fields NAMED after it ("Motivo de Perdido", filled on 235);
+  // the notes field matched words inside sentences; "desactivar bot" matched
+  // "activo".
+  const lezgoLike = (): EngineContext => {
+    const cs: Contact[] = [];
+    const os: Opportunity[] = [];
+    for (let i = 0; i < 20; i++) {
+      const motivo: Record<string, string> = i < 10 ? { "Motivo de Perdido": "Precio" } : {};
+      cs.push(mkContact(`z${i}`, { tags: i < 6 ? ["desactivar bot"] : i < 9 ? ["pulso-activo"] : [] }));
+      os.push(
+        mkOpp(`zo${i}`, `z${i}`, "V", i < 19 ? "Prospecto Perdido" : "Primera Cita", "2026-10-01T12:00:00Z", {
+          status: "lost",
+          customFieldsResolved: { ...motivo, "Comentarios de Negociación": i < 4 ? "Se dio por perdido porque el cliente no respondió a la propuesta del 8 de octubre." : "" },
+        })
+      );
+    }
+    for (let i = 0; i < 6; i++) {
+      cs.push(mkContact(`y${i}`));
+      os.push(mkOpp(`yo${i}`, `y${i}`, "V", "Primera Cita", "2026-10-01T12:00:00Z"));
+    }
+    const b = makeLostFixture();
+    return { ...b, dataset: { ...b.dataset, contacts: cs, opportunities: os }, pipelines: [{ id: "V", name: "Ventas", stages: ["Primera Cita", "Prospecto Perdido"] }] };
+  };
+
+  check("lecturas anidadas (etapa ⊂ estado) y campos que solo se LLAMAN como el concepto → no materiallyDifferent", () => {
+    const res = resolveTerm("perdido", null, lezgoLike());
+    assert.ok(has(res, "opportunity", "status", ["lost"]));
+    assert.ok(has(res, "opportunity", "stage", ["Prospecto Perdido"]));
+    assert.ok(res.candidates.some((c) => c.kind === "field_name" && c.field === "cf:Motivo de Perdido"), "el campo sigue como evidencia");
+    assert.equal(res.materiallyDifferent, false);
+  });
+
+  check("el texto libre (notas largas) no es una lectura", () => {
+    const res = resolveTerm("perdido", null, lezgoLike());
+    assert.equal(res.candidates.some((c) => c.field === "cf:Comentarios de Negociación"), false, JSON.stringify(res.candidates.map((c) => c.field)));
+  });
+
+  check("la raíz se busca al inicio de palabra: «desactivar bot» no es «activo», «pulso-activo» sí", () => {
+    const res = resolveTerm("activo", null, lezgoLike());
+    const tags = res.candidates.find((c) => c.field === "tags");
+    assert.deepEqual(tags?.values, ["pulso-activo"]);
+  });
 }
 
 function assistantSection(): void {
