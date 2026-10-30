@@ -32,6 +32,7 @@ import {
   resolveCtx,
   type EngineContext,
 } from "../lib/widgets/semantic";
+import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
 
 let currentSection = "";
 function section(name: string): void {
@@ -358,10 +359,46 @@ function semanticSection(): void {
   });
 }
 
+function metricsSection(): void {
+  section("metrics");
+  const { ctx } = makeFixture();
+  const r = resolveCtx(ctx);
+  const rows = (a: readonly object[]) => a as unknown as Record<string, unknown>[];
+  const mctx = (source: MetricCtx["source"], range: MetricCtx["range"] = null): MetricCtx => ({ ...r, source, range });
+  const opps = rows(ctx.dataset.opportunities);
+
+  check("won_count = 1 (o3 ganada por etapa); win_rate 0.25; won_value 1000", () => {
+    assert.equal(METRICS.won_count.compute(opps, mctx("opportunities")), 1);
+    assert.equal(METRICS.win_rate.compute(opps, mctx("opportunities")), 0.25);
+    assert.equal(METRICS.won_value.compute(opps, mctx("opportunities")), 1000);
+  });
+
+  check("show_rate de las 4 citas = 0.5", () => {
+    assert.equal(METRICS.show_rate.compute(rows(ctx.dataset.appointments), mctx("appointments")), 0.5);
+  });
+
+  check("leads_pauta_unique = 2 (p-a y p-c); leads_pauta_opps = 2 (o1, o2)", () => {
+    assert.equal(METRICS.leads_pauta_unique.compute(rows(ctx.dataset.pautas), mctx("pautas")), 2);
+    assert.equal(METRICS.leads_pauta_opps.compute(opps, mctx("opportunities")), 2);
+  });
+
+  check("appointment_rate con rango octubre = 0.5 (o1 y o2 tienen citas de c1)", () => {
+    const october = { from: new Date(2026, 9, 1, 0, 0, 0), to: new Date(2026, 9, 31, 23, 59, 59) };
+    assert.equal(METRICS.appointment_rate.compute(opps, mctx("opportunities", october)), 0.5);
+  });
+
+  check("razón con denominador 0 → null; metricAllowed respeta fuentes", () => {
+    assert.equal(METRICS.win_rate.compute([], mctx("opportunities")), null);
+    assert.equal(metricAllowed("show_rate", "opportunities"), false);
+    assert.equal(metricAllowed("show_rate", "appointments"), true);
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
   semanticSection();
+  metricsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
