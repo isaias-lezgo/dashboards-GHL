@@ -20,7 +20,8 @@
     "verify:oauth": "tsx --env-file-if-exists=.env.local scripts/verify-oauth.ts",
     "verify:sso": "tsx scripts/verify-sso.ts",
     "verify:installations": "tsx --env-file-if-exists=.env.local scripts/verify-installations.ts",
-    "verify:widgets": "tsx scripts/verify-widgets.ts"
+    "verify:widgets": "tsx scripts/verify-widgets.ts",
+    "check:widget-parity": "tsx --env-file-if-exists=.env.local scripts/check-widget-parity.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
