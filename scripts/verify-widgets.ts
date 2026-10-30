@@ -51,6 +51,8 @@ import {
   upsertTab,
   type OpMeta,
 } from "../lib/widgets/doc-ops";
+import { activeGlobalFilters, describeFilterState, initialFilterState, stateAsDefaults, staleValues } from "../lib/widgets/filter-state";
+import type { FilterControl, PanelFilters } from "../lib/widgets/spec";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
 import type { QuerySpec } from "../lib/widgets/spec";
 
@@ -994,6 +996,62 @@ function docOpsSection(): void {
   });
 }
 
+function filterStateSection(): void {
+  section("filter-state");
+  const now = new Date(2026, 9, 29, 12, 0, 0);
+  const asesor: FilterControl = { id: "c1", kind: "field", entity: "opportunity", label: "Asesor", field: "assignedTo", defaultValues: [], clause: null, defaultOn: false };
+  const perdidos: FilterControl = {
+    id: "c2", kind: "condition", entity: "opportunity", label: "Perdidos", field: null, defaultValues: [],
+    clause: { anyOf: [{ field: "status", op: "eq", values: ["lost"] }, { field: "stage", op: "in", values: ["Negocio Perdido"] }] }, defaultOn: false,
+  };
+  const filters: PanelFilters = { defaultDate: "last_30d", defaultPipelines: [], controls: [asesor, perdidos] };
+
+  check("initialFilterState: last_30d → preset month; last_month → custom desde el día 1 del mes anterior", () => {
+    assert.equal(initialFilterState(filters, now).date.preset, "month");
+    const lm = initialFilterState({ ...filters, defaultDate: "last_month" }, now).date;
+    assert.equal(lm.preset, "custom");
+    assert.equal(lm.from?.getDate(), 1);
+    assert.equal(lm.from?.getMonth(), 8);
+  });
+
+  check("activeGlobalFilters: omite vacíos y apagados; incluye temporales; la condición aporta su cláusula intacta", () => {
+    const base = initialFilterState(filters, now);
+    assert.deepEqual(activeGlobalFilters(base, filters), []);
+    const state = {
+      ...base,
+      values: { c1: ["Ana"] },
+      on: { c2: true },
+      temporary: [{ kind: "field" as const, entity: "contact" as const, label: "Fuente", field: "source", defaultValues: ["Meta"], clause: null, defaultOn: false }],
+    };
+    const active = activeGlobalFilters(state, filters);
+    assert.equal(active.length, 3);
+    assert.deepEqual(active[0].clause, { anyOf: [{ field: "assignedTo", op: "in", values: ["Ana"] }] });
+    assert.deepEqual(active[1].clause, perdidos.clause);
+    assert.equal(active[2].entity, "contact");
+  });
+
+  check("stateAsDefaults convierte un temporal en control con sus valores", () => {
+    const state = { ...initialFilterState(filters, now), temporary: [{ kind: "field" as const, entity: "contact" as const, label: "Fuente", field: "source", defaultValues: ["Meta"], clause: null, defaultOn: false }] };
+    const saved = stateAsDefaults(state, filters);
+    const fuente = saved.controls.find((c) => c.label === "Fuente");
+    assert.ok(fuente);
+    assert.deepEqual(fuente!.defaultValues, ["Meta"]);
+    assert.equal(saved.controls.length, 3);
+  });
+
+  check("describeFilterState marca los temporales", () => {
+    const state = { ...initialFilterState(filters, now), temporary: [{ kind: "field" as const, entity: "opportunity" as const, label: "Asesor", field: "assignedTo", defaultValues: ["Ana"], clause: null, defaultOn: false }] };
+    assert.ok(describeFilterState(state, { ...filters, controls: [] }, []).includes("Asesor = Ana (temporal)"));
+  });
+
+  check("staleValues: un predeterminado que ya no existe en los datos", () => {
+    const { ctx } = makeFixture();
+    const withAna = { ...filters, controls: [{ ...asesor, defaultValues: ["Ana"] }] };
+    const state = initialFilterState(withAna, now);
+    assert.deepEqual(staleValues(state, withAna, resolveCtx(ctx)), { c1: ["Ana"] });
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -1008,6 +1066,7 @@ function main(): void {
   termsSection();
   assistantSection();
   docOpsSection();
+  filterStateSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import Image from "next/image"
 import { useTheme } from "next-themes"
 import { AnimatePresence } from "framer-motion"
@@ -24,7 +24,13 @@ import { ConversationsChat } from "@/components/dashboard/conversations-chat"
 import { PanelTabs, EMPTY_TAB_ID } from "@/components/widgets/panel-tabs"
 import { WidgetGrid } from "@/components/widgets/widget-grid"
 import { useDashboardDoc, type CommitResult } from "@/hooks/use-dashboard-doc"
-import { deleteTab, deleteWidgets, findWidget, randomId, upsertTab } from "@/lib/widgets/doc-ops"
+import { deleteTab, deleteWidgets, findWidget, randomId, updateWidget, upsertTab } from "@/lib/widgets/doc-ops"
+import { usePanelFilters } from "@/hooks/use-panel-filters"
+import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
+import { WidgetFilterEditor } from "@/components/widgets/widget-filter-editor"
+import { activeGlobalFilters } from "@/lib/widgets/filter-state"
+import { buildCatalog, validateWidget } from "@/lib/widgets/validate"
+import { widgetSpecObject, widgetSpecSchema, type WidgetSpec } from "@/lib/widgets/spec"
 import type { EngineContext } from "@/lib/widgets/semantic"
 import { toast } from "sonner"
 import { LoadingScreen } from "@/components/dashboard/loading-screen"
@@ -164,7 +170,14 @@ export default function DashboardPage() {
   const autoScopedRef = useRef(false)
   const [autoScoped, setAutoScoped] = useState(false)
   useEffect(() => {
-    if (autoScopedRef.current || !data) return
+    // Wait until we know whether the AI panel is on: a panel with a saved
+    // default date owns the initial date filter, and the auto-scope must not
+    // overwrite it.
+    if (autoScopedRef.current || !data || docApi.enabled === null) return
+    if (docApi.enabled && docApi.doc?.filters.defaultDate != null) {
+      autoScopedRef.current = true
+      return
+    }
     autoScopedRef.current = true
     if (
       isLargeDataset({
@@ -175,7 +188,7 @@ export default function DashboardPage() {
       setDateFilter({ preset: "month" })
       setAutoScoped(true)
     }
-  }, [data])
+  }, [data, docApi.enabled, docApi.doc])
 
   // Human label of the active date filter, for the PDF report cover.
   const periodLabel = useMemo(() => {
@@ -311,6 +324,23 @@ export default function DashboardPage() {
   // against everything) and applies the panel's filters itself. `now` moves once
   // a minute so relative ranges ("últimos 30 días") stay current.
   const nowMinute = Math.floor(Date.now() / 60_000)
+  const panelNow = useMemo(() => new Date(nowMinute * 60_000), [nowMinute])
+  const setDateFromPanel = useCallback((next: DateFilter) => {
+    setAutoScoped(false)
+    setDateFilter(next)
+  }, [])
+  const panelFilters = usePanelFilters({
+    docApi,
+    now: panelNow,
+    date: dateFilter,
+    setDate: setDateFromPanel,
+    pipelines: pipelineFilter,
+    setPipelines: setPipelineFilter,
+  })
+  const globalFilters = useMemo(
+    () => (panelEnabled && docApi.doc ? activeGlobalFilters(panelFilters.state, docApi.doc.filters) : []),
+    [panelEnabled, docApi.doc, panelFilters.state]
+  )
   const engineCtx: EngineContext = useMemo(
     () => ({
       dataset: {
@@ -326,11 +356,33 @@ export default function DashboardPage() {
       ads: data?.ads,
       dateRange,
       pipelineFilter,
-      globalFilters: [],
-      now: new Date(nowMinute * 60_000),
+      globalFilters,
+      now: panelNow,
     }),
-    [data, messages, allPipelines, dateRange, pipelineFilter, nowMinute]
+    [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow]
   )
+
+  // "Filtros y fechas" of one widget: same validation as the AI's edits.
+  const [filterEditorId, setFilterEditorId] = useState<string | null>(null)
+  const filterEditorWidget = docApi.doc && filterEditorId ? findWidget(docApi.doc, filterEditorId)?.widget ?? null : null
+  const saveWidgetFilters = async (spec: WidgetSpec) => {
+    const clean = Object.fromEntries(Object.keys(widgetSpecObject.shape).map((k) => [k, spec[k as keyof WidgetSpec]])) as unknown as WidgetSpec
+    const shape = widgetSpecSchema.safeParse(clean)
+    const issues = shape.success ? validateWidget(clean, buildCatalog(engineCtx)) : [{ message: shape.error.issues[0]?.message ?? "Filtro inválido" }]
+    if (issues.length) {
+      toast.error(issues[0].message)
+      return
+    }
+    const id = filterEditorId!
+    setFilterEditorId(null)
+    const res = await docApi.commit(
+      (d) => updateWidget(d, id, clean, { now: new Date().toISOString(), by: "user", id: randomId }),
+      `Cambió los filtros de «${clean.title}»`,
+      "user"
+    )
+    if (res.ok) toast(`Filtros de «${clean.title}» guardados`, { duration: UNDO_TOAST_MS, action: { label: "Deshacer", onClick: () => void undoChange() } })
+    else reportFailure(res)
+  }
 
   const reportFailure = (res: CommitResult) => {
     if (!res.ok) toast.error(res.message)
@@ -563,22 +615,36 @@ export default function DashboardPage() {
             onChange={setPipelineFilter}
             counts={pipelineCounts}
           />
+          {/* The added controls apply to the panel's own tabs; Marketing and
+              Ventas keep receiving only date and pipeline, as today. */}
+          {panelEnabled && docApi.doc && !FIXED_TABS.has(activeTab) && (
+            <>
+              <FilterDivider />
+              <PanelFilterBar ctx={engineCtx} filters={docApi.doc.filters} api={panelFilters} now={panelNow} onUndo={() => void undoChange()} />
+            </>
+          )}
         </FilterBar>
       )}
 
       {/* Dashboard Content */}
       <div className="flex-1 pt-2 pb-6">
-        {panelEnabled && activeDocTab && (
+        {/* Until the dataset lands, a widget would compute over empty arrays and
+            show 0 — a number the data never said. */}
+        {panelEnabled && activeDocTab && !data && (
+          <p className="px-6 py-10 text-center text-sm text-muted-foreground">Cargando datos…</p>
+        )}
+        {panelEnabled && activeDocTab && data && (
           <WidgetGrid
             tab={activeDocTab}
             ctx={engineCtx}
             selectedWidgetId={selectedWidgetId}
             onSelect={setSelectedWidgetId}
             onEditWithAi={(id) => setSelectedWidgetId(id)}
-            onEditFilters={(id) => setSelectedWidgetId(id)}
+            onEditFilters={(id) => setFilterEditorId(id)}
             onDelete={removeWidget}
           />
         )}
+        <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />
         {panelEnabled && activeTab === EMPTY_TAB_ID && (
           <div className="mx-4 mt-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center sm:mx-6">
             <p className="text-sm font-medium text-foreground">Tu panel está vacío</p>

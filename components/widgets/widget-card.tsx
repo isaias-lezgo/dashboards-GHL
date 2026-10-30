@@ -116,8 +116,18 @@ export function WidgetCard({
         </Notice>
       )
     }
-    const empty = widget.viz === "kpi" ? false : widget.viz === "record_list" ? meta.recordCount === 0 : result.rows.every((r) => r.records.length === 0 && (r.values[0] ?? 0) === 0)
-    if (empty) return <ChartEmpty message="Sin datos para este periodo." height={Math.min(height, 160)} />
+    const filtered = ctx.globalFilters.length > 0 || ctx.pipelineFilter.length > 0 || !!widget.query?.filters.length || !!widget.query?.relatedFilters.length
+    // A KPI of 0 with no filter is a real answer; under a filter that matches
+    // nothing it would read as a fact the data never stated.
+    const empty =
+      widget.viz === "kpi"
+        ? filtered && meta.recordCount === 0 && widget.query?.source !== "ads_daily"
+        : widget.viz === "record_list"
+          ? meta.recordCount === 0
+          : result.rows.every((r) => r.records.length === 0 && (r.values[0] ?? 0) === 0)
+    if (empty) {
+      return <ChartEmpty message={filtered ? "Sin datos para este filtro." : "Sin datos para este periodo."} height={Math.min(height, 160)} />
+    }
     const props: VizProps = {
       result,
       widget,

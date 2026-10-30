@@ -53,6 +53,9 @@ function clauseText(entity: EntityId | null, c: FilterClause): string {
   return parts.length > 1 ? `(${parts.join(" o ")})` : parts[0];
 }
 
+/** One clause in words: conditions joined with "o", wrapped in parentheses when there are several. */
+export const describeClause = (entity: EntityId | null, c: FilterClause): string => clauseText(entity, c);
+
 function clausesText(entity: EntityId | null, clauses: FilterClause[]): string {
   return clauses.map((c) => clauseText(entity, c)).join(" y ");
 }
