@@ -51,6 +51,7 @@ import {
   upsertTab,
   type OpMeta,
 } from "../lib/widgets/doc-ops";
+import { buildSuggestions } from "../lib/widgets/suggestions";
 import { activeGlobalFilters, describeFilterState, initialFilterState, stateAsDefaults, staleValues } from "../lib/widgets/filter-state";
 import type { FilterControl, PanelFilters } from "../lib/widgets/spec";
 import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
@@ -1052,6 +1053,40 @@ function filterStateSection(): void {
   });
 }
 
+function suggestionsSection(): void {
+  section("suggestions");
+  const connected: AdsReport = { status: "connected", currency: "MXN", from: "2026-10-01", to: "2026-10-10", daily: [] };
+  const hasCuesta = (ctx: EngineContext) => buildSuggestions(ctx).some((s) => /cuesta/i.test(s.label));
+
+  check("sin Meta no se ofrece «cuánto me cuesta»; con Meta conectado sí", () => {
+    assert.equal(hasCuesta(makeFixture().ctx), false);
+    assert.equal(hasCuesta(makeFixture({ ads: { ...connected, status: "disconnected" } }).ctx), false);
+    assert.equal(hasCuesta(makeFixture({ ads: connected }).ctx), true);
+  });
+
+  check("sin citas no se ofrece «Citas por etapa»", () => {
+    const base = makeFixture().ctx;
+    const noAppts: EngineContext = { ...base, dataset: { ...base.dataset, appointments: [] } };
+    assert.ok(buildSuggestions(base).some((s) => /citas por etapa/i.test(s.label)));
+    assert.equal(buildSuggestions(noAppts).some((s) => /citas/i.test(s.label)), false);
+  });
+
+  check("entre 4 y 6 sugerencias, cada una con su texto para la IA, deterministas", () => {
+    const ctx = makeFixture().ctx;
+    const out = buildSuggestions(ctx);
+    assert.ok(out.length >= 4 && out.length <= 6, `${out.length}`);
+    for (const s of out) assert.ok(s.label.length > 0 && s.prompt.length > s.label.length / 2, s.label);
+    assert.deepEqual(buildSuggestions(ctx), out);
+    assert.ok(buildSuggestions(makeFixture({ ads: connected }).ctx).length <= 6);
+  });
+
+  check("una cuenta vacía no recibe sugerencias que no puede responder", () => {
+    const base = makeFixture().ctx;
+    const empty: EngineContext = { ...base, dataset: { ...base.dataset, contacts: [], opportunities: [], appointments: [], pautas: [] } };
+    assert.deepEqual(buildSuggestions(empty).filter((s) => /cita|venta|embudo|pauta/i.test(s.label)), []);
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -1067,6 +1102,7 @@ function main(): void {
   assistantSection();
   docOpsSection();
   filterStateSection();
+  suggestionsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 

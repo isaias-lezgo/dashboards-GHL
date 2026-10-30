@@ -28,6 +28,8 @@ import { deleteTab, deleteWidgets, findWidget, randomId, updateWidget, upsertTab
 import { usePanelFilters } from "@/hooks/use-panel-filters"
 import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
 import { WidgetFilterEditor } from "@/components/widgets/widget-filter-editor"
+import { EmptyPanel } from "@/components/widgets/empty-panel"
+import { buildSuggestions } from "@/lib/widgets/suggestions"
 import { activeGlobalFilters } from "@/lib/widgets/filter-state"
 import { buildCatalog, validateWidget } from "@/lib/widgets/validate"
 import { widgetSpecObject, widgetSpecSchema, type WidgetSpec } from "@/lib/widgets/spec"
@@ -85,6 +87,8 @@ export default function DashboardPage() {
   const panelEnabled = docApi.enabled === true
   const docTabs = useMemo(() => docApi.doc?.tabs ?? [], [docApi.doc])
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
+  // What the empty panel (and, later, ✨) hands to the copilot.
+  const [copilotPrompt, setCopilotPrompt] = useState<string | null>(null)
 
   // Land on the panel once, when it first loads: its first tab, or the empty
   // panel. After that the tab belongs to the user.
@@ -360,6 +364,13 @@ export default function DashboardPage() {
       now: panelNow,
     }),
     [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow]
+  )
+
+  // Computed over the whole account, not the filtered slice: a suggestion is a
+  // promise about what the data can answer, whatever the date picker says.
+  const suggestions = useMemo(
+    () => (data ? buildSuggestions({ ...engineCtx, dateRange: null, pipelineFilter: [], globalFilters: [] }) : []),
+    [data, engineCtx]
   )
 
   // "Filtros y fechas" of one widget: same validation as the AI's edits.
@@ -646,9 +657,7 @@ export default function DashboardPage() {
         )}
         <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />
         {panelEnabled && activeTab === EMPTY_TAB_ID && (
-          <div className="mx-4 mt-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center sm:mx-6">
-            <p className="text-sm font-medium text-foreground">Tu panel está vacío</p>
-          </div>
+          <EmptyPanel suggestions={suggestions} onSubmit={setCopilotPrompt} />
         )}
         {activeTab === "marketing" && (
           <MarketingDashboard
