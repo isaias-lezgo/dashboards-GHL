@@ -33,6 +33,9 @@ import {
   type EngineContext,
 } from "../lib/widgets/semantic";
 import { METRICS, metricAllowed, type MetricCtx } from "../lib/widgets/metrics";
+import { runQuery, type QueryResult } from "../lib/widgets/engine";
+import { QueryError, type ActiveGlobalFilter } from "../lib/widgets/semantic";
+import type { QuerySpec } from "../lib/widgets/spec";
 
 let currentSection = "";
 function section(name: string): void {
@@ -282,7 +285,7 @@ function makeFixture(overrides: Partial<EngineContext> = {}): Fixture {
     o1: mkOpp("o1", "c1", "p1", "Primera Cita", "2026-09-01T12:00:00Z"),
     o2: mkOpp("o2", "c1", "p2", "Propuesta", "2026-10-01T12:00:00Z"),
     o3: mkOpp("o3", "c2", "p1", "Negocio Ganado", "2026-10-05T12:00:00Z", { value: 1000, closedAt: "2026-10-06T12:00:00Z" }),
-    o4: mkOpp("o4", "c3", "p1", "Primera Cita", "2026-10-10T12:00:00Z", { status: "lost", lostReason: "Precio" }),
+    o4: mkOpp("o4", "c3", "p1", "Seguimiento", "2026-10-10T12:00:00Z", { status: "lost", lostReason: "Precio" }),
   };
   const pautas: Pauta[] = [
     { id: "p-a", tipo: "", nombrePauta: "", createdAt: "2026-09-01T12:00:00Z", contactId: "c1" },
@@ -394,11 +397,190 @@ function metricsSection(): void {
   });
 }
 
+// A query with sensible defaults; tests override only what they exercise.
+function q(over: Partial<QuerySpec>): QuerySpec {
+  return {
+    source: "opportunities",
+    metrics: [{ metric: "count", label: null }],
+    groupBy: [],
+    filters: [],
+    relatedFilters: [],
+    time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "none" },
+    globalFilters: "inherit",
+    sort: { by: "value", dir: "desc" },
+    limit: null,
+    ...over,
+  };
+}
+const dim = (dimension: string, bucket: QuerySpec["groupBy"][number]["bucket"] = null, join: QuerySpec["groupBy"][number]["join"] = null) => ({ dimension, bucket, join });
+const byLabel = (res: QueryResult, metric = 0): Record<string, number | null> =>
+  Object.fromEntries(res.rows.map((r) => [r.label.join(" · "), r.values[metric]]));
+const ids = (res: QueryResult): string[] => res.rows.flatMap((r) => r.records.map((x) => String(x.id))).sort();
+
+// Cross-object fixture: what "perdido" means is NOT known to the engine — each
+// reading is just a clause.
+function makeLostFixture(): EngineContext {
+  const k = ["k1", "k2", "k3", "k4"].map((id) => mkContact(id));
+  const opps = [
+    mkOpp("q1", "k1", "A", "Calificado", "2026-10-01T12:00:00Z", { status: "lost" }),
+    mkOpp("q2", "k1", "B", "Propuesta", "2026-10-02T12:00:00Z"),
+    mkOpp("q3", "k2", "A", "Negocio Perdido", "2026-10-03T12:00:00Z", { assignedTo: "Ana" }),
+    mkOpp("q4", "k3", "A", "Propuesta", "2026-10-04T12:00:00Z"),
+  ];
+  return {
+    dataset: {
+      contacts: k,
+      opportunities: opps,
+      pautas: [{ id: "px", tipo: "", nombrePauta: "", createdAt: "2026-10-05T12:00:00Z" }],
+      appointments: [],
+      messages: [],
+      tasks: [],
+      calls: [],
+    },
+    pipelines: [
+      { id: "A", name: "A", stages: ["Calificado", "Propuesta", "Negocio Perdido"] },
+      { id: "B", name: "B", stages: ["Propuesta"] },
+    ],
+    ads: undefined,
+    dateRange: null,
+    pipelineFilter: [],
+    globalFilters: [],
+    now: new Date(2026, 9, 29, 12, 0, 0),
+  };
+}
+
+function engineSection(): void {
+  section("engine");
+  const { ctx } = makeFixture();
+
+  check("funnelState con orden natural", () => {
+    const res = runQuery(q({ groupBy: [dim("funnelState")], sort: { by: "natural", dir: "asc" } }), ctx);
+    assert.deepEqual(res.rows.map((r) => r.label[0]), ["Primera Cita", "Propuesta", "Ganado", "Perdido"]);
+  });
+
+  check("buckets por mes con rango all", () => {
+    const res = runQuery(q({ groupBy: [dim("createdAt", "month")], sort: { by: "natural", dir: "asc" }, time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" } }), ctx);
+    assert.deepEqual(res.rows.map((r) => [r.key[0], r.values[0]]), [["2026-09", 1], ["2026-10", 3]]);
+  });
+
+  check("last_30d → 3 oportunidades (o2, o3, o4)", () => {
+    const res = runQuery(q({ time: { field: "createdAt", range: "last_30d", from: null, to: null, compare: "none" } }), ctx);
+    assert.equal(res.meta.recordCount, 3);
+  });
+
+  check("fecha secundaria closedAt: last_30d → solo o3; all → las 4", () => {
+    const last30 = runQuery(q({ time: { field: "closedAt", range: "last_30d", from: null, to: null, compare: "none" } }), ctx);
+    assert.deepEqual(ids(last30), ["o3"]);
+    const all = runQuery(q({ time: { field: "closedAt", range: "all", from: null, to: null, compare: "none" } }), ctx);
+    assert.equal(all.meta.recordCount, 4);
+  });
+
+  check("limit 2 con plegado: 3 filas, la última Otros, 2 grupos plegados; razón recalculada", () => {
+    const res = runQuery(q({ groupBy: [dim("stage")], metrics: [{ metric: "count", label: null }, { metric: "win_rate", label: null }], limit: 2 }), ctx);
+    assert.equal(res.rows.length, 3);
+    const otros = res.rows[2];
+    assert.equal(otros.label[0], "Otros");
+    assert.equal(res.meta.foldedIntoOtros, 2);
+    assert.equal(otros.values[1], METRICS.win_rate.compute(otros.records, { ...resolveCtx(ctx), source: "opportunities", range: null }));
+  });
+
+  check("pipeline p2 sobre citas → solo citas de c1", () => {
+    const res = runQuery(q({ source: "appointments", groupBy: [dim("status")], time: { field: "startTime", range: "inherit", from: null, to: null, compare: "none" } }), { ...ctx, pipelineFilter: ["p2"] });
+    assert.deepEqual(ids(res), ["a1", "a2", "a3"]);
+  });
+
+  const lost = makeLostFixture();
+  const contactsWith = (related: QuerySpec["relatedFilters"], over: Partial<EngineContext> = {}) =>
+    ids(runQuery(q({ source: "contacts", relatedFilters: related }), { ...lost, ...over }));
+  const byStatus = { anyOf: [{ field: "status", op: "eq" as const, values: ["lost"] }] };
+  const byStage = { anyOf: [{ field: "stage", op: "in" as const, values: ["Negocio Perdido"] }] };
+  const either = { anyOf: [...byStatus.anyOf, ...byStage.anyOf] };
+
+  check("contactos con negocio perdido: cada lectura es solo una cláusula", () => {
+    assert.deepEqual(contactsWith([{ entity: "opportunity", quantifier: "any", conditions: [byStatus] }]), ["k1"]);
+    assert.deepEqual(contactsWith([{ entity: "opportunity", quantifier: "any", conditions: [byStage] }]), ["k2"]);
+    assert.deepEqual(contactsWith([{ entity: "opportunity", quantifier: "any", conditions: [either] }]), ["k1", "k2"]);
+  });
+
+  check("quantifier none → contactos sin oportunidad perdida (k3, k4)", () => {
+    assert.deepEqual(contactsWith([{ entity: "opportunity", quantifier: "none", conditions: [either] }]), ["k3", "k4"]);
+  });
+
+  check("las cláusulas se cumplen en el MISMO registro relacionado", () => {
+    const inB = { anyOf: [{ field: "pipelineName", op: "eq" as const, values: ["B"] }] };
+    assert.deepEqual(contactsWith([{ entity: "opportunity", quantifier: "any", conditions: [byStatus, inB] }]), []);
+  });
+
+  const ana: ActiveGlobalFilter = { entity: "opportunity", label: "Asesor", clause: { anyOf: [{ field: "assignedTo", op: "in", values: ["Ana"] }] } };
+
+  check("global de asesor sobre contactos → solo k2; con ignore no aplica", () => {
+    assert.deepEqual(ids(runQuery(q({ source: "contacts" }), { ...lost, globalFilters: [ana] })), ["k2"]);
+    assert.equal(runQuery(q({ source: "contacts", globalFilters: "ignore" }), { ...lost, globalFilters: [ana] }).meta.recordCount, 4);
+  });
+
+  check("el filtro propio del widget gana sobre el global del mismo campo", () => {
+    const res = runQuery(
+      q({ filters: [{ anyOf: [{ field: "pipelineName", op: "eq", values: ["B"] }] }] }),
+      { ...lost, pipelineFilter: ["A"] }
+    );
+    assert.deepEqual(ids(res), ["q2"]);
+    assert.ok(res.meta.overriddenGlobals.includes("pipeline"));
+  });
+
+  check("filas sin contacto se excluyen con un filtro entre objetos activo", () => {
+    const res = runQuery(q({ source: "pautas", relatedFilters: [{ entity: "opportunity", quantifier: "none", conditions: [] }], time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" } }), lost);
+    assert.equal(res.meta.recordCount, 0);
+  });
+
+  check("un campo personalizado borrado lanza QueryError unknown_field", () => {
+    assert.throws(
+      () => runQuery(q({ source: "contacts", filters: [{ anyOf: [{ field: "cf:Campo Borrado", op: "in", values: ["x"] }] }] }), ctx),
+      (err: unknown) => err instanceof QueryError && err.code === "unknown_field"
+    );
+  });
+
+  check("bucket diario sobre años sube a semana con una advertencia", () => {
+    const contacts: Contact[] = [];
+    for (let d = new Date(2023, 0, 1, 12); d <= new Date(2026, 9, 29, 12); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 12)) {
+      contacts.push(mkContact(`s${contacts.length}`, { createdAt: d.toISOString() }));
+    }
+    const big = { ...ctx, dataset: { ...ctx.dataset, contacts } };
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "day")], sort: { by: "natural", dir: "asc" }, time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" } }), big);
+    assert.equal(res.meta.bucketUsed, "week");
+    assert.ok(res.rows.length <= 366);
+    assert.equal(res.meta.warnings.length, 1);
+  });
+
+  check("un mes sin oportunidades dentro del rango: win_rate null, conteo 0", () => {
+    const res = runQuery(
+      q({ groupBy: [dim("createdAt", "month")], metrics: [{ metric: "count", label: null }, { metric: "win_rate", label: null }], sort: { by: "natural", dir: "asc" }, time: { field: "createdAt", range: "absolute", from: "2026-08-01", to: "2026-10-31", compare: "none" } }),
+      ctx
+    );
+    const aug = res.rows.find((r) => r.key[0] === "2026-08")!;
+    assert.equal(aug.values[0], 0);
+    assert.equal(aug.values[1], null);
+  });
+
+  check("citas fuera de ±90 días → advertencia; last_30d → sin ella", () => {
+    const wide = runQuery(q({ source: "appointments", time: { field: "startTime", range: "absolute", from: "2026-01-01", to: "2026-10-29", compare: "none" } }), ctx);
+    assert.ok(wide.meta.warnings.some((w) => w.includes("solo cubren 90 días")));
+    const narrow = runQuery(q({ source: "appointments", time: { field: "startTime", range: "last_30d", from: null, to: null, compare: "none" } }), ctx);
+    assert.ok(!narrow.meta.warnings.some((w) => w.includes("solo cubren 90 días")));
+  });
+
+  check("byLabel helper sanity (sin grupos → una fila con los totales)", () => {
+    const res = runQuery(q({}), ctx);
+    assert.equal(res.rows.length, 1);
+    assert.deepEqual(byLabel(res), { "": 4 });
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
   semanticSection();
   metricsSection();
+  engineSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
