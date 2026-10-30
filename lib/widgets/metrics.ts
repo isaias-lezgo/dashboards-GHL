@@ -12,7 +12,6 @@ import { isDePauta } from "@/lib/pauta";
 import { costPer, sumAdDays } from "@/lib/ads";
 import type { MetricId, SourceId } from "./spec";
 import {
-  QueryError,
   SOURCE_DEFS,
   contactsMatchingRelated,
   matchesClause,
@@ -25,6 +24,14 @@ export interface MetricCtx extends ResolvedCtx {
   /** The widget's resolved date range (null = whole history). */
   range: ResolvedDateRange | null;
   source: SourceId;
+  /** ads_daily only: de-pauta lead days inside the clipped window (lib/widgets/ads-metrics.ts). */
+  adsLeadDays?: string[];
+  /**
+   * ads_daily only: the days whose leads a set of rows is divided by — the whole
+   * window for the total, the bucket clipped to the window for a bucket. Meta
+   * may omit days with no delivery, so the span cannot be read off the rows.
+   */
+  adsLeadSpan?: (rows: Row[]) => { from: string; to: string } | null;
 }
 
 export interface MetricDef {
@@ -233,8 +240,16 @@ export const METRICS: Record<MetricId, MetricDef> = {
     label: "Costo por lead (leads = oportunidades de pauta)",
     sources: ["ads_daily"],
     kind: "amount",
-    compute: () => {
-      throw new QueryError("unsupported", "El costo por lead se calcula con el recorte de ventana de Meta (lib/widgets/ads-metrics.ts)");
+    // Spend over CRM leads (de-pauta opportunities), never Meta's own lead
+    // count: Meta's action types overlap and their meaning depends on the
+    // objective. A bucket with no spend rows has no CPL (not an infinitely
+    // efficient one), and a bucket with spend but no leads has none either.
+    compute: (rows, ctx) => {
+      if (rows.length === 0) return null;
+      const span = ctx.adsLeadSpan?.(rows);
+      if (!span || !ctx.adsLeadDays) return null;
+      const leads = ctx.adsLeadDays.filter((d) => d >= span.from && d <= span.to).length;
+      return costPer(adsTotals(rows).spend, leads);
     },
   },
 };

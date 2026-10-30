@@ -35,6 +35,7 @@ import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelin
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
 import { DOC_LIMITS, SOURCE_ENTITY, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
+import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
 import {
   ENTITY_SOURCE,
   EMPTY_VALUE,
@@ -145,9 +146,13 @@ export function resolveWidgetRange(time: TimeSpec, ctx: EngineContext): Resolved
 const dayKey = (d: Date): string => format(d, "yyyy-MM-dd");
 const rangeKeys = (r: ResolvedDateRange | null) => (r ? { from: dayKey(r.from), to: dayKey(r.to) } : null);
 
+// A bare "YYYY-MM-DD" (Meta's ad days) is a LOCAL calendar day; `new Date()`
+// would read it as UTC midnight and push it into the previous day west of UTC.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 function toDate(v: unknown): Date | null {
   if (typeof v !== "string" || !v) return null;
-  const d = new Date(v);
+  const d = DATE_ONLY.test(v) ? parseISO(v) : new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -623,11 +628,92 @@ export function groupAndMeasure(
 const APPT_WINDOW_DAYS = 90;
 const APPT_WARNING = "Las citas solo cubren 90 días hacia atrás y 90 hacia adelante; fuera de eso no hay datos.";
 
+// Bucket bounds (YYYY-MM-DD) containing a day, for the CPL lead span.
+function bucketBounds(day: string, b: Bucket): { from: string; to: string } {
+  const d = parseISO(day);
+  switch (b) {
+    case "week":
+      return { from: dayKey(startOfISOWeek(d)), to: dayKey(endOfWeek(d, { weekStartsOn: 1 })) };
+    case "month":
+      return { from: dayKey(startOfMonth(d)), to: dayKey(endOfMonth(d)) };
+    case "quarter":
+      return { from: dayKey(startOfQuarter(d)), to: dayKey(endOfQuarter(d)) };
+    default:
+      return { from: day, to: day };
+  }
+}
+
+/**
+ * Meta spend rows never go through the CRM filters — no own filters, no
+ * cross-object filters, no pipeline, no global controls. The window replaces the
+ * date filter, and a non-connected account is a state with no numbers at all.
+ */
+function runAdsQuery(q: QuerySpec, ctx: EngineContext, r: ResolvedCtx, range: ResolvedDateRange | null): QueryResult {
+  const ads = adsRowsFor(r, range);
+  const metricIds = q.metrics.map((m) => m.metric);
+  const baseMeta: QueryMeta = {
+    source: q.source,
+    recordCount: ads.rows.length,
+    range: ads.window,
+    bucketUsed: null,
+    foldedIntoOtros: 0,
+    seriesFolded: 0,
+    fanOut: false,
+    crmFiltersIgnored: true,
+    overriddenGlobals: [],
+    warnings: [],
+    adsStatus: ads.status,
+    adsMessage: ads.message,
+  };
+  if (ads.status !== "connected" || !ads.window) {
+    return { rows: [], totals: metricIds.map(() => null), compare: null, meta: baseMeta };
+  }
+  const window = ads.window;
+  const rows = ads.rows as unknown as Row[];
+  const windowRange: ResolvedDateRange = { from: startOfDay(parseISO(window.from)), to: endOfDay(parseISO(window.to)) };
+  const leadDays = pautaLeadDays(r, window);
+
+  // Size the date bucket first so the lead span uses the same bucket the bars do.
+  const planned = planDims(rows, q.source, q.groupBy, windowRange);
+  const bucket = planned.bucketUsed;
+  if (bucket === "weekday" || bucket === "hour") {
+    throw new QueryError("invalid", "El gasto de Meta solo se agrupa por día, semana, mes o trimestre");
+  }
+  const groupBy = q.groupBy.map((g, i) => (i === 0 && bucket ? { ...g, bucket } : g));
+  const clip = (s: { from: string; to: string }) => ({
+    from: s.from > window.from ? s.from : window.from,
+    to: s.to < window.to ? s.to : window.to,
+  });
+  const groupCtx: MetricCtx = {
+    ...r,
+    source: q.source,
+    range: windowRange,
+    adsLeadDays: leadDays,
+    adsLeadSpan: (rs) => (rs.length === 0 ? null : bucket ? clip(bucketBounds(String(rs[0].date), bucket)) : window),
+  };
+  const totalsCtx: MetricCtx = { ...groupCtx, adsLeadSpan: (rs) => (rs.length === 0 ? null : window) };
+  const grouped = groupAndMeasure(rows, q.source, groupBy, metricIds, groupCtx, { sort: q.sort, limit: q.limit, fold: true, range: windowRange });
+
+  return {
+    rows: grouped.rows,
+    totals: metricIds.map((m) => METRICS[m].compute(rows, totalsCtx)),
+    compare: null,
+    meta: {
+      ...baseMeta,
+      bucketUsed: grouped.bucketUsed ?? bucket,
+      foldedIntoOtros: grouped.foldedIntoOtros,
+      seriesFolded: grouped.seriesFolded,
+      warnings: [...planned.warnings, ...grouped.warnings, ...(ads.clipped ? [clippedWarning(window)] : [])],
+    },
+  };
+}
+
 export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
   validateFields(q, ctx);
   const r = resolveCtx(ctx);
   const def = SOURCE_DEFS[q.source];
   const range = resolveWidgetRange(q.time, ctx);
+  if (q.source === "ads_daily") return runAdsQuery(q, ctx, r, range);
   const warnings: string[] = [];
 
   let rows = def.rows(ctx);
@@ -665,7 +751,7 @@ export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
       foldedIntoOtros: grouped.foldedIntoOtros,
       seriesFolded: grouped.seriesFolded,
       fanOut: grouped.fanOut,
-      crmFiltersIgnored: q.source === "ads_daily",
+      crmFiltersIgnored: false,
       overriddenGlobals: plan.overridden,
       warnings: [...grouped.warnings, ...warnings],
       adsStatus: null,

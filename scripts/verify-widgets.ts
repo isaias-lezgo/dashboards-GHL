@@ -20,7 +20,7 @@ import {
 } from "../lib/widgets/spec";
 import { sourceCategory } from "../lib/source-platform";
 import { rankPautasByContact } from "../lib/pauta";
-import type { Appointment, Contact, Opportunity, Pauta, Pipeline } from "../lib/types";
+import type { AdsReport, Appointment, Contact, Opportunity, Pauta, Pipeline } from "../lib/types";
 import type { ChatDataset } from "../lib/ai-tools";
 import {
   dimensionValues,
@@ -610,6 +610,74 @@ function joinSection(): void {
   });
 }
 
+function makeAdsFixture(ads: AdsReport | undefined): EngineContext {
+  const base = makeFixture().ctx;
+  const daily = Array.from({ length: 10 }, (_, i) => ({
+    date: `2026-10-${String(i + 1).padStart(2, "0")}`,
+    spend: 100, impressions: 1000, clicks: 10, reach: 500, metaLeads: 0, conversations: 0,
+  }));
+  return {
+    ...base,
+    ads: ads === undefined ? undefined : { ...ads, daily: ads.status === "connected" ? daily : [] },
+    dataset: {
+      ...base.dataset,
+      contacts: [mkContact("z1", { createdAt: "2026-10-05T12:00:00Z" }), mkContact("z2", { createdAt: "2026-10-06T12:00:00Z" })],
+      opportunities: [
+        mkOpp("m1", "z1", "p1", "Nuevo", "2026-10-06T12:00:00Z", { source: "facebook" }),
+        mkOpp("m2", "z2", "p2", "Nuevo", "2026-10-08T12:00:00Z", { source: "facebook" }),
+      ],
+      pautas: [],
+      appointments: [],
+    },
+  };
+}
+
+function adsSection(): void {
+  section("ads");
+  const connected: AdsReport = { status: "connected", currency: "MXN", from: "2026-10-01", to: "2026-10-10", daily: [] };
+  const adsQ = (metric: QuerySpec["metrics"][number]["metric"], over: Partial<QuerySpec> = {}) =>
+    q({ source: "ads_daily", metrics: [{ metric, label: null }], time: { field: "date", range: "all", from: null, to: null, compare: "none" }, ...over });
+  const ctx = makeAdsFixture(connected);
+
+  check("spend con rango all = 600 (recortado desde el primer día del CRM, 2026-10-05)", () => {
+    assert.equal(runQuery(adsQ("spend"), ctx).totals[0], 600);
+  });
+
+  check("cpl = 600 ÷ 2 leads de pauta = 300; ctr = clics ÷ impresiones", () => {
+    assert.equal(runQuery(adsQ("cpl"), ctx).totals[0], 300);
+    assert.equal(runQuery(adsQ("ctr"), ctx).totals[0], 0.01);
+  });
+
+  check("cpl por día: gasto del día ÷ leads de ese día; sin leads → null", () => {
+    const res = runQuery(adsQ("cpl", { groupBy: [dim("date", "day")], sort: { by: "natural", dir: "asc" } }), ctx);
+    const byKey = Object.fromEntries(res.rows.map((r) => [r.key[0], r.values[0]]));
+    assert.equal(byKey["2026-10-06"], 100);
+    assert.equal(byKey["2026-10-07"], null);
+  });
+
+  check("sin ads (payload viejo) → pending; desconectado → su estado y mensaje, totales null", () => {
+    const pending = runQuery(adsQ("spend"), makeAdsFixture(undefined));
+    assert.equal(pending.meta.adsStatus, "pending");
+    assert.equal(pending.rows.length, 0);
+    const disc = runQuery(adsQ("spend"), makeAdsFixture({ status: "disconnected", message: "Vincula tu cuenta de Meta", daily: [] }));
+    assert.equal(disc.meta.adsStatus, "disconnected");
+    assert.equal(disc.meta.adsMessage, "Vincula tu cuenta de Meta");
+    assert.equal(disc.totals[0], null);
+  });
+
+  check("Meta ignora los filtros de CRM (pipeline y globales)", () => {
+    const ana: ActiveGlobalFilter = { entity: "opportunity", label: "Asesor", clause: { anyOf: [{ field: "assignedTo", op: "in", values: ["Ana"] }] } };
+    const res = runQuery(adsQ("cpl"), { ...ctx, pipelineFilter: ["p2"], globalFilters: [ana] });
+    assert.equal(res.totals[0], 300);
+    assert.equal(res.meta.crmFiltersIgnored, true);
+  });
+
+  check("ventana recortada → advertencia con las fechas reales", () => {
+    const res = runQuery(adsQ("spend"), ctx);
+    assert.ok(res.meta.warnings.some((w) => w.includes("El gasto solo cubre del 2026-10-05")));
+  });
+}
+
 function main(): void {
   specSection();
   domainSection();
@@ -617,6 +685,7 @@ function main(): void {
   metricsSection();
   engineSection();
   joinSection();
+  adsSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
