@@ -2,7 +2,7 @@
 
 // Tab bar of the AI panel: the client's own tabs first, then the fixed
 // Marketing / Ventas / Asistente IA tabs, which keep working exactly as today.
-import { useState, type ComponentType } from "react"
+import { useState, type ComponentType, type ReactNode } from "react"
 import { BarChart3, ChevronDown, LayoutGrid, Plus, Sparkles, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -42,6 +42,7 @@ export function PanelTabs({
   onRename,
   onDelete,
   onAdd,
+  trailing,
 }: {
   tabs: Tab[]
   activeId: string
@@ -49,6 +50,8 @@ export function PanelTabs({
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
   onAdd: () => void
+  /** Right-aligned slot at the end of the row (the copilot button). */
+  trailing?: ReactNode
 }) {
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null)
@@ -140,6 +143,7 @@ export function PanelTabs({
             {label}
           </TabButton>
         ))}
+        {trailing && <div className="ml-auto flex shrink-0 items-center pl-4">{trailing}</div>}
       </div>
 
       <Dialog open={confirmDelete !== null} onOpenChange={(o) => !o && setConfirmDelete(null)}>

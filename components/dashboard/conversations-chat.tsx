@@ -828,12 +828,15 @@ function ConvEmptyState({ onSuggest }: { onSuggest: (s: string) => void }) {
   );
 }
 
-function ConvMessageBubble({
+export function ConvMessageBubble({
   message,
   onDrill,
+  hideText,
 }: {
   message: UIMessage;
   onDrill?: (title: string, contactIds: string[]) => void;
+  /** Text blocks the model reads but the user should not see (the panel snapshot). */
+  hideText?: (text: string) => boolean;
 }) {
   const textBlocks = message.blocks.filter(
     (b): b is TextBlock => b.type === "text"
@@ -854,7 +857,7 @@ function ConvMessageBubble({
         label: b.text.startsWith(PDF_TEXT_PREFIX) ? "PDF" : "Datos",
       });
   }
-  const visibleTextBlocks = textBlocks.filter((b) => !isAttachmentText(b.text));
+  const visibleTextBlocks = textBlocks.filter((b) => !isAttachmentText(b.text) && !hideText?.(b.text));
   const toolUseBlocks = message.blocks.filter(
     (b): b is ToolUseBlock => b.type === "tool_use"
   );

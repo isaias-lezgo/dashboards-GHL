@@ -29,6 +29,7 @@ import { usePanelFilters } from "@/hooks/use-panel-filters"
 import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
 import { WidgetFilterEditor } from "@/components/widgets/widget-filter-editor"
 import { EmptyPanel } from "@/components/widgets/empty-panel"
+import { CopilotDock } from "@/components/widgets/copilot-dock"
 import { buildSuggestions } from "@/lib/widgets/suggestions"
 import { activeGlobalFilters } from "@/lib/widgets/filter-state"
 import { buildCatalog, validateWidget } from "@/lib/widgets/validate"
@@ -87,8 +88,14 @@ export default function DashboardPage() {
   const panelEnabled = docApi.enabled === true
   const docTabs = useMemo(() => docApi.doc?.tabs ?? [], [docApi.doc])
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
-  // What the empty panel (and, later, ✨) hands to the copilot.
+  // The copilot: open/closed, and the text the empty panel hands it.
+  const [copilotOpen, setCopilotOpen] = useState(false)
   const [copilotPrompt, setCopilotPrompt] = useState<string | null>(null)
+  const askCopilot = useCallback((text: string) => {
+    setCopilotPrompt(text)
+    setCopilotOpen(true)
+  }, [])
+  const clearCopilotPrompt = useCallback(() => setCopilotPrompt(null), [])
 
   // Land on the panel once, when it first loads: its first tab, or the empty
   // panel. After that the tab belongs to the user.
@@ -430,13 +437,17 @@ export default function DashboardPage() {
     else reportFailure(res)
   }
   const activeDocTab = docTabs.find((t) => t.id === activeTab) ?? null
+  // Only on the client's own tabs (or the empty panel): Marketing, Ventas and
+  // the Asistente IA tab are not the copilot's to edit. Hidden, never unmounted.
+  const copilotVisible = panelEnabled && copilotOpen && !FIXED_TABS.has(activeTab)
+  const selectedWidget = docApi.doc && selectedWidgetId ? findWidget(docApi.doc, selectedWidgetId)?.widget ?? null : null
 
   return (
     <>
     <AnimatePresence>
       {isInitialLoad && <LoadingScreen key="loader" progress={progress} locationName={locationName} steps={steps} />}
     </AnimatePresence>
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className={cn("flex min-h-screen flex-col bg-background", copilotVisible && "lg:pr-[380px]")}>
       {/* Header */}
       <header className="border-b border-[#335577]/20 bg-[#0D172F] px-4 py-3 text-white shadow-none sm:px-6 sm:py-3.5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -568,6 +579,18 @@ export default function DashboardPage() {
           onRename={renameTab}
           onDelete={removeTab}
           onAdd={addTab}
+          trailing={
+            !FIXED_TABS.has(activeTab) && !copilotOpen ? (
+              <button
+                type="button"
+                onClick={() => setCopilotOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Copiloto
+              </button>
+            ) : null
+          }
         />
       ) : (
       <nav className="border-b border-border bg-card px-4 sm:px-6" aria-label="Vistas del panel">
@@ -650,14 +673,17 @@ export default function DashboardPage() {
             ctx={engineCtx}
             selectedWidgetId={selectedWidgetId}
             onSelect={setSelectedWidgetId}
-            onEditWithAi={(id) => setSelectedWidgetId(id)}
+            onEditWithAi={(id) => {
+              setSelectedWidgetId(id)
+              setCopilotOpen(true)
+            }}
             onEditFilters={(id) => setFilterEditorId(id)}
             onDelete={removeWidget}
           />
         )}
         <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />
         {panelEnabled && activeTab === EMPTY_TAB_ID && (
-          <EmptyPanel suggestions={suggestions} onSubmit={setCopilotPrompt} />
+          <EmptyPanel suggestions={suggestions} onSubmit={askCopilot} />
         )}
         {activeTab === "marketing" && (
           <MarketingDashboard
@@ -726,6 +752,25 @@ export default function DashboardPage() {
         </div>
       </div>
     </div>
+    {/* Mounted once the panel and the data exist, then never unmounted: the
+        conversation survives closing it and switching tabs. */}
+    {panelEnabled && docApi.doc && data && (
+      <CopilotDock
+        open={copilotVisible}
+        onClose={() => setCopilotOpen(false)}
+        engineCtx={engineCtx}
+        docApi={docApi}
+        activeTabId={activeDocTab?.id ?? null}
+        setActiveTabId={setActiveTab}
+        selectedWidget={selectedWidget}
+        clearSelection={() => setSelectedWidgetId(null)}
+        filters={panelFilters}
+        locationId={data.locationId}
+        syncedAt={syncedAt ?? data.meta?.fetchedAt}
+        initialPrompt={copilotPrompt}
+        onPromptConsumed={clearCopilotPrompt}
+      />
+    )}
     </>
   )
 }
