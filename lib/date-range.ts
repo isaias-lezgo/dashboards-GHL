@@ -82,3 +82,13 @@ export function isLargeDataset(counts: {
     counts.opportunities > LARGE_DATASET_THRESHOLD
   )
 }
+
+// Normalize any createdAt format → "YYYY-MM-DD" (UTC). Handles ISO strings,
+// Unix-ms numbers, numeric strings, and null/undefined.
+export function toUTCDateStr(val: string | number | null | undefined): string {
+  if (val === null || val === undefined || val === "") return ""
+  if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val)) return val.slice(0, 10)
+  const num = typeof val === "number" ? val : /^\d{10,}$/.test(val) ? Number(val) : NaN
+  const d = new Date(isNaN(num) ? (val as string) : num)
+  return isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
+}

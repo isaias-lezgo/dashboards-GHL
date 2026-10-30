@@ -18,6 +18,9 @@ import {
   type DashboardDoc,
   type WidgetSpec,
 } from "../lib/widgets/spec";
+import { sourceCategory } from "../lib/source-platform";
+import { rankPautasByContact } from "../lib/pauta";
+import type { Opportunity, Pauta } from "../lib/types";
 
 let currentSection = "";
 function section(name: string): void {
@@ -204,8 +207,39 @@ function specSection(): void {
   });
 }
 
+function domainSection(): void {
+  section("domain");
+
+  const opp = (o: Partial<Opportunity>): Opportunity =>
+    ({ id: "o", name: "o", pipelineId: "p", pipelineStageId: "s", status: "open", createdAt: "2026-01-01", contactId: "c", value: 0, stage: "Nuevo", pipelineName: "P", ...o }) as Opportunity;
+
+  check("sourceCategory: facebook → Paid Social, vacío → CRM UI, Tipo de pauta Google Ads → Paid Search", () => {
+    assert.equal(sourceCategory(opp({ source: "facebook", adType: "paid_social" })), "Paid Social");
+    assert.equal(sourceCategory(opp({ source: "" })), "CRM UI");
+    assert.equal(
+      sourceCategory(opp({ source: "Third Party", adType: "zapier", customFieldsResolved: { "Tipo de pauta": "Google Ads" } })),
+      "Paid Search"
+    );
+  });
+
+  check("rankPautasByContact: orden cronológico por contacto; sin contacto no entra", () => {
+    const p = (id: string, createdAt: string, contactId?: string): Pauta => ({ id, tipo: "", nombrePauta: "", createdAt, contactId });
+    const ranks = rankPautasByContact([
+      p("b", "2026-03-10T00:00:00Z", "c1"),
+      p("a", "2026-01-05T00:00:00Z", "c1"),
+      p("c", "2026-07-01T00:00:00Z", "c1"),
+      p("x", "2026-02-01T00:00:00Z"),
+    ]);
+    assert.equal(ranks.get("a"), 0);
+    assert.equal(ranks.get("b"), 1);
+    assert.equal(ranks.get("c"), 2);
+    assert.equal(ranks.has("x"), false);
+  });
+}
+
 function main(): void {
   specSection();
+  domainSection();
   console.log("\n✅ lib/widgets — all assertions passed");
 }
 
