@@ -28,7 +28,13 @@ pnpm verify:sync-store   # lib/sync-store.ts — freshness window, gzip round-tr
 pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner refresh lock
 pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
 pnpm verify:installations # lib/installations.ts + lib/ghl-webhook.ts — ids, Ed25519, uninstall cleanup
-pnpm db:migrate          # creates project_sync, the OAuth token tables, dashboard_installation (idempotent)
+pnpm verify:widgets      # lib/widgets/* — the AI panel: spec, engine, filters, tools, glossary, suggestions
+pnpm verify:dashboard-store # lib/dashboard-store.ts — conditional write, history cap (DB part needs DATABASE_URL)
+pnpm check:widget-parity [clientId…] # read-only: the panel engine vs the hand-built dashboards on real caches
+pnpm eval:panel <clientId…> # COSTS API MONEY (~$8 for 2 accounts): the copilot's natural-language eval.
+                         #   Never run it without the owner approving the budget.
+pnpm db:migrate          # creates project_sync, the OAuth token tables, dashboard_installation,
+                         #   dashboard_doc(+_version) and the ai_panel column (idempotent)
 npx tsc --noEmit         # REQUIRED: next build ignores TS errors, so a green build proves nothing
 ```
 
@@ -219,6 +225,118 @@ The assistant is an **agent loop that runs in the browser**, not on the server.
   array reference so it survives within a single agent run.
 - `datasetSummary` is built once on the client and pinned for **prompt caching**; keep
   it stable across turns in a session or the cache key breaks.
+- The request body lives in `lib/chat-request.ts` (`buildChatRequest`), shared by the
+  route, the panel copilot (`mode: "panel"`) and the eval. `scripts/verify-widgets.ts`
+  compares the assistant's body field by field with what the route sent before the
+  panel existed — a byte of drift there breaks its cached prefix.
+- `aggregate` runs on the panel engine (`groupAndMeasure`): it groups by
+  `opportunity.<field>` (each row takes its contact's most recent opportunity) and by
+  `<dateField>:<bucket>`. "Ganada" is `isWonOpp` (status won OR a won stage) in every
+  filter, like the dashboards. `aggregate`, `relate`, `search_*`, `list_appointments`
+  and `export_csv` accept `clauses` (OR across different fields — see "Filters").
+- `resolve_term` + rule 6 of "Cuándo preguntar": see "Ambiguous concepts and glossary".
+- A tool result shaped `{ error: string }` goes back with `is_error: true`.
+
+### AI-managed panel (`ai_panel`)
+
+A client can have their own panel: tabs of widgets that the AI builds and edits from
+plain Spanish ("las citas organizadas por etapa del pipeline"), saved per client. Design:
+`docs/superpowers/specs/2026-10-29-paneles-autogestionables-ia-design.md`.
+
+**The question is saved, never the answer.** A widget is a declarative `QuerySpec`
+(source, metrics, group-by, filters, time) that the pure engine recomputes from each
+day's data. The model never writes a number and never runs code; it picks from the
+semantic catalog, and everything it saves is validated first.
+
+| File | Responsibility |
+|---|---|
+| `lib/widgets/spec.ts` | Types, zod schemas, `DOC_LIMITS`, the JSON Schemas the model sees |
+| `lib/widgets/semantic.ts` | Catalog: sources, native/derived/`cf:` fields, related `opportunity.*`/`contact.*`, filter evaluation |
+| `lib/widgets/metrics.ts`, `ads-metrics.ts` | Metric registry; ratios recomputed from summed parts; Meta clipping |
+| `lib/widgets/engine.ts` | `runQuery` / `groupAndMeasure`: buckets, natural order, "Otros", compare periods |
+| `lib/widgets/validate.ts` | Meaning checks against THIS account (does the field exist, does the chart fit) with suggestions |
+| `lib/widgets/describe.ts`, `labels.ts` | The rule in words (ScopePill), filter chips, the panel snapshot |
+| `lib/widgets/doc-ops.ts` | Pure doc operations (never mutate; throw `DocOpError` in Spanish for the model) |
+| `lib/widgets/filter-state.ts` | Session filter state vs saved defaults |
+| `lib/widgets/terms.ts` | `resolveTerm`: where a business concept lives in the data |
+| `lib/widgets/tools.ts` | The copilot's tools and `executePanelTool` (browser-side) |
+| `lib/widgets/suggestions.ts` | Data-aware chips of the empty panel |
+| `lib/dashboard-store.ts` | The only module that knows `dashboard_doc` / `dashboard_doc_version` |
+| `hooks/use-dashboard-doc.ts`, `use-panel-filters.ts` | Optimistic commits through a queue, 409 reload, undo stack; the bar's state |
+| `components/widgets/*` | Grid, cards, viz, tabs, filter bar, empty panel, `copilot-dock.tsx` |
+
+Invariants:
+
+- **Turned on per client** by `dashboard_installation.ai_panel` (default false). A client
+  without it sees exactly Marketing / Ventas / Asistente IA. To turn it on:
+  `UPDATE dashboard_installation SET ai_panel = true WHERE client_id = '<id>';` (live
+  sessions pick it up within the roster's 60 s cache). On 2026-10-30 only `lezgo-suite`
+  has it (pilot).
+- **`dashboard_doc` is client CONTENT, not a cache.** Unlike `project_sync` it is never
+  disposable and UNINSTALL does not delete it: a reinstall gets the panel back. Writes
+  are conditional on the version in ONE statement (CTE update + history insert); a
+  stale write is a 409 and the browser reloads. History keeps the last 50 versions.
+- **Joins through the contact.** "Citas por etapa" = appointments grouped by
+  `opportunity.stage`. `join: "latest"` (default) gives each row its contact's MOST
+  RECENT opportunity among ALL of them (never the date-filtered slice), so the bars add
+  up to the row count; `"each"` counts once per opportunity and the card says the bars
+  can exceed the total. Rows without one land in "Sin oportunidad", never dropped.
+- **Parity rule.** A metric a hand-built dashboard already publishes is replicated
+  exactly as that dashboard computes it, window included (`appointment_rate` uses the
+  date-filtered appointments like Ventas does). `pnpm check:widget-parity` is the gate
+  (96/96 on amir-cherit, hausmen, stanza-residencial, 2026-10-30). If a dashboard's
+  definition is wrong, fix both sides in the same change.
+- **"Leads" has three metrics, kept apart by name**: `leads_contacts` (contacts created;
+  the default), `leads_pauta_opps` (paid opportunities; the CPL denominator),
+  `leads_pauta_unique` (pautas minus re-entries). The ScopePill names the one used.
+- **The funnel is the CURRENT state**, never "% between steps": the sync only has each
+  opportunity's current stage, so a step rate would be a distribution posing as a
+  conversion rate. The prompt tells the model to say so.
+- **The panel snapshot goes in the USER message, never in `system`.** Every turn, the
+  copilot appends "=== PANEL ACTUAL ===" (tabs, widgets with their rule, selection,
+  filters, glossary) as a second text block of the user's message; the UI hides it.
+  Putting it in `system` would rebuild the cached prefix on every edit.
+- **Strict tool use has per-REQUEST limits** (20 strict tools, 16 union-typed params
+  across all strict schemas — each nullable counts). The widget spec alone has 11
+  nullables, so `preview_widget` / `create_widgets` / `update_widget` are NOT strict;
+  zod + `validateWidget` check them before any commit. `verify-widgets` asserts the
+  strict ones stay under the cap — adding a nullable to a strict tool can 400 every
+  copilot request.
+- **The copilot stays mounted while hidden**, like the Asistente IA tab, and only shows
+  on the client's own tabs.
+
+#### Ambiguous concepts and glossary
+
+- **No per-word rules.** "Perdidos", "clientes activos", "calificados" live in a
+  different place in each account (status, a stage, a tag, a custom field, a lost
+  reason). `resolve_term` only gathers EVIDENCE: candidate readings with a ready
+  clause, records, contacts, pairwise overlap and a `materiallyDifferent` hint.
+- The model asks (`ask_user`) only when readings would give materially different
+  answers. Only VALUE readings with ≥20% of the largest one's contacts compete; a field
+  merely NAMED after the concept is evidence, not a definition; values over 60 chars
+  are notes, not categories; roots match at a word start. Measured on real data:
+  lezgo-suite «perdido» (stage ⊂ status, 398/419) does not ask, amir-cherit «perdido»
+  (149 contacts only by stage, 135 only by status) does.
+- The client's choice is saved in the glossary (`save_term`), which lives in
+  `dashboard_doc` and travels in the snapshot, so later conversations don't ask again.
+  Widgets store the EXPANDED clauses, never a reference to the term.
+- In phase 1 the Asistente IA tab does not read the glossary (it has no snapshot).
+
+#### Panel filters
+
+- **Three layers**: global (date + pipeline + up to 8 added controls, `field` or named
+  `condition`), per widget (`filters`, `relatedFilters`, `time`), and between objects.
+- **Between objects** = `relatedFilters` with `any` / `none`; all conditions of one entry
+  hold on the SAME related record ("lost in pipeline Ventas" is not "lost somewhere and
+  in Ventas somewhere"). Related records are never date-filtered.
+- A widget filter on the same field **overrides** the global one, and the card says
+  "· fijo".
+- The bar keeps **session choices apart from saved defaults**: defaults apply once on
+  load; "Guardar como predeterminado" writes them. The AI's "por ahora" is
+  `apply_filters` (session, temporary chips); "agrega un filtro" is `set_panel_filters`.
+- **Meta (`ads_daily`) ignores every CRM filter** and says so — the same rule as
+  "Meta spend has NO pipeline dimension" below.
+- The classic Marketing / Ventas tabs receive only date and pipeline, as before.
 
 ### Pauta (paid-advertising) classification
 
