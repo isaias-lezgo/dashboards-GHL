@@ -43,6 +43,8 @@ export interface MetricDef {
 }
 
 const CRM_SOURCES: SourceId[] = ["contacts", "opportunities", "appointments", "tasks", "pautas"];
+// Conversations are counted, never valued: only these two metrics read them.
+const COUNT_SOURCES: SourceId[] = [...CRM_SOURCES, "conversations"];
 
 const ratio = (num: number, den: number): number | null => (den > 0 ? num / den : null);
 const opps = (rows: Row[]) => rows as unknown as Opportunity[];
@@ -77,14 +79,14 @@ export const METRICS: Record<MetricId, MetricDef> = {
   count: {
     id: "count",
     label: "Registros",
-    sources: CRM_SOURCES,
+    sources: COUNT_SOURCES,
     kind: "count",
     compute: (rows) => rows.length,
   },
   contacts: {
     id: "contacts",
     label: "Contactos",
-    sources: CRM_SOURCES,
+    sources: COUNT_SOURCES,
     kind: "count",
     compute: (rows, ctx) => {
       const def = SOURCE_DEFS[ctx.source];

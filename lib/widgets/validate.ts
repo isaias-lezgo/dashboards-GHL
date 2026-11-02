@@ -5,8 +5,8 @@
 // is_error tool_result with a suggested fix, so it corrects itself like a
 // compiler loop instead of saving a widget that renders zero.
 import type { AdsStatus } from "@/lib/types";
-import { SOURCES, entityOf, type EntityId, type FilterClause, type SourceId, type WidgetSpec } from "./spec";
-import { metricAllowed } from "./metrics";
+import { SOURCES, entityOf, fallbacksOf, seriesOf, type EntityId, type FilterClause, type SourceId, type WidgetSpec } from "./spec";
+import { METRICS, metricAllowed } from "./metrics";
 import {
   DERIVED_FIELDS,
   ENTITY_FIELDS,
@@ -27,6 +27,10 @@ export interface Catalog {
   pipelineNames: string[];
   apptStatuses: string[];
   adsStatus: AdsStatus | "pending";
+  /** Custom fields GHL types as DATE, lower-cased names per source. */
+  dateCustomFields: Record<"contacts" | "opportunities", Set<string>>;
+  /** false = the cache predates field types: a custom date is pending, not wrong. */
+  typesKnown: boolean;
 }
 
 export interface ValidationIssue {
@@ -55,7 +59,17 @@ export function buildCatalog(ctx: EngineContext): Catalog {
     for (const st of p.stages) if (!stages.includes(st)) stages.push(st);
   }
   const apptStatuses = [...new Set(ctx.dataset.appointments.map((a) => a.status))].sort();
+  const dateCustomFields = { contacts: new Set<string>(), opportunities: new Set<string>() };
+  for (const [key, type] of Object.entries(ctx.customFieldTypes ?? {})) {
+    if (type !== "DATE") continue;
+    const [model, ...rest] = key.split(":");
+    const name = rest.join(":").toLowerCase();
+    if (model.toLowerCase() === "contact") dateCustomFields.contacts.add(name);
+    if (model.toLowerCase() === "opportunity") dateCustomFields.opportunities.add(name);
+  }
   return {
+    dateCustomFields,
+    typesKnown: !!ctx.customFieldTypes,
     fields,
     customFields,
     stages,
@@ -105,6 +119,23 @@ export function suggestField(typed: string, known: Iterable<string>): string | n
 }
 
 // ─── Rules ────────────────────────────────────────────────────────────────────
+
+/** isDateField for the catalog: native dates, DATE custom fields, and contact dates reached from another source. */
+export function catalogIsDate(catalog: Catalog, source: SourceId, field: string): boolean {
+  if (field.startsWith("contact.")) {
+    return source !== "contacts" && source !== "ads_daily" && catalogIsDate(catalog, "contacts", field.slice("contact.".length));
+  }
+  if (field.startsWith("opportunity.")) return false;
+  const cf = /^(?:cf|customField):(.+)$/.exec(field);
+  if (cf) return (source === "contacts" || source === "opportunities") && catalog.dateCustomFields[source].has(cf[1].trim().toLowerCase());
+  return isDateField(source, field);
+}
+
+function notADate(catalog: Catalog, source: SourceId, field: string): string {
+  const cf = /^(?:contact\.)?(?:cf|customField):(.+)$/.exec(field);
+  if (cf && !catalog.typesKnown) return `«${cf[1].trim()}» se podrá usar como fecha después de la próxima actualización.`;
+  return `«${field}» no es una fecha de ${source}; usa una de: ${SOURCE_DEFS[source].dateFields.join(", ")}.`;
+}
 
 function entityFields(entity: EntityId, catalog: Catalog): Set<string> {
   const source = ENTITY_SOURCE[entity];
@@ -157,6 +188,16 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     const issue = fieldIssue(path, field, known, where);
     if (issue) issues.push(issue);
   };
+  // A combined field reads its own source, or falls back to the contact ("contact.<field>").
+  const checkFallback = (path: string, field: string, source: SourceId) => {
+    if (field.startsWith("opportunity.")) return add(path, "Un campo combinado solo puede caer al contacto («contact.<campo>»).");
+    if (field.startsWith("contact.")) {
+      if (source === "contacts" || source === "ads_daily" || source === "conversations") return add(path, `«${field}»: ${source} no lee campos del contacto así.`);
+      return checkField(path, field.slice("contact.".length), catalog.fields.contacts, "contacts");
+    }
+    checkField(path, field, catalog.fields[source], source);
+  };
+  const extra = seriesOf(q);
 
   // Metrics
   q.metrics.forEach((m, i) => {
@@ -164,15 +205,18 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
   });
 
   // Time
-  if (!SOURCE_DEFS[q.source].dateFields.includes(q.time.field)) {
-    add("query.time.field", `«${q.time.field}» no es una fecha de ${q.source}; usa una de: ${SOURCE_DEFS[q.source].dateFields.join(", ")}.`);
-  }
+  if (!catalogIsDate(catalog, q.source, q.time.field)) add("query.time.field", notADate(catalog, q.source, q.time.field));
   if (q.time.range === "absolute" && !q.time.from) add("query.time.from", "Un periodo absoluto necesita `from`.");
 
   // Dimensions
   q.groupBy.forEach((g, i) => {
     const path = `query.groupBy[${i}]`;
     const related = isRelatedDimension(g.dimension);
+    if (g.edges && g.bucket !== "age") add(path, "`edges` solo aplica con bucket «age».");
+    if (related && catalogIsDate(catalog, q.source, g.dimension)) {
+      if (!g.bucket) add(path, `Agrupar por «${g.dimension}» necesita un bucket (day, week, month, age…).`);
+      return;
+    }
     if (related) {
       const [prefix, ...rest] = g.dimension.split(".");
       const target: SourceId = prefix === "contact" ? "contacts" : "opportunities";
@@ -185,8 +229,8 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
       return;
     }
     if (g.join) add(path, "`join` solo aplica a dimensiones «opportunity.*» o «contact.*».");
-    if (isDateField(q.source, g.dimension)) {
-      if (!g.bucket) add(path, `Agrupar por «${g.dimension}» necesita un bucket (day, week, month…).`);
+    if (catalogIsDate(catalog, q.source, g.dimension)) {
+      if (!g.bucket) add(path, `Agrupar por «${g.dimension}» necesita un bucket (day, week, month, age…).`);
       if (q.source === "ads_daily" && (g.bucket === "weekday" || g.bucket === "hour")) {
         add(path, "El gasto de Meta solo se agrupa por día, semana, mes o trimestre.");
       }
@@ -198,6 +242,7 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
       return;
     }
     checkField(path, g.dimension, own, q.source);
+    fallbacksOf(g).forEach((f, j) => checkFallback(`${path}.fallbacks[${j}]`, f, q.source));
   });
 
   // Filters
@@ -207,9 +252,14 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     if (q.filters.length || q.relatedFilters.length) {
       add("query.filters", "El gasto de Meta no admite filtros de CRM: Meta no tiene pipeline, asesor ni etapa.");
     }
+  } else if (q.source === "conversations" && q.relatedFilters.length) {
+    add("query.relatedFilters", "Las conversaciones no admiten filtros entre objetos: usa la fuente de contactos con sus fechas de mensajes.");
   } else {
     const sourceEntity = entityOf(q.source);
     checkClauses("query.filters", q.filters, own, q.source);
+    q.filters.forEach((c, i) =>
+      c.anyOf.forEach((f, j) => fallbacksOf(f).forEach((fb, k) => checkFallback(`query.filters[${i}].anyOf[${j}].fallbacks[${k}]`, fb, q.source)))
+    );
     q.relatedFilters.forEach((rf, i) => {
       const path = `query.relatedFilters[${i}]`;
       if (rf.entity === sourceEntity) {
@@ -222,15 +272,21 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
 
   // Chart ↔ query shape
   const dims = q.groupBy.length;
-  const firstIsDate = dims > 0 && !isRelatedDimension(q.groupBy[0].dimension) && isDateField(q.source, q.groupBy[0].dimension);
+  const firstIsDate = dims > 0 && catalogIsDate(catalog, q.source, q.groupBy[0].dimension);
   switch (spec.viz) {
     case "kpi":
       if (dims !== 0) add("viz", "Un KPI no lleva dimensiones: quita groupBy o usa barras.");
+      if (extra.length && !q.ratio) add("viz", "Un KPI muestra un solo número: con varias series necesita una proporción (`ratio`).");
+      break;
+    case "matrix":
+      if (dims !== 2 || q.metrics.length !== 1 || extra.length) {
+        add("viz", "La matriz necesita exactamente 2 dimensiones (filas y columnas), una métrica y ninguna serie extra.");
+      }
       break;
     case "line":
     case "area":
       if (!firstIsDate) add("viz", `Una gráfica de ${spec.viz === "line" ? "línea" : "área"} necesita una fecha con bucket como primera dimensión.`);
-      if (spec.viz === "area" && dims > 1) add("viz", "Área solo con una serie: usa línea para varias.");
+      if (spec.viz === "area" && (dims > 1 || extra.length)) add("viz", "Área solo con una serie: usa línea para varias.");
       break;
     case "funnel": {
       const d = q.groupBy[0]?.dimension;
@@ -241,7 +297,13 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     }
     case "stacked_bar":
     case "grouped_bar":
-      if (dims !== 2) add("viz", "Las barras apiladas o agrupadas necesitan 2 dimensiones (categoría y serie).");
+      if (extra.length) {
+        if (spec.viz === "stacked_bar" && new Set([q.source, ...extra.map((x) => x.source)]).size > 1) {
+          add("viz", "Barras apiladas no: no se apilan series de fuentes distintas («contactos + oportunidades» no es un total). Usa barras agrupadas o líneas.");
+        }
+      } else if (dims !== 2) {
+        add("viz", "Las barras apiladas o agrupadas necesitan 2 dimensiones (categoría y serie).");
+      }
       break;
     case "record_list":
       if (dims !== 0) add("viz", "Una lista de registros no lleva dimensiones.");
@@ -250,9 +312,48 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     case "bar":
     case "bar_horizontal":
     case "table":
-      if (dims === 0) add("viz", `«${spec.viz}» necesita al menos una dimensión; para un solo número usa kpi.`);
+      if (dims === 0 && !extra.length) add("viz", `«${spec.viz}» necesita al menos una dimensión; para un solo número usa kpi.`);
       break;
   }
+  // Several series (spec 2026-11-02 §3.1) and proportions (§3.2).
+  if (extra.length) {
+    if (dims > 1) add("query.groupBy", "Con varias series solo hay un eje: quita la segunda dimensión (las series ya son la segunda).");
+    if (q.time.compare !== "none") add("query.time.compare", "La comparación con el periodo anterior no aplica con varias series.");
+    const axis = q.groupBy[0];
+    const axisIsDate = !!axis && catalogIsDate(catalog, q.source, axis.dimension);
+    extra.forEach((x, i) => {
+      const path = `query.series[${i}]`;
+      if (!metricAllowed(x.metric, x.source)) add(`${path}.metric`, `La métrica «${x.metric}» no está definida para ${x.source}.`);
+      if (!catalogIsDate(catalog, x.source, x.dateField)) add(`${path}.dateField`, notADate(catalog, x.source, x.dateField));
+      if (axis && !axisIsDate) {
+        const d = x.dimension ?? axis.dimension;
+        if (isRelatedDimension(d)) {
+          const [prefix, ...rest] = d.split(".");
+          const target: SourceId = prefix === "contact" ? "contacts" : "opportunities";
+          if (target === x.source) add(`${path}.dimension`, `«${d}» no aplica a ${x.source}: usa el campo propio.`);
+          else checkField(`${path}.dimension`, rest.join("."), catalog.fields[target], target);
+        } else {
+          checkField(`${path}.dimension`, d, catalog.fields[x.source], x.source);
+        }
+      }
+      if (x.source === "conversations" && x.relatedFilters.length) add(`${path}.relatedFilters`, "Las conversaciones no admiten filtros entre objetos.");
+      x.filters.forEach((c, k) => c.anyOf.forEach((f, j) => checkField(`${path}.filters[${k}].anyOf[${j}].field`, f.field, catalog.fields[x.source], x.source)));
+      x.relatedFilters.forEach((rf, k) => {
+        if (rf.entity === entityOf(x.source)) add(`${path}.relatedFilters[${k}]`, `«${rf.entity}» es el mismo objeto de la serie: usa \`filters\`.`);
+        else rf.conditions.forEach((c, m) => c.anyOf.forEach((f, j) => checkField(`${path}.relatedFilters[${k}].conditions[${m}].anyOf[${j}].field`, f.field, entityFields(rf.entity, catalog), ENTITY_SOURCE[rf.entity])));
+      });
+    });
+    if (!q.ratio) {
+      const kinds = [...new Set([q.metrics[0], ...extra].map((m) => METRICS[m.metric].kind))];
+      const noun: Record<string, string> = { count: "conteo", amount: "monto", rate: "porcentaje" };
+      if (kinds.length > 1) add("query.series", `Las series mezclan unidades (${kinds.map((k) => noun[k]).join(" y ")}): usa dos tarjetas, nunca dos ejes.`);
+    }
+  }
+  if (q.ratio) {
+    const { numerator: a, denominator: b } = q.ratio;
+    if (a === b || a > extra.length || b > extra.length) add("query.ratio", "La proporción apunta a series que no existen: 0 es la consulta y 1… las series.");
+  }
+
   if (q.metrics.some((m) => m.metric === "cpl") && q.source !== "ads_daily") {
     add("query.source", "El costo por lead (cpl) usa la fuente «ads_daily».");
   }

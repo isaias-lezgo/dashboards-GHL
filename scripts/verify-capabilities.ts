@@ -41,6 +41,8 @@ import type { Opportunity } from "../lib/types";
 import { QueryError } from "../lib/widgets/semantic";
 import { ageBucketKey, runQuery } from "../lib/widgets/engine";
 import { byLabel, dim } from "./lib/widget-test-kit";
+import { buildCatalog, validateWidget } from "../lib/widgets/validate";
+import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
 import { customFieldTypeMap } from "../lib/sync";
 
@@ -512,12 +514,66 @@ function seriesSection(): void {
   });
 }
 
+// ─── Task 6: validation ───────────────────────────────────────────────────────
+
+function widget(viz: VizType, over: Partial<QuerySpec>): WidgetSpec {
+  return { ...(LEGACY_KPI as WidgetSpec), viz, size: "m", height: "normal", query: q({ source: "contacts", time: ALL, ...over }) };
+}
+
+function validateSection(): void {
+  section("validate: series, matrix, age, combined fields, conversations");
+  const cat = buildCatalog({ ...makeComboFixture().ctx, customFieldTypes: { "opportunity:Fecha de Cierre": "DATE" } });
+  const catOld = buildCatalog({ ...makeComboFixture().ctx, customFieldTypes: null });
+  const opps = series("Oportunidades", "opportunities", "count", "createdAt");
+  const weekly = { groupBy: [dim("createdAt", "week")], series: [opps] };
+  const one = (spec: WidgetSpec, path: string, re: RegExp) => {
+    const issues = validateWidget(spec, cat);
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    assert.equal(issues[0].path, path);
+    assert.match(issues[0].message, re);
+  };
+
+  check("valid multi-series and ratio widgets have no issues", () => {
+    assert.deepEqual(validateWidget(widget("grouped_bar", weekly), cat), []);
+    assert.deepEqual(validateWidget(widget("line", weekly), cat), []);
+    assert.deepEqual(validateWidget(widget("kpi", { series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "%", numerator: 1, denominator: 0 } }), cat), []);
+  });
+  check("stacked bars across sources are refused", () => one(widget("stacked_bar", weekly), "viz", /no se apilan series de fuentes distintas/));
+  check("a kpi with two series and no ratio is refused", () => one(widget("kpi", { series: [opps] }), "viz", /necesita una proporción/));
+  check("series take one axis only", () => one(widget("grouped_bar", { ...weekly, groupBy: [dim("createdAt", "week"), dim("source")] }), "query.groupBy", /solo hay un eje/));
+  check("a series date must be a date of its source", () => one(widget("grouped_bar", { ...weekly, series: [{ ...opps, dateField: "startTime" }] }), "query.series[0].dateField", /no es una fecha de opportunities/));
+  check("a category axis must exist in every series", () =>
+    one(widget("grouped_bar", { groupBy: [dim("city")], series: [opps] }), "query.series[0].dimension", /city/));
+  check("mixed units without a ratio are refused", () =>
+    one(widget("grouped_bar", { ...weekly, series: [{ ...opps, metric: "value_sum" }] }), "query.series", /mezclan unidades/));
+  check("no previous-period comparison with series", () =>
+    one(widget("grouped_bar", { ...weekly, time: { ...ALL, compare: "previous_period" } }), "query.time.compare", /varias series/));
+  check("ratio indexes must exist and differ", () =>
+    one(widget("kpi", { series: [opps], ratio: { label: "%", numerator: 2, denominator: 0 } }), "query.ratio", /no existen/));
+  check("a matrix needs exactly two dimensions and one metric", () => one(widget("matrix", { groupBy: [dim("source")] }), "viz", /2 dimensiones/));
+  check("age on a non-date is refused", () => one(widget("bar", { groupBy: [{ dimension: "source", bucket: "age", join: null }] }), "query.groupBy[0]", /no es una fecha/));
+  check("an unknown fallback field is refused", () =>
+    one(widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Canal de contacto"), fallbacks: ["contact.cf:Canal Inexistente"] }] }), "query.groupBy[0].fallbacks[0]", /Canal Inexistente/));
+  check("a fallback to the contact is accepted", () =>
+    assert.deepEqual(validateWidget(widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Canal de contacto"), fallbacks: ["contact.cf:Canal de Contacto"] }] }), cat), []));
+  check("conversations take no related filters", () =>
+    one(widget("kpi", { source: "conversations", time: { ...ALL, field: "lastMessageAt" }, relatedFilters: [ANY_OPP] }), "query.relatedFilters", /conversaciones/i));
+  check("a custom date is a valid period when GHL types it DATE, pending on an old cache", () => {
+    const spec = widget("kpi", { source: "opportunities", time: { ...OCT, field: "cf:Fecha de Cierre" } });
+    assert.deepEqual(validateWidget(spec, cat), []);
+    const issues = validateWidget(spec, catOld);
+    assert.equal(issues.length, 1);
+    assert.match(issues[0].message, /después de la próxima actualización/);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
   semanticSection();
   engineDimsSection();
   seriesSection();
+  validateSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 
