@@ -932,6 +932,24 @@ function appFixesSection(): void {
     assert.match(PANEL_PROMPT_SECTION, /nunca nombres internos del spec/);
   });
 
+  check("stage and status change dates can be filtered, not only grouped", () => {
+    const spec = widget("kpi", { source: "opportunities", filters: [OPEN, { anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }] }] });
+    assert.deepEqual(validateWidget(spec, buildCatalog(makeAgeFixture())), []);
+    assert.equal(runQuery(spec.query!, makeAgeFixture()).totals[0], 2); // a20 and a90 (aNone has no date)
+  });
+
+  check("a matrix shows every column up to 20, not the 6-series cap", () => {
+    const base = makeFixture().ctx;
+    const stages = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"];
+    const opps = stages.map((st, i) => mkOpp(`m${i}`, "c1", "p1", st, "2026-10-01T12:00:00Z", { assignedTo: "Ana" }));
+    const ctx = { ...base, dataset: { ...base.dataset, opportunities: opps }, pipelines: [{ id: "p1", name: "p1", stages }] };
+    const query = q({ groupBy: [dim("assignedTo"), dim("stage")], time: ALL });
+    const asMatrix = runQuery(query, ctx, { viz: "matrix" });
+    assert.deepEqual([...new Set(asMatrix.rows.map((r) => r.label[1]))], stages);
+    const asBars = runQuery(query, ctx);
+    assert.ok(asBars.rows.some((r) => r.label[1] === "Otros"), "bars keep the 6-series cap");
+  });
+
   check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
     const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
     assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);

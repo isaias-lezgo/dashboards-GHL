@@ -86,7 +86,7 @@ export function WidgetCard({
   const outcome = useMemo((): { result: QueryResult } | { error: string } | null => {
     if (!widget.query) return null
     try {
-      return { result: runQuery(widget.query, ctx) }
+      return { result: runQuery(widget.query, ctx, { viz: widget.viz }) }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
     }

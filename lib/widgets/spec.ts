@@ -136,6 +136,8 @@ export const DOC_LIMITS = {
   maxGroupBy: 2,
   maxLimit: 50,
   maxSeries: 6,
+  /** A matrix shows its columns instead of folding them: stages, channels… */
+  maxMatrixColumns: 20,
   maxBuckets: 366,
   maxVersions: 50,
   maxControls: 8,

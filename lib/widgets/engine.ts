@@ -35,7 +35,7 @@ import type { AdsStatus, Opportunity } from "@/lib/types";
 import type { ResolvedDateRange } from "@/lib/date-range";
 import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelines } from "@/lib/pipeline-filter";
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
-import { DOC_LIMITS, conversationDaysOf, edgesOf, entityOf, fallbacksOf, seriesOf, type Bucket, type SeriesSpec, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
+import { DOC_LIMITS, conversationDaysOf, edgesOf, entityOf, fallbacksOf, seriesOf, type Bucket, type SeriesSpec, type VizType, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
 import { ENUM_LABELS_ES, METRIC_PHRASES, SOURCE_LABELS, fieldLabel } from "./labels";
@@ -533,6 +533,8 @@ export interface GroupOptions {
   range?: ResolvedDateRange | null;
   /** Extra resolver for related dimensions (Task 6). */
   relatedValues?: (row: Row, spec: GroupBySpec) => string[];
+  /** Series kept before folding into "Otros" (default DOC_LIMITS.maxSeries; a matrix shows more). */
+  maxSeries?: number;
   /** Push "(sin valor)" to the end regardless of its value (default true). The assistant's legacy shape keeps it in value order. */
   emptyLast?: boolean;
 }
@@ -790,8 +792,9 @@ export function groupAndMeasure(
       const vb = METRICS[metrics[0]].compute(dedupe(bySeries.get(b)!), ctx) ?? -Infinity;
       return vb - va || a.localeCompare(b, "es");
     });
-    if (seriesOrder.length > DOC_LIMITS.maxSeries) {
-      const keepN = DOC_LIMITS.maxSeries - 1;
+    const maxSeries = opts.maxSeries ?? DOC_LIMITS.maxSeries;
+    if (seriesOrder.length > maxSeries) {
+      const keepN = maxSeries - 1;
       const folded = new Set(seriesOrder.slice(keepN) as string[]);
       seriesFolded = folded.size;
       seriesOrder = [...seriesOrder.slice(0, keepN), OTROS_KEY];
@@ -953,13 +956,18 @@ function withCompare(result: QueryResult, q: QuerySpec, ctx: EngineContext): Que
   return { ...result, compare: { totals: prevResult.totals, range: prevKeys } };
 }
 
-export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
+/** How the result will be drawn, when that changes what is computed (a matrix keeps more columns). */
+export interface RunOptions {
+  viz?: VizType;
+}
+
+export function runQuery(q: QuerySpec, ctx: EngineContext, run: RunOptions = {}): QueryResult {
   const need = conversationDaysNeeded(q);
   if (need !== null) {
     const pending = conversationGate(q, ctx, need);
     if (pending) return pending;
   }
-  const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx) : withCompare(runQueryOnce(q, ctx), q, ctx);
+  const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx) : withCompare(runQueryOnce(q, ctx, run), q, ctx);
   return need !== null ? withConversationMeta(res, q, ctx) : res;
 }
 
@@ -1216,7 +1224,7 @@ function runMultiQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
   return { rows, totals, margins: null, compare: null, meta: { ...meta, valueKind: kinds[0] } };
 }
 
-function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
+function runQueryOnce(q: QuerySpec, ctx: EngineContext, run: RunOptions = {}): QueryResult {
   validateFields(q, ctx);
   const r = resolveCtx(ctx);
   const def = SOURCE_DEFS[q.source];
@@ -1251,6 +1259,7 @@ function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
     fold: true,
     range,
     relatedValues: relatedResolver(q, r),
+    maxSeries: run.viz === "matrix" ? DOC_LIMITS.maxMatrixColumns : DOC_LIMITS.maxSeries,
   });
 
   return {

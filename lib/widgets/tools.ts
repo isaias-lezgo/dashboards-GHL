@@ -302,7 +302,7 @@ function summarize(spec: WidgetSpec, ctx: EngineContext, limit: number): ToolOut
   const scope = describeWidget(spec);
   if (!spec.query) return { scope, rows: [], totalRows: 0, totals: [], recordCount: 0, warnings: [], adsStatus: null };
   try {
-    const r = runQuery(spec.query, ctx);
+    const r = runQuery(spec.query, ctx, { viz: spec.viz });
     return {
       scope,
       metrics: spec.query.metrics.map((m) => m.metric),

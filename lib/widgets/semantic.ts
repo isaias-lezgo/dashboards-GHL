@@ -189,6 +189,8 @@ export const NATIVE_FIELDS: Record<SourceId, string[]> = {
     "monetaryValue", "currency", "probability", "source", "campaign", "adType", "adId",
     "attributionMedium", "attributionUrl", "assignedTo", "tags", "priority", "lostReason",
     "archived", "origin", "createdAt", "closedAt", "updatedAt", "lastActivity",
+    // Filterable too ("sin cambio de etapa hace 16 días"), not only bucketable.
+    "lastStageChangeAt", "lastStatusChangeAt",
   ],
   appointments: ["id", "contactId", "assignedTo", "title", "status", "startTime", "endTime"],
   tasks: ["id", "title", "status", "assignedTo", "assignedToName", "contactId", "opportunityId", "dueDate", "createdAt"],
