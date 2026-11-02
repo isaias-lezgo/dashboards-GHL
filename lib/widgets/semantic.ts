@@ -96,7 +96,8 @@ export function resolveCtx(ctx: EngineContext): ResolvedCtx {
 
 export class QueryError extends Error {
   constructor(
-    public code: "unknown_field" | "unsupported" | "invalid",
+    /** "pending": the data it needs has not arrived yet (cache without field types, conversations loading). */
+    public code: "unknown_field" | "unsupported" | "invalid" | "pending",
     message: string
   ) {
     super(message);

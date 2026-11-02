@@ -38,6 +38,10 @@ import {
   type EngineContext,
 } from "../lib/widgets/semantic";
 import type { Opportunity } from "../lib/types";
+import { QueryError } from "../lib/widgets/semantic";
+import { ageBucketKey, runQuery } from "../lib/widgets/engine";
+import { byLabel, dim } from "./lib/widget-test-kit";
+import type { FilterClause, TimeSpec } from "../lib/widgets/spec";
 import { customFieldTypeMap } from "../lib/sync";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -322,10 +326,109 @@ function semanticSection(): void {
   });
 }
 
+// ─── Task 4: age buckets, custom-date windows, margins ─────────────────────────
+
+const ALL: TimeSpec = { field: "createdAt", range: "all", from: null, to: null, compare: "none" };
+const WON: FilterClause = { anyOf: [{ field: "won", op: "eq", values: ["true"] }] };
+const OCT1_UTC = "1790812800000"; // 2026-10-01T00:00:00Z, how GHL stores a DATE field
+
+function makeCloseDateFixture(): EngineContext {
+  const cf = (v?: string) => (v ? { customFieldsResolved: { "Fecha de Cierre": v } } : {});
+  const opps = [
+    mkOpp("oA", "c1", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 1000, ...cf("1791158400000") }), // Oct 5
+    mkOpp("oB", "c1", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 2000, ...cf(OCT1_UTC) }),
+    mkOpp("oC", "c2", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 300 }),
+    mkOpp("oD", "c2", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 400 }),
+    mkOpp("oE", "c3", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 500, ...cf("1789430400000") }), // Sep 15
+    mkOpp("oF", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { value: 900, ...cf("1791590400000") }), // Oct 10, open
+  ];
+  const base = makeFixture().ctx;
+  return { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: { "opportunity:Fecha de Cierre": "DATE" } };
+}
+
+function makeAgeFixture(): EngineContext {
+  const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString(); // now = 2026-10-29 12:00 local
+  const opps = [
+    mkOpp("a3", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(3) }),
+    mkOpp("a20", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(20) }),
+    mkOpp("a90", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(90) }),
+    mkOpp("aNone", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z"),
+    mkOpp("aFuture", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(-2) }),
+  ];
+  const base = makeFixture().ctx;
+  return { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: {} };
+}
+
+function engineDimsSection(): void {
+  section("engine: age buckets, custom-date windows, margins");
+
+  check("age buckets: 7/8, 15/16, 60/61 borders, future and missing", () => {
+    const e = [7, 15, 30, 60];
+    assert.deepEqual([0, 7, 8, 15, 16, 30, 31, 60, 61].map((d) => ageBucketKey(d, e)), ["a0", "a0", "a1", "a1", "a2", "a2", "a3", "a3", "a4"]);
+    assert.equal(ageBucketKey(-1, e), "future");
+    assert.equal(ageBucketKey(null, e), EMPTY_VALUE);
+  });
+
+  check("an age dimension shows every range even at zero, in order", () => {
+    const res = runQuery(q({ groupBy: [{ dimension: "lastStageChangeAt", bucket: "age", join: null }], time: ALL }), makeAgeFixture());
+    assert.deepEqual(res.rows.map((r) => r.label[0]), ["0–7 días", "8–15 días", "16–30 días", "31–60 días", "Más de 60 días", "Fecha futura", "Sin fecha"]);
+    assert.deepEqual(res.rows.map((r) => r.values[0]), [1, 0, 1, 0, 1, 1, 1]);
+  });
+
+  check("custom date window drops undated rows and says how many", () => {
+    const res = runQuery(
+      q({ metrics: [{ metric: "value_sum", label: null }], filters: [WON], time: { field: "cf:Fecha de Cierre", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "none" } }),
+      makeCloseDateFixture()
+    );
+    assert.equal(res.totals[0], 3000);
+    assert.ok(res.meta.warnings.includes("2 oportunidades sin «Fecha de Cierre» no aparecen"), res.meta.warnings.join(" | "));
+    assert.equal(res.meta.undated?.records.length, 2);
+  });
+
+  check("a close date of Oct 1 00:00Z buckets in October; undated show last on an all-time axis", () => {
+    const res = runQuery(q({ metrics: [{ metric: "value_sum", label: null }], filters: [WON], groupBy: [dim("cf:Fecha de Cierre", "month")], sort: { by: "natural", dir: "asc" }, time: ALL }), makeCloseDateFixture());
+    const v = byLabel(res);
+    assert.equal(v["oct 2026"], 3000);
+    assert.equal(v["sep 2026"], 500);
+    assert.equal(res.rows[res.rows.length - 1].label[0], "Sin Fecha de Cierre");
+  });
+
+  check("custom date with an old cache is pending, not an unknown field", () => {
+    assert.throws(
+      () => runQuery(q({ time: { ...ALL, field: "cf:Fecha de Cierre" } }), { ...makeCloseDateFixture(), customFieldTypes: null }),
+      (e: unknown) => e instanceof QueryError && e.code === "pending" && /después de la próxima actualización/.test(e.message)
+    );
+  });
+
+  check("margins measure deduped records, not summed cells", () => {
+    const base = makeFixture().ctx;
+    const contacts = [mkContact("m1", { assignedTo: "Ana", tags: ["vip", "b"] }), mkContact("m2", { assignedTo: "Ana", tags: ["vip"] })];
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("assignedTo"), dim("tags")], time: ALL }), { ...base, dataset: { ...base.dataset, contacts } });
+    assert.equal(res.margins!.first["Ana"][0], 2);
+    assert.equal(res.margins!.second["vip"][0], 2);
+    assert.equal(res.margins!.second["b"][0], 1);
+    assert.equal(runQuery(q({ source: "contacts", groupBy: [dim("assignedTo")], time: ALL }), base).margins, null);
+  });
+
+  check("outcome stacks in Ganada, Abierta, Perdida order", () => {
+    const base = makeFixture().ctx;
+    const opps = [
+      mkOpp("l1", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", { status: "lost" }),
+      mkOpp("l2", "c1", "p1", "Nuevo", "2026-10-02T12:00:00Z", { status: "abandoned" }),
+      mkOpp("w1", "c2", "p1", "Nuevo", "2026-10-03T12:00:00Z", { status: "won" }),
+      mkOpp("op", "c3", "p1", "Nuevo", "2026-10-04T12:00:00Z"),
+    ];
+    const res = runQuery(q({ groupBy: [dim("createdAt", "month"), dim("outcome")], time: ALL }), { ...base, dataset: { ...base.dataset, opportunities: opps } });
+    assert.deepEqual(res.rows.map((r) => r.label[1]), ["Ganada", "Abierta", "Perdida"]);
+    assert.deepEqual(res.rows.map((r) => r.values[0]), [1, 1, 2]);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
   semanticSection();
+  engineDimsSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

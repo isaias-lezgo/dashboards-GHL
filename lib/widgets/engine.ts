@@ -35,19 +35,25 @@ import type { AdsStatus, Opportunity } from "@/lib/types";
 import type { ResolvedDateRange } from "@/lib/date-range";
 import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelines } from "@/lib/pipeline-filter";
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
-import { DOC_LIMITS, entityOf, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
+import { DOC_LIMITS, edgesOf, entityOf, fallbacksOf, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
-import { ENUM_LABELS_ES } from "./labels";
+import { ENUM_LABELS_ES, fieldLabel } from "./labels";
+import { customFieldName } from "@/lib/custom-fields";
 import { catLabel } from "@/lib/source-platform";
 import {
   ENTITY_SOURCE,
   EMPTY_VALUE,
   QueryError,
   SOURCE_DEFS,
+  OUTCOME_ORDER,
   clauseFields,
+  customFieldType,
+  dateValue,
   dimensionValues,
+  fieldValuesWithFallbacks,
   isDateField,
+  toDate,
   isKnownField,
   isRelatedDimension,
   matchesAll,
@@ -83,10 +89,18 @@ export interface QueryMeta {
   warnings: string[];
   adsStatus: AdsStatus | "pending" | null;
   adsMessage: string | null;
+  /** A windowed custom date left these records out (they have no date). */
+  undated?: { field: string; records: Row[] };
 }
 
 export interface QueryResult {
   rows: QueryRow[];
+  /**
+   * 2-dimension results only: each first-dim and second-dim key measured over its
+   * DEDUPED records — not the sum of its cells, which double-counts a record that
+   * sits in several cells (tags, multi-option fields). Matrix totals read these.
+   */
+  margins: { first: Record<string, (number | null)[]>; second: Record<string, (number | null)[]> } | null;
   totals: (number | null)[];
   compare: { totals: (number | null)[]; range: { from: string; to: string } } | null;
   meta: QueryMeta;
@@ -150,30 +164,48 @@ export function resolveWidgetRange(time: TimeSpec, ctx: EngineContext): Resolved
 const dayKey = (d: Date): string => format(d, "yyyy-MM-dd");
 const rangeKeys = (r: ResolvedDateRange | null) => (r ? { from: dayKey(r.from), to: dayKey(r.to) } : null);
 
-// A bare "YYYY-MM-DD" (Meta's ad days) is a LOCAL calendar day; `new Date()`
-// would read it as UTC midnight and push it into the previous day west of UTC.
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
-function toDate(v: unknown): Date | null {
-  if (typeof v !== "string" || !v) return null;
-  const d = DATE_ONLY.test(v) ? parseISO(v) : new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function applyRange(source: SourceId, field: string, rows: Row[], range: ResolvedDateRange | null): Row[] {
-  if (!range) return rows;
+function applyRange(
+  source: SourceId,
+  field: string,
+  rows: Row[],
+  range: ResolvedDateRange | null,
+  ctx: ResolvedCtx
+): { rows: Row[]; undated: Row[] } {
+  if (!range) return { rows, undated: [] };
   // Undated rows stay when the field is the source's own date (parity with
   // filterByDateRange); a secondary date (closedAt, dueDate…) that is missing
   // means the event never happened, so the row is out (parity with closedAfter).
   const keepUndated = SOURCE_DEFS[source].primaryDate === field;
   const from = range.from.getTime();
   const to = range.to.getTime();
-  return rows.filter((r) => {
-    const d = toDate(r[field]);
-    if (!d) return keepUndated;
+  const undated: Row[] = [];
+  const kept = rows.filter((r) => {
+    const d = dateValue(source, r, field, ctx);
+    if (!d) {
+      if (!keepUndated) undated.push(r);
+      return keepUndated;
+    }
     const t = d.getTime();
     return t >= from && t <= to;
   });
+  return { rows: kept, undated };
+}
+
+const SOURCE_NOUN: Record<SourceId, [string, string]> = {
+  contacts: ["contacto", "contactos"],
+  opportunities: ["oportunidad", "oportunidades"],
+  appointments: ["cita", "citas"],
+  tasks: ["tarea", "tareas"],
+  pautas: ["pauta", "pautas"],
+  ads_daily: ["día", "días"],
+  conversations: ["conversación", "conversaciones"],
+};
+
+/** "2 oportunidades sin «Fecha de Cierre» no aparecen" — a windowed custom date says what it left out. */
+function undatedWarning(source: SourceId, field: string, n: number): string {
+  const [one, many] = SOURCE_NOUN[source];
+  const name = customFieldName(field) ?? fieldLabel(field);
+  return n === 1 ? `1 ${one} sin «${name}» no aparece` : `${n} ${many} sin «${name}» no aparecen`;
 }
 
 // ─── Global filters ───────────────────────────────────────────────────────────
@@ -302,20 +334,39 @@ function validateFields(q: QuerySpec, ctx: EngineContext): void {
       assertField(target, field, ctx);
       continue;
     }
-    if (g.bucket || isDateField(q.source, g.dimension)) {
-      if (!isDateField(q.source, g.dimension)) throw new QueryError("invalid", `«${g.dimension}» no es una fecha de ${q.source}`);
+    if (g.bucket || isDateField(q.source, g.dimension, ctx)) {
+      assertDate(q.source, g.dimension, ctx);
       continue;
     }
     assertField(q.source, g.dimension, ctx);
+    for (const f of fallbacksOf(g)) assertOwnOrContactField(q.source, f, ctx);
   }
-  for (const c of q.filters) for (const f of c.anyOf) assertField(q.source, f.field, ctx);
+  for (const c of q.filters) {
+    for (const f of c.anyOf) {
+      assertField(q.source, f.field, ctx);
+      for (const fb of fallbacksOf(f)) assertOwnOrContactField(q.source, fb, ctx);
+    }
+  }
   for (const rf of q.relatedFilters) {
     const src = ENTITY_SOURCE[rf.entity];
     for (const c of rf.conditions) for (const f of c.anyOf) assertField(src, f.field, ctx);
   }
-  if (!SOURCE_DEFS[q.source].dateFields.includes(q.time.field)) {
-    throw new QueryError("invalid", `«${q.time.field}» no es una fecha de ${q.source}`);
+  assertDate(q.source, q.time.field, ctx);
+}
+
+function assertOwnOrContactField(source: SourceId, field: string, ctx: EngineContext): void {
+  if (field.startsWith("contact.") && source !== "contacts") assertField("contacts", field.slice("contact.".length), ctx);
+  else assertField(source, field, ctx);
+}
+
+/** A date the query can bucket or window by. A custom one on a cache without types is pending, not wrong. */
+function assertDate(source: SourceId, field: string, ctx: EngineContext): void {
+  if (isDateField(source, field, ctx)) return;
+  const cf = customFieldName(field.replace(/^contact\./, ""));
+  if (cf && !ctx.customFieldTypes) {
+    throw new QueryError("pending", `«${cf}» se podrá usar como fecha después de la próxima actualización`);
   }
+  throw new QueryError("invalid", `«${field}» no es una fecha de ${source}`);
 }
 
 // ─── Buckets ──────────────────────────────────────────────────────────────────
@@ -340,7 +391,7 @@ function bucketKey(d: Date, b: Bucket): string {
     case "hour":
       return format(d, "HH");
     case "age":
-      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
+      throw new QueryError("invalid", "Los rangos de días se agrupan con ageBucketKey");
   }
 }
 
@@ -362,7 +413,7 @@ function bucketLabel(key: string, b: Bucket): string {
     case "hour":
       return `${key}:00`;
     case "age":
-      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
+      throw new QueryError("invalid", "Los rangos de días se agrupan con ageBucketKey");
   }
 }
 
@@ -383,15 +434,36 @@ function bucketsInSpan(from: Date, to: Date, b: Bucket): string[] {
     case "hour":
       return Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
     case "age":
-      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
+      throw new QueryError("invalid", "Los rangos de días se agrupan con ageBucketKey");
   }
 }
 
-function observedSpan(rows: Row[], field: string): { from: Date; to: Date } | null {
+// ─── "Días desde": whole days between a date and today, in ranges ─────────────
+
+/** "a<i>" for the i-th range (edges are inclusive upper bounds), "future" for a date after today, EMPTY_VALUE for none. */
+export function ageBucketKey(days: number | null, edges: number[]): string {
+  if (days === null) return EMPTY_VALUE;
+  if (days < 0) return "future";
+  const i = edges.findIndex((e) => days <= e);
+  return `a${i === -1 ? edges.length : i}`;
+}
+
+const ageKeys = (edges: number[]): string[] => Array.from({ length: edges.length + 1 }, (_, i) => `a${i}`);
+
+function ageBucketLabel(key: string, edges: number[]): string {
+  if (key === EMPTY_VALUE) return "Sin fecha";
+  if (key === "future") return "Fecha futura";
+  const i = Number(key.slice(1));
+  if (i === 0) return `0–${edges[0]} días`;
+  if (i >= edges.length) return `Más de ${edges[edges.length - 1]} días`;
+  return `${edges[i - 1] + 1}–${edges[i]} días`;
+}
+
+function observedSpan(rows: Row[], dateOf: (r: Row) => Date | null): { from: Date; to: Date } | null {
   let min = Infinity;
   let max = -Infinity;
   for (const r of rows) {
-    const d = toDate(r[field]);
+    const d = dateOf(r);
     if (!d) continue;
     const t = d.getTime();
     if (t < min) min = t;
@@ -407,6 +479,8 @@ interface DimPlan {
   bucket: Bucket | null;
   /** Keys every series must show even with no records (gap fill), in order. */
   fill: string[] | null;
+  /** bucket "age" only. */
+  edges?: number[];
 }
 
 export interface GroupOptions {
@@ -431,14 +505,24 @@ export interface GroupResult {
   warnings: string[];
 }
 
-function planDims(records: Row[], source: SourceId, groupBy: GroupBySpec[], range: ResolvedDateRange | null): { dims: DimPlan[]; bucketUsed: Bucket | null; warnings: string[] } {
+function planDims(
+  records: Row[],
+  source: SourceId,
+  groupBy: GroupBySpec[],
+  range: ResolvedDateRange | null,
+  ctx: ResolvedCtx
+): { dims: DimPlan[]; bucketUsed: Bucket | null; warnings: string[] } {
   const warnings: string[] = [];
   let bucketUsed: Bucket | null = null;
   const dims = groupBy.map((spec): DimPlan => {
-    const isDate = !isRelatedDimension(spec.dimension) && isDateField(source, spec.dimension);
+    const isDate = isDateField(source, spec.dimension, ctx);
     if (!isDate) return { spec, bucket: null, fill: null };
+    if (spec.bucket === "age") {
+      const edges = edgesOf(spec);
+      return { spec, bucket: "age", fill: ageKeys(edges), edges };
+    }
     let bucket: Bucket = spec.bucket ?? "day";
-    const span = range ?? observedSpan(records, spec.dimension);
+    const span = range ?? observedSpan(records, (r) => dateValue(source, r, spec.dimension, ctx));
     let fill = span ? bucketsInSpan(span.from, span.to, bucket) : [];
     const requested = bucket;
     while (fill.length > DOC_LIMITS.maxBuckets && COARSER[bucket] && span) {
@@ -455,10 +539,16 @@ function planDims(records: Row[], source: SourceId, groupBy: GroupBySpec[], rang
 }
 
 function valuesFor(row: Row, dim: DimPlan, source: SourceId, ctx: MetricCtx, opts: GroupOptions): string[] {
+  if (dim.bucket === "age") {
+    const d = dateValue(source, row, dim.spec.dimension, ctx);
+    return [ageBucketKey(d ? differenceInCalendarDays(ctx.now, d) : null, dim.edges!)];
+  }
   if (dim.bucket) {
-    const d = toDate(row[dim.spec.dimension]);
+    const d = dateValue(source, row, dim.spec.dimension, ctx);
     return [d ? bucketKey(d, dim.bucket) : EMPTY_VALUE];
   }
+  const fb = fallbacksOf(dim.spec);
+  if (fb.length) return fieldValuesWithFallbacks(source, row, [dim.spec.dimension, ...fb], ctx);
   if (isRelatedDimension(dim.spec.dimension)) {
     if (!opts.relatedValues) throw new QueryError("unsupported", `La dimensión «${dim.spec.dimension}» no está disponible aquí`);
     return opts.relatedValues(row, dim.spec);
@@ -474,6 +564,11 @@ const capitalize = (t: string): string => (t ? t[0].toUpperCase() + t.slice(1) :
 // booleans to Sí/No.
 function labelFor(key: string, dim: DimPlan, source: SourceId): string {
   if (key === OTROS_KEY) return OTROS;
+  if (dim.bucket === "age") return ageBucketLabel(key, dim.edges!);
+  if (dim.bucket && key === EMPTY_VALUE) {
+    const f = dim.spec.dimension.replace(/^contact\./, "");
+    return `Sin ${customFieldName(f) ?? fieldLabel(f)}`;
+  }
   if (dim.bucket) return bucketLabel(key, dim.bucket);
   const related = /^(opportunity|contact)\.(.+)$/.exec(dim.spec.dimension);
   const field = related ? related[2] : dim.spec.dimension;
@@ -489,6 +584,12 @@ const TERMINAL_FUNNEL = ["Ganado", "Abandonado", "Perdido"];
 function naturalRank(dim: DimPlan, source: SourceId, ctx: MetricCtx): ((key: string) => number) | null {
   if (dim.bucket) return null; // chronological keys sort as strings
   const field = dim.spec.dimension.replace(/^opportunity\./, "");
+  if (field === "outcome") {
+    return (key) => {
+      const i = OUTCOME_ORDER.indexOf(key as (typeof OUTCOME_ORDER)[number]);
+      return i === -1 ? 500_000 : i;
+    };
+  }
   if (field === "stage" || field === "funnelState") {
     const order: string[] = [];
     for (const p of ctx.pipelines) for (const s of p.stages) if (!order.includes(s)) order.push(s);
@@ -531,7 +632,7 @@ export function groupAndMeasure(
     return { rows: [{ key: [], label: [], values: measure(records), records }], foldedIntoOtros: 0, seriesFolded: 0, fanOut: false, bucketUsed: null, warnings: [] };
   }
 
-  const { dims, bucketUsed, warnings } = planDims(records, source, groupBy, opts.range ?? null);
+  const { dims, bucketUsed, warnings } = planDims(records, source, groupBy, opts.range ?? null, ctx);
   const groups = new Map<string, { key: string[]; records: Row[] }>();
   let fanOut = false;
   for (const r of records) {
@@ -559,6 +660,16 @@ export function groupAndMeasure(
       }
     }
   }
+  // "Días desde" as the second dimension: every range is a column, even empty.
+  const fill1 = dims[1]?.bucket === "age" ? dims[1].fill : null;
+  if (fill1) {
+    for (const k0 of new Set([...groups.values()].map((g) => g.key[0]))) {
+      for (const k1 of fill1) {
+        const k = [k0, k1].join(KEY_SEP);
+        if (!groups.has(k)) groups.set(k, { key: [k0, k1], records: [] });
+      }
+    }
+  }
 
   // Order of first-dimension keys.
   const byK0 = new Map<string, Row[]>();
@@ -573,6 +684,8 @@ export function groupAndMeasure(
   let k0Order = [...byK0.keys()].sort((a, b) => {
     const e = emptyLast(a, b);
     if (e !== 0) return e;
+    // Ranges of days have one order; a value sort would scramble them.
+    if (dims[0].bucket === "age") return a.localeCompare(b);
     if (opts.sort.by === "value") {
       const va = k0Value.get(a);
       const vb = k0Value.get(b);
@@ -609,6 +722,8 @@ export function groupAndMeasure(
     for (const g of groups.values()) bySeries.set(g.key[1], [...(bySeries.get(g.key[1]) ?? []), ...g.records]);
     const rank1 = naturalRank(dims[1], source, ctx);
     seriesOrder = [...bySeries.keys()].sort((a, b) => {
+      const e = emptyLast(a, b);
+      if (e !== 0) return e;
       if (dims[1].bucket) return a.localeCompare(b);
       if (rank1) return rank1(a) - rank1(b) || a.localeCompare(b, "es");
       const va = METRICS[metrics[0]].compute(dedupe(bySeries.get(a)!), ctx) ?? -Infinity;
@@ -647,6 +762,25 @@ export function groupAndMeasure(
     rows.push({ key: [OTROS_KEY], label: [OTROS], values: measure(recs), records: recs });
   }
   return { rows, foldedIntoOtros, seriesFolded, fanOut, bucketUsed, warnings };
+}
+
+/** Row and column totals of a 2-dimension result, each measured over its deduped records. */
+function marginsOf(rows: QueryRow[], dims: number, metricIds: MetricId[], mctx: MetricCtx): QueryResult["margins"] {
+  if (dims !== 2) return null;
+  const first = new Map<string, Row[]>();
+  const second = new Map<string, Row[]>();
+  const add = (m: Map<string, Row[]>, k: string, rs: Row[]) => {
+    const list = m.get(k);
+    if (list) list.push(...rs);
+    else m.set(k, [...rs]);
+  };
+  for (const r of rows) {
+    add(first, r.key[0], r.records);
+    if (r.key.length > 1) add(second, r.key[1], r.records);
+  }
+  const measure = (m: Map<string, Row[]>) =>
+    Object.fromEntries([...m].map(([k, rs]) => [k, metricIds.map((id) => METRICS[id].compute(dedupe(rs), mctx))]));
+  return { first: measure(first), second: measure(second) };
 }
 
 // ─── runQuery ─────────────────────────────────────────────────────────────────
@@ -692,7 +826,7 @@ function runAdsQuery(q: QuerySpec, ctx: EngineContext, r: ResolvedCtx, range: Re
     adsMessage: ads.message,
   };
   if (ads.status !== "connected" || !ads.window) {
-    return { rows: [], totals: metricIds.map(() => null), compare: null, meta: baseMeta };
+    return { rows: [], totals: metricIds.map(() => null), margins: null, compare: null, meta: baseMeta };
   }
   const window = ads.window;
   const rows = ads.rows as unknown as Row[];
@@ -700,7 +834,7 @@ function runAdsQuery(q: QuerySpec, ctx: EngineContext, r: ResolvedCtx, range: Re
   const leadDays = pautaLeadDays(r, window);
 
   // Size the date bucket first so the lead span uses the same bucket the bars do.
-  const planned = planDims(rows, q.source, q.groupBy, windowRange);
+  const planned = planDims(rows, q.source, q.groupBy, windowRange, r);
   const bucket = planned.bucketUsed;
   if (bucket === "weekday" || bucket === "hour") {
     throw new QueryError("invalid", "El gasto de Meta solo se agrupa por día, semana, mes o trimestre");
@@ -723,6 +857,7 @@ function runAdsQuery(q: QuerySpec, ctx: EngineContext, r: ResolvedCtx, range: Re
   return {
     rows: grouped.rows,
     totals: metricIds.map((m) => METRICS[m].compute(rows, totalsCtx)),
+    margins: null,
     compare: null,
     meta: {
       ...baseMeta,
@@ -773,9 +908,14 @@ function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
   let rows = def.rows(ctx);
   if (q.filters.length) rows = rows.filter((row) => matchesAll(q.source, row, q.filters, r));
   for (const rf of q.relatedFilters) rows = rows.filter((row) => matchesRelated(q.source, row, rf, r));
-  rows = applyRange(q.source, q.time.field, rows, range);
+  const ranged = applyRange(q.source, q.time.field, rows, range, r);
+  rows = ranged.rows;
   const plan = globalPlan(q, ctx);
   rows = applyGlobals(q.source, rows, plan, r);
+  // Only a CUSTOM date says what it left out: a missing native secondary date
+  // (an open opportunity's closedAt) is the normal state, not a gap to report.
+  const undated = customFieldName(q.time.field) && ranged.undated.length ? applyGlobals(q.source, ranged.undated, plan, r) : [];
+  if (undated.length) warnings.push(undatedWarning(q.source, q.time.field, undated.length));
 
   if (q.source === "appointments") {
     const earliest = startOfDay(subDays(ctx.now, APPT_WINDOW_DAYS)).getTime();
@@ -796,8 +936,10 @@ function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
   return {
     rows: grouped.rows,
     totals: metricIds.map((m) => METRICS[m].compute(rows, mctx)),
+    margins: marginsOf(grouped.rows, q.groupBy.length, metricIds, mctx),
     compare: null,
     meta: {
+      ...(undated.length ? { undated: { field: q.time.field, records: undated } } : {}),
       source: q.source,
       recordCount: rows.length,
       range: rangeKeys(range),
