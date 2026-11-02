@@ -977,6 +977,36 @@ function appFixesSection(): void {
   });
 }
 
+// ─── Final review fixes ───────────────────────────────────────────────────────
+
+function finalReviewSection(): void {
+  section("final review fixes");
+
+  check("days_ago filters must be on a date and carry a whole number of days", () => {
+    const cat = buildCatalog(makeAgeFixture());
+    const onStage = validateWidget(widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "stage", op: "days_ago_gte", values: ["16"] }] }] }), cat);
+    assert.equal(onStage.length, 1, JSON.stringify(onStage));
+    assert.match(onStage[0].message, /no es una fecha/);
+    const words = validateWidget(widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["dos semanas"] }] }] }), cat);
+    assert.equal(words.length, 1, JSON.stringify(words));
+    assert.match(words[0].message, /número entero de días/);
+    const related = validateWidget(widget("kpi", { source: "opportunities", relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["x"] }] }] }] }), cat);
+    assert.equal(related.length, 1, JSON.stringify(related));
+    const ok = validateWidget(widget("kpi", { source: "opportunities", relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["16"] }] }] }] }), cat);
+    assert.deepEqual(ok, []);
+  });
+
+  check("series filter fallbacks are validated like the query's", () => {
+    const cat = buildCatalog(makeComboFixture().ctx);
+    const issues = validateWidget(
+      widget("grouped_bar", { groupBy: [dim("createdAt", "week")], series: [series("Opps", "opportunities", "count", "createdAt", { filters: [{ anyOf: [{ field: "cf:Canal de contacto", op: "eq", values: ["X"], fallbacks: ["contact.cf:No Existe"] }] }] })] }),
+      cat
+    );
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    assert.match(issues[0].message, /No Existe/);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -991,6 +1021,7 @@ async function main(): Promise<void> {
   await filterBarSection();
   promptSection();
   appFixesSection();
+  finalReviewSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

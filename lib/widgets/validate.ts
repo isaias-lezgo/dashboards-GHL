@@ -197,6 +197,16 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     }
     checkField(path, field, catalog.fields[source], source);
   };
+  // "Hace N días" only reads a date and a whole number: anything else matches nothing — a silent zero.
+  const checkRelative = (path: string, clauses: FilterClause[], source: SourceId) =>
+    clauses.forEach((c, i) =>
+      c.anyOf.forEach((f, j) => {
+        if (f.op !== "days_ago_gte" && f.op !== "days_ago_lte") return;
+        const at = `${path}[${i}].anyOf[${j}]`;
+        if (!catalogIsDate(catalog, source, f.field)) add(`${at}.field`, `«${f.field}» no es una fecha de ${source}: «hace N días» solo aplica a fechas.`);
+        else if (!/^\d+$/.test(f.values[0] ?? "")) add(`${at}.values`, "«Hace N días» lleva un número entero de días (por ejemplo «16»).");
+      })
+    );
   const extra = seriesOf(q);
 
   // Metrics
@@ -260,6 +270,8 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
     q.filters.forEach((c, i) =>
       c.anyOf.forEach((f, j) => fallbacksOf(f).forEach((fb, k) => checkFallback(`query.filters[${i}].anyOf[${j}].fallbacks[${k}]`, fb, q.source)))
     );
+    checkRelative("query.filters", q.filters, q.source);
+    q.relatedFilters.forEach((rf, i) => checkRelative(`query.relatedFilters[${i}].conditions`, rf.conditions, ENTITY_SOURCE[rf.entity]));
     q.relatedFilters.forEach((rf, i) => {
       const path = `query.relatedFilters[${i}]`;
       if (rf.entity === sourceEntity) {
@@ -337,7 +349,14 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
         }
       }
       if (x.source === "conversations" && x.relatedFilters.length) add(`${path}.relatedFilters`, "Las conversaciones no admiten filtros entre objetos.");
-      x.filters.forEach((c, k) => c.anyOf.forEach((f, j) => checkField(`${path}.filters[${k}].anyOf[${j}].field`, f.field, catalog.fields[x.source], x.source)));
+      x.filters.forEach((c, k) =>
+        c.anyOf.forEach((f, j) => {
+          checkField(`${path}.filters[${k}].anyOf[${j}].field`, f.field, catalog.fields[x.source], x.source);
+          fallbacksOf(f).forEach((fb, m) => checkFallback(`${path}.filters[${k}].anyOf[${j}].fallbacks[${m}]`, fb, x.source));
+        })
+      );
+      checkRelative(`${path}.filters`, x.filters, x.source);
+      x.relatedFilters.forEach((rf, k) => checkRelative(`${path}.relatedFilters[${k}].conditions`, rf.conditions, ENTITY_SOURCE[rf.entity]));
       x.relatedFilters.forEach((rf, k) => {
         if (rf.entity === entityOf(x.source)) add(`${path}.relatedFilters[${k}]`, `«${rf.entity}» es el mismo objeto de la serie: usa \`filters\`.`);
         else rf.conditions.forEach((c, m) => c.anyOf.forEach((f, j) => checkField(`${path}.relatedFilters[${k}].conditions[${m}].anyOf[${j}].field`, f.field, entityFields(rf.entity, catalog), ENTITY_SOURCE[rf.entity])));
