@@ -1046,7 +1046,7 @@ const KIND_NOUN: Record<ValueKind, string> = { count: "conteo", amount: "monto",
 const DEFAULT_CATEGORY_AXIS = 12;
 
 /** Series 0 is the query itself; its label defaults to the source ("Contactos") for a count. */
-function primarySeries(q: QuerySpec): SeriesSpec {
+export function primarySeries(q: QuerySpec): SeriesSpec {
   const m = q.metrics[0];
   return {
     label: m.label ?? (m.metric === "count" ? SOURCE_LABELS[q.source] : capitalize(METRIC_PHRASES[m.metric])),
@@ -1065,7 +1065,7 @@ const sameClauses = <T>(base: T[], sub: T[]): boolean => {
 };
 
 /** "De los X, cuántos…": same records, the numerator only ADDS conditions. Anything else compares two groups. */
-function ratioKind(num: SeriesSpec, den: SeriesSpec): "same_group" | "between_series" {
+export function ratioKind(num: SeriesSpec, den: SeriesSpec): "same_group" | "between_series" {
   return num.source === den.source &&
     num.dateField === den.dateField &&
     sameClauses(den.filters, num.filters) &&

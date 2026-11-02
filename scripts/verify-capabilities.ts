@@ -44,6 +44,7 @@ import { byLabel, dim } from "./lib/widget-test-kit";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
 import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow, type ConversationState } from "../lib/conversation-index";
 import { conversationDaysNeeded } from "../lib/widgets/engine";
+import { buildPanelCatalogSummary, buildPanelSnapshot, describeFilterChips, describeWidget } from "../lib/widgets/describe";
 import { executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
 import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
@@ -750,6 +751,50 @@ async function conversationsEngineSection(): Promise<void> {
   });
 }
 
+// ─── Task 10: describe, labels, snapshot ──────────────────────────────────────
+
+function describeSection(): void {
+  section("describe: series, ratios, combined fields, ages, snapshot");
+  const contactsVsOpps = widget("grouped_bar", { groupBy: [dim("createdAt", "week")], series: [series("Oportunidades", "opportunities", "count", "createdAt")], time: { ...ALL, range: "inherit" } });
+  const shareSpec = widget("kpi", { series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "% con oportunidad", numerator: 1, denominator: 0 } });
+  const betweenSpec = widget("kpi", { source: "opportunities", series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 } });
+  const bySucursal = widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Sucursal VAEO"), fallbacks: ["cf:Sucursal MESH"] }] });
+  const staleMatrix: WidgetSpec = { ...widget("matrix", {}), query: staleMatrixQuery };
+
+  check("series are described with their source and date", () => {
+    assert.equal(describeWidget(contactsVsOpps), "Contactos (contactos por fecha de creación) y Oportunidades (oportunidades por fecha de creación) · por semana · hereda fechas");
+  });
+  check("a ratio says what it divides and which kind it is", () => {
+    assert.match(describeWidget(shareSpec), /% con oportunidad = Con oportunidad ÷ Contactos \(mismo grupo, cuenta hasta hoy\)/);
+    assert.match(describeWidget(betweenSpec), /Opps por contacto = Oportunidades ÷ Contactos \(cociente entre registros distintos\)/);
+  });
+  check("fallbacks and age ranges are described", () => {
+    assert.match(describeWidget(bySucursal), /por Sucursal VAEO \(o Sucursal MESH\)/);
+    assert.match(describeWidget(staleMatrix), /días desde el último cambio de etapa × días desde nuestro último mensaje/);
+  });
+  check("a widened conversation window is named", () => {
+    assert.match(describeWidget({ ...widget("kpi", {}), query: { ...convQuery, conversationDays: 120 } }), /conversaciones de 120 días/);
+    assert.doesNotMatch(describeWidget({ ...widget("kpi", {}), query: convQuery }), /conversaciones de/);
+  });
+  check("filter chips read relative days and combined fields", () => {
+    const spec = widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }] }, { anyOf: [{ field: "cf:Sucursal VAEO", op: "eq", values: ["Valle"], fallbacks: ["cf:Sucursal MESH"] }] }] });
+    const chips = describeFilterChips(spec);
+    assert.ok(chips.includes("Último cambio de etapa hace ≥ 16 días"), chips.join(" | "));
+    assert.ok(chips.includes("Sucursal VAEO (o Sucursal MESH) = «Valle»"), chips.join(" | "));
+  });
+  check("the snapshot carries field-kind glossary entries", () => {
+    const doc = docWithGlossary({ kind: "field", fields: ["cf:Sucursal VAEO", "cf:Sucursal MESH"], meaning: [] });
+    assert.ok(buildPanelSnapshot(doc, "t1", null, "—").includes(" - «sucursal» (campo) = cf:Sucursal VAEO → cf:Sucursal MESH"));
+  });
+  check("the catalog lists custom date fields and conversations", () => {
+    const text = buildPanelCatalogSummary({ ...makeCloseDateFixture() });
+    assert.ok(text.includes("Campos de fecha personalizados: cf:Fecha de Cierre (oportunidad)"), text);
+    assert.ok(text.includes("Conversaciones: fuente «conversations»"), text);
+    const old = buildPanelCatalogSummary({ ...makeCloseDateFixture(), customFieldTypes: null });
+    assert.ok(old.includes("Campos de fecha personalizados: disponibles después de la próxima actualización"), old);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -759,6 +804,7 @@ async function main(): Promise<void> {
   validateSection();
   conversationIndexSection();
   await conversationsEngineSection();
+  describeSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

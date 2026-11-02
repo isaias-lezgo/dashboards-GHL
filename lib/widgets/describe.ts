@@ -6,7 +6,8 @@
 //  - the panel snapshot the model reads on every turn (spec §9.1).
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { entityOf, type DashboardDoc, type EntityId, type FilterClause, type FilterSpec, type QuerySpec, type WidgetSpec } from "./spec";
+import { entityOf, fallbacksOf, glossaryKind, seriesOf, type DashboardDoc, type EntityId, type FilterClause, type FilterSpec, type QuerySpec, type RelatedFilterSpec, type SeriesSpec, type WidgetSpec } from "./spec";
+import { primarySeries, ratioKind } from "./engine";
 import { SOURCE_DEFS, isDateField, knownCustomFields, type EngineContext } from "./semantic";
 import { ENTITY_NOUNS, METRIC_PHRASES, RANGE_LABELS, SOURCE_LABELS, VIZ_LABELS, fieldLabel, valueLabel } from "./labels";
 
@@ -21,8 +22,11 @@ const BUCKET_PHRASES: Record<string, string> = {
   hour: "hora",
 };
 
+const fieldName = (f: string): string => (f.startsWith("contact.") ? `${fieldLabel(f.slice("contact.".length))} del contacto` : fieldLabel(f));
+
 function conditionText(entity: EntityId | null, f: FilterSpec): string {
-  const label = fieldLabel(f.field);
+  const fb = fallbacksOf(f);
+  const label = fb.length ? `${fieldLabel(f.field)} (o ${fb.map(fieldName).join(" o ")})` : fieldLabel(f.field);
   const values = f.values.map((v) => valueLabel(entity, f.field, v)).join(" o ");
   switch (f.op) {
     case "eq":
@@ -64,9 +68,27 @@ function clausesText(entity: EntityId | null, clauses: FilterClause[]): string {
   return clauses.map((c) => clauseText(entity, c)).join(" y ");
 }
 
-function groupText(q: QuerySpec): string | null {
+/** "días desde …": the event each date marks, with its article. */
+const AGE_PHRASES: Record<string, string> = {
+  lastStageChangeAt: "el último cambio de etapa",
+  lastStatusChangeAt: "el último cambio de estado",
+  lastOutboundAt: "nuestro último mensaje",
+  lastMessageAt: "el último mensaje",
+  createdAt: "la creación",
+  closedAt: "el cierre",
+  dueDate: "el vencimiento",
+  startTime: "la cita",
+};
+
+function groupText(q: QuerySpec, viz?: WidgetSpec["viz"]): string | null {
   if (q.groupBy.length === 0) return null;
   const parts = q.groupBy.map((g) => {
+    if (g.bucket === "age") {
+      const field = g.dimension.replace(/^(contact|opportunity)\./, "");
+      return `días desde ${AGE_PHRASES[field] ?? `«${fieldLabel(field)}»`}`;
+    }
+    const fb = fallbacksOf(g);
+    if (fb.length) return `por ${fieldName(g.dimension)} (o ${fb.map(fieldName).join(" o ")})`;
     if (g.dimension.startsWith("opportunity.")) {
       const label = fieldLabel(g.dimension.slice("opportunity.".length));
       return g.join === "each"
@@ -74,13 +96,28 @@ function groupText(q: QuerySpec): string | null {
         : `por ${label} de la oportunidad más reciente`;
     }
     if (g.dimension.startsWith("contact.")) return `por ${fieldLabel(g.dimension.slice("contact.".length))} del contacto`;
-    if (isDateField(q.source, g.dimension)) {
+    if (g.bucket || isDateField(q.source, g.dimension)) {
       const bucket = BUCKET_PHRASES[g.bucket ?? "day"];
       return g.dimension === SOURCE_DEFS[q.source].primaryDate ? `por ${bucket}` : `por ${bucket} (${fieldLabel(g.dimension)})`;
     }
     return `por ${fieldLabel(g.dimension)}`;
   });
-  return parts.join(" y ");
+  return parts.join(viz === "matrix" ? " × " : " y ");
+}
+
+function relatedText(rf: RelatedFilterSpec): string {
+  const noun = ENTITY_NOUNS[rf.entity];
+  const cond = rf.conditions.length ? ` con ${clausesText(rf.entity, rf.conditions)}` : "";
+  const masc = rf.entity === "contact";
+  return rf.quantifier === "any" ? `con ${masc ? "algún" : "alguna"} ${noun}${cond}` : `sin ${masc ? "ningún" : "ninguna"} ${noun}${cond}`;
+}
+
+/** "Oportunidades (oportunidades por fecha de creación, solo …)": one series of a multi-series widget. */
+function seriesText(s: SeriesSpec): string {
+  const bits = [`${SOURCE_LABELS[s.source].toLowerCase()} por ${fieldLabel(s.dateField)}`];
+  if (s.filters.length) bits.push(`solo ${clausesText(entityOf(s.source), s.filters)}`);
+  for (const rf of s.relatedFilters) bits.push(relatedText(rf));
+  return `${s.label} (${bits.join(", ")})`;
 }
 
 function periodText(q: QuerySpec): string {
@@ -104,19 +141,30 @@ function periodText(q: QuerySpec): string {
 export function describeWidget(spec: WidgetSpec): string {
   const q = spec.query;
   if (!q) return "Nota";
-  const parts: string[] = [SOURCE_LABELS[q.source]];
-  if (spec.viz !== "record_list") parts.push(q.metrics.map((m) => METRIC_PHRASES[m.metric]).join(" y "));
-  const group = groupText(q);
-  if (group) parts.push(group);
-  const sourceEntity = entityOf(q.source);
-  if (q.filters.length) parts.push(`solo ${clausesText(sourceEntity, q.filters)}`);
-  for (const rf of q.relatedFilters) {
-    const noun = ENTITY_NOUNS[rf.entity];
-    const cond = rf.conditions.length ? ` con ${clausesText(rf.entity, rf.conditions)}` : "";
-    const masc = rf.entity === "contact";
-    parts.push(rf.quantifier === "any" ? `con ${masc ? "algún" : "alguna"} ${noun}${cond}` : `sin ${masc ? "ningún" : "ninguna"} ${noun}${cond}`);
+  const parts: string[] = [];
+  if (seriesOf(q).length || q.ratio) {
+    // Several series: each with its own source, date and conditions; a ratio says what it divides.
+    const all = [primarySeries(q), ...seriesOf(q)];
+    parts.push(all.map(seriesText).join(" y "));
+    const n = q.ratio ? all[q.ratio.numerator] : undefined;
+    const d = q.ratio ? all[q.ratio.denominator] : undefined;
+    if (q.ratio && n && d) {
+      const kind = ratioKind(n, d) === "same_group" ? "mismo grupo, cuenta hasta hoy" : "cociente entre registros distintos";
+      parts.push(`${q.ratio.label} = ${n.label} ÷ ${d.label} (${kind})`);
+    }
+    const group = groupText(q, spec.viz);
+    if (group) parts.push(group);
+  } else {
+    parts.push(SOURCE_LABELS[q.source]);
+    if (spec.viz !== "record_list") parts.push(q.metrics.map((m) => METRIC_PHRASES[m.metric]).join(" y "));
+    const group = groupText(q, spec.viz);
+    if (group) parts.push(group);
+    const sourceEntity = entityOf(q.source);
+    if (q.filters.length) parts.push(`solo ${clausesText(sourceEntity, q.filters)}`);
+    for (const rf of q.relatedFilters) parts.push(relatedText(rf));
   }
   parts.push(periodText(q));
+  if (q.conversationDays && q.conversationDays !== 60) parts.push(`conversaciones de ${q.conversationDays} días`);
   if (q.source === "ads_daily") parts.push("ignora los filtros de CRM");
   else if (q.globalFilters === "ignore") parts.push("ignora los filtros del panel");
   return parts.join(" · ");
@@ -181,7 +229,8 @@ export function buildPanelSnapshot(
     // becomes status = "perdida" instead of "lost" — a valid field, a zero count.
     lines.push("Glosario del cliente (usa estas cláusulas tal cual):");
     for (const g of doc.glossary) {
-      lines.push(` - «${g.term}» (${ENTITY_NOUNS[g.entity]}) = ${g.note} · cláusulas: ${JSON.stringify(g.meaning)}`);
+      if (glossaryKind(g) === "field") lines.push(` - «${g.term}» (campo) = ${(g.fields ?? []).join(" → ")}`);
+      else lines.push(` - «${g.term}» (${ENTITY_NOUNS[g.entity]}) = ${g.note} · cláusulas: ${JSON.stringify(g.meaning)}`);
     }
   }
   return lines.join("\n");
@@ -200,6 +249,22 @@ export function buildPanelCatalogSummary(ctx: EngineContext): string {
   };
   cfLine("contacto", "contacts");
   cfLine("oportunidad", "opportunities");
+  // Only fields GHL types as DATE are dates: text that looks like a date is not one.
+  if (!ctx.customFieldTypes) {
+    lines.push("Campos de fecha personalizados: disponibles después de la próxima actualización.");
+  } else {
+    const dates = Object.entries(ctx.customFieldTypes)
+      .filter(([, t]) => t === "DATE")
+      .map(([k]) => {
+        const [model, ...rest] = k.split(":");
+        return `cf:${rest.join(":")} (${model === "opportunity" ? "oportunidad" : "contacto"})`;
+      })
+      .sort((a, b) => a.localeCompare(b, "es"));
+    if (dates.length) lines.push(`Campos de fecha personalizados: ${dates.join(", ")}`);
+  }
+  lines.push(
+    "Conversaciones: fuente «conversations» (canal, asesor, último mensaje, esperando respuesta) y fechas del contacto lastOutboundAt (nuestro último mensaje) y lastMessageAt; se cargan bajo demanda, 60 días por omisión."
+  );
   const statuses = [...new Set(ctx.dataset.appointments.map((a) => a.status))].sort();
   if (statuses.length) lines.push(`Estados de cita: ${statuses.join(", ")}`);
   const ads = ctx.ads;
