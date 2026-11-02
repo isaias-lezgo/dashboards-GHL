@@ -754,7 +754,16 @@ export function groupAndMeasure(
   // Limit: fold the tail into "Otros" (or cut it, for the assistant's shape).
   let foldedIntoOtros = 0;
   const otrosRecords: Row[] = [];
-  if (opts.limit !== null && k0Order.length > opts.limit) {
+  // A time axis has no "rest": "Otros" at the end of a weekly axis hid the
+  // RECENT weeks (sorted oldest first, the limit kept the oldest). On calendar
+  // buckets the limit keeps the most recent periods and says so.
+  if (opts.fold && opts.limit !== null && dims[0].bucket && dims[0].bucket !== "age" && k0Order.length > opts.limit) {
+    const dated = k0Order.filter((k) => k !== EMPTY_VALUE).sort();
+    const keep = new Set(dated.slice(-opts.limit));
+    k0Order = k0Order.filter((k) => keep.has(k));
+    for (const [k, g] of groups) if (!keep.has(g.key[0])) groups.delete(k);
+    warnings.push(`Se muestran los últimos ${opts.limit} periodos; los anteriores quedan fuera.`);
+  } else if (opts.limit !== null && k0Order.length > opts.limit) {
     const tail = k0Order.slice(opts.limit);
     k0Order = k0Order.slice(0, opts.limit);
     if (opts.fold) {

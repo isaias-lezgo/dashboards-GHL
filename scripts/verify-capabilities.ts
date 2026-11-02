@@ -923,6 +923,19 @@ function promptSection(): void {
   });
 }
 
+// ─── Task 15: fixes found driving the real app ────────────────────────────────
+
+function appFixesSection(): void {
+  section("fixes found in the app");
+
+  check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
+    assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);
+    assert.ok(!res.rows.some((r) => r.label[0] === "Otros"));
+    assert.ok(res.meta.warnings.includes("Se muestran los últimos 2 periodos; los anteriores quedan fuera."), res.meta.warnings.join(" | "));
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -936,6 +949,7 @@ async function main(): Promise<void> {
   await glossaryFieldSection();
   await filterBarSection();
   promptSection();
+  appFixesSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 
