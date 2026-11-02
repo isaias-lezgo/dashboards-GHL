@@ -29,8 +29,11 @@ pnpm verify:oauth        # lib/ghl-oauth.ts — token sealing + single-winner re
 pnpm verify:sso          # lib/ghl-sso.ts — CryptoJS-format decryption + tenant decision
 pnpm verify:installations # lib/installations.ts + lib/ghl-webhook.ts — ids, Ed25519, uninstall cleanup
 pnpm verify:widgets      # lib/widgets/* — the AI panel: spec, engine, filters, tools, glossary, suggestions
+pnpm verify:capabilities # lib/widgets/* round 2: series, ratios, custom dates, combined fields, matrix, ages, conversations
 pnpm verify:dashboard-store # lib/dashboard-store.ts — conditional write, history cap (DB part needs DATABASE_URL)
 pnpm check:widget-parity [clientId…] # read-only: the panel engine vs the hand-built dashboards on real caches
+pnpm check:vaeo-reference [--live] # read-only: the engine vs VAEO's hand-built logic on 4 accounts' caches
+                         #   (--live loads lezgo-suite's conversations from GHL, read-only)
 pnpm eval:panel <clientId…> # COSTS API MONEY (~$8 for 2 accounts): the copilot's natural-language eval.
                          #   Never run it without the owner approving the budget.
 pnpm check:strict-tools  # ~$0.05: does the API still compile the copilot's strict tools? (see the panel section)
@@ -264,7 +267,9 @@ semantic catalog, and everything it saves is validated first.
 | `lib/widgets/suggestions.ts` | Data-aware chips of the empty panel |
 | `lib/dashboard-store.ts` | The only module that knows `dashboard_doc` / `dashboard_doc_version` |
 | `hooks/use-dashboard-doc.ts`, `use-panel-filters.ts` | Optimistic commits through a queue, 409 reload, undo stack; the bar's state |
-| `components/widgets/*` | Grid, cards, viz, tabs, filter bar, empty panel, `copilot-dock.tsx` |
+| `lib/conversation-index.ts`, `-load.ts` | Conversation rows + our last outbound per contact (pure / server walk) |
+| `hooks/use-conversation-index.ts` | On-demand conversation load, shared by every card of the session |
+| `components/widgets/*` | Grid, cards, viz, tabs, filter bar, empty panel, `viz-matrix.tsx`, `copilot-dock.tsx` |
 
 Invariants:
 
@@ -342,6 +347,54 @@ Invariants:
 - **Meta (`ads_daily`) ignores every CRM filter** and says so — the same rule as
   "Meta spend has NO pipeline dimension" below.
 - The classic Marketing / Ventas tabs receive only date and pipeline, as before.
+
+#### Round 2 (2026-11-02): several sources, proportions, dates, combined fields, conversations
+
+Design: `docs/superpowers/specs/2026-11-02-copiloto-robusto-design.md`. All new spec
+properties are OPTIONAL (absent = old behavior), so saved docs open untouched.
+
+- **Several series** (`QuerySpec.series`): the query is series 0; each extra series has
+  its own source, metric, filters and `dateField`, all on the axis `groupBy[0]` (a date
+  bucket → each series buckets ITS date). One unit per chart (never two axes, never
+  stacked bars across sources); a **table** may mix units, one column per series.
+- **Proportions** (`QuerySpec.ratio`): `same_group` = same source and date, the
+  numerator only ADDS conditions → a conversion counted TO DATE (cohort: related
+  conditions are never cut to the window; the card says recent periods are maturing).
+  Anything else is `between_series` and the card says they are not the same records.
+  The existing rates (`appointment_rate`…) keep their Ventas definitions.
+- **Custom DATE fields**: only fields GHL types `DATE` (`DashboardPayload.customFieldTypes`,
+  "<model>:<name>" → dataType). Never infer a date from text — one account's
+  "Fecha de última asignación" mixes month-first and day-first. Values are epoch ms at
+  UTC midnight, read as that UTC calendar day. A cache without types makes them
+  "pending" until the next sync. Windowed by a custom date, undated records are left
+  out and the card counts them (clickable).
+- **Combined fields** (`fallbacks` on groupBy, filters and filter controls; glossary
+  `kind: "field"`): the FIRST field with a value wins, in grouping AND filtering
+  (an "o" between fields would file records under two values). `resolve_term` offers
+  `combined_fields` when fields named after a concept barely overlap.
+- **Dimension `outcome`** = Ganada (`isWonOpp`) / Abierta / Perdida (lost or abandoned),
+  fixed colors green / slate / red. **`matrix`** keeps up to 20 columns (charts fold
+  past 6) with row/column totals measured on deduped records (`QueryResult.margins`).
+- **"Días desde"** = `bucket: "age"` (calendar days to today; edges 7/15/30/60) and the
+  filters `days_ago_gte` / `days_ago_lte`. VAEO counts 24 h periods instead; on
+  lezgo-suite that moved 1 opportunity of 39 (`check:vaeo-reference --live`).
+- **A limit on a date axis keeps the most recent periods**; it never folds weeks into
+  "Otros" (it did: the recent weeks were the ones hidden).
+- **Conversations** (`source: "conversations"`, `contact.lastOutboundAt` /
+  `lastMessageAt`): loaded ON DEMAND by `hooks/use-conversation-index.ts` from
+  `app/api/conversation-index` (walk in `lib/conversation-index-load.ts`, ported from
+  VAEO: only threads ending inbound are opened). Never in `project_sync`. The window is
+  per card (`conversationDays`, null = 60, no cap); the panel's date filter never widens
+  it, and over 60 days the card says "Recomendamos limitar el periodo a 60 días o menos
+  para reducir el tiempo de carga." Until loaded a card is "Cargando conversaciones…",
+  never zeros; a failed page fails the load (error + retry), a failed thread is
+  counted. A contact without messages in the window is "Más de N días o sin mensajes".
+- **Catalog**: the copilot is told which opportunity dates and custom DATE fields hold
+  data in the account (`closedAt` is empty on several), so it never charts an empty date.
+- **The copilot may say no**: one sentence why, 1–3 buildable alternatives via
+  `ask_user`, and it builds only what the user picks.
+- `save_term` left the strict set: **8 strict tools** since 2026-11-02 (`check:strict-tools`
+  ✅). Tests: `pnpm verify:capabilities`; reference: `pnpm check:vaeo-reference`.
 
 ### Pauta (paid-advertising) classification
 

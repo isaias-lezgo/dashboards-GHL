@@ -353,6 +353,96 @@ export const CASES: EvalCase[] = [
     check: (w) => w.query?.time.compare === "previous_period" || w.query?.time.compare === "previous_year",
   },
 
+  // ── Copilot round 2 (spec 2026-11-02): several sources, ratios, outcome, matrix,
+  //    "días desde", conversations, custom dates, combined fields (10) ──
+  {
+    id: "r01-fuentes-juntas",
+    prompt: "Contactos y oportunidades creados por semana, en una sola gráfica para contrastar",
+    kind: "create",
+    expect: "widget",
+    check: (w) => {
+      const s = w.query?.series ?? [];
+      return s.length === 1 && s[0].source !== w.query!.source && w.viz !== "stacked_bar" && !w.query!.ratio;
+    },
+  },
+  {
+    id: "r02-proporcion-grupo",
+    prompt: "De los contactos de cada mes, ¿qué % tiene oportunidad?",
+    kind: "create",
+    expect: "widget",
+    check: (w) => {
+      const q = w.query!;
+      const s = q.series ?? [];
+      return !!q.ratio && q.source === "contacts" && s.length === 1 && s[0].source === "contacts" && s[0].relatedFilters.some((rf) => rf.entity === "opportunity" && rf.quantifier === "any");
+    },
+  },
+  {
+    id: "r03-cociente-fuentes",
+    prompt: "Oportunidades creadas entre contactos creados, por mes",
+    kind: "create",
+    expect: "widget",
+    check: (w) => !!w.query?.ratio && (w.query.series ?? []).some((s) => s.source !== w.query!.source),
+  },
+  {
+    id: "r04-estado-mes",
+    prompt: "Oportunidades por estado (ganadas, abiertas y perdidas) por mes de creación",
+    kind: "create",
+    expect: "widget",
+    check: (w) => w.query?.source === "opportunities" && w.query.groupBy.some((g) => g.dimension === "outcome") && w.query.groupBy.some((g) => g.dimension === "createdAt" && g.bucket === "month"),
+  },
+  {
+    id: "r05-matriz",
+    prompt: "Una matriz de oportunidades por asesor y etapa con totales",
+    kind: "create",
+    expect: "widget",
+    check: (w) => w.viz === "matrix" && w.query!.groupBy.some((g) => g.dimension === "assignedTo") && w.query!.groupBy.some((g) => g.dimension === "stage"),
+  },
+  {
+    id: "r06-dias-sin-cambio",
+    prompt: "Oportunidades abiertas por días sin cambio de etapa",
+    kind: "create",
+    expect: "widget",
+    check: (w) => w.query!.groupBy.some((g) => g.dimension === "lastStageChangeAt" && g.bucket === "age"),
+  },
+  {
+    id: "r07-sin-atencion",
+    prompt: "Oportunidades sin atención: días sin cambio de etapa contra días desde nuestro último mensaje",
+    kind: "create",
+    expect: "widget",
+    clients: ["lezgo-suite"],
+    check: (w) => {
+      const dims = w.query!.groupBy;
+      return w.viz === "matrix" && dims.some((g) => g.dimension === "lastStageChangeAt" && g.bucket === "age") && dims.some((g) => g.dimension === "contact.lastOutboundAt" && g.bucket === "age") && (w.query!.conversationDays ?? 60) === 60;
+    },
+  },
+  {
+    id: "r08-conversaciones-canal",
+    prompt: "Conversaciones por canal",
+    kind: "create",
+    expect: "widget",
+    clients: ["lezgo-suite"],
+    check: (w) => w.query?.source === "conversations" && w.query.groupBy.some((g) => g.dimension === "channel") && (w.query.conversationDays ?? 60) === 60,
+  },
+  {
+    id: "r09-fecha-personalizada",
+    prompt: "Contactos por mes de Diagnóstico · Fecha",
+    kind: "create",
+    expect: "widget",
+    clients: ["lezgo-suite"],
+    check: (w) => w.query?.source === "contacts" && (w.query.groupBy.some((g) => g.dimension === "cf:Diagnóstico · Fecha" && g.bucket === "month") || w.query.time.field === "cf:Diagnóstico · Fecha"),
+  },
+  {
+    id: "r10-campo-combinado",
+    prompt: "Oportunidades por canal de contacto",
+    kind: "create",
+    expect: "widget",
+    clients: ["condesa-cimatario"],
+    check: (w) => w.query!.groupBy.some((g) => g.dimension.toLowerCase() === "cf:canal de contacto" && (g.fallbacks ?? []).some((f) => f.toLowerCase() === "contact.cf:canal de contacto")),
+  },
+  // ── "No" with an offer: say why, offer alternatives with ask_user, build only what is chosen (2) ──
+  { id: "n01-dos-ejes", prompt: "Quiero una gráfica de dos ejes: contactos por mes en barras y valor ganado por mes en línea", kind: "ambiguous", expect: "ask" },
+  { id: "n02-embudo-acumulado", prompt: "Un embudo que cuente cuántas oportunidades llegaron a cada etapa o a una posterior", kind: "ambiguous", expect: "ask" },
+
   // ── Ambiguous: rules 1, 2, 4 and 5 of "Cuándo preguntar" (4) ──
   { id: "a01-pautas", prompt: "Dame las pautas por campaña", kind: "ambiguous", expect: "ask" },
   // "Leads por fuente" names the entity (leads = contacts), so it is not

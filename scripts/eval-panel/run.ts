@@ -30,6 +30,22 @@ import { DocOpError, addWidgets, findWidget, randomId, saveTerm, type OpMeta } f
 import { docProblem, emptyDoc, type DashboardDoc, type Widget, type WidgetSpec } from "../../lib/widgets/spec";
 import type { EngineContext } from "../../lib/widgets/semantic";
 import { CASES, type EvalCase } from "./corpus";
+import { withClient } from "../../lib/ghl-context";
+import { loadConversationIndex } from "../../lib/conversation-index-load";
+import { contactMessageDates, type ConversationState } from "../../lib/conversation-index";
+import type { ClientConfig } from "../../lib/clients";
+
+/**
+ * The panel's on-demand conversation load, for one account: read-only GHL calls
+ * through the same walk as the route, loaded once and shared by its cases.
+ */
+function conversationLoader(client: ClientConfig): (days: number) => Promise<ConversationState> {
+  let loaded: Promise<ConversationState> | null = null;
+  return (days) =>
+    (loaded ??= withClient(client, () => loadConversationIndex(Math.max(days, 60)))
+      .then((l): ConversationState => ({ status: "ready", days: Math.max(days, 60), rows: l.rows, byContact: contactMessageDates(l.rows), truncated: l.truncated, threadErrors: l.threadErrors }))
+      .catch((err): ConversationState => ({ status: "error", days, message: err instanceof Error ? err.message : String(err) })));
+}
 
 const MAX_TURNS = 15;
 const TIMEZONE = "America/Mexico_City";
@@ -63,7 +79,15 @@ function matchesReference(ref: Record<string, number> | number, res: QueryResult
   return null;
 }
 
-async function runCase(c: EvalCase, clientId: string, payload: DashboardPayload, syncedAt: string, anthropic: Anthropic): Promise<CaseResult> {
+async function runCase(
+  c: EvalCase,
+  clientId: string,
+  payload: DashboardPayload,
+  syncedAt: string,
+  anthropic: Anthropic,
+  ensureConversations: (days: number) => Promise<ConversationState>
+): Promise<CaseResult> {
+  let conversations: ConversationState | undefined;
   const now = new Date();
   const meta: OpMeta = { now: now.toISOString(), by: "user", id: randomId };
   let doc: DashboardDoc = emptyDoc();
@@ -95,6 +119,8 @@ async function runCase(c: EvalCase, clientId: string, payload: DashboardPayload,
     pipelineFilter: state.pipelines,
     globalFilters: activeGlobalFilters(state, doc.filters),
     now,
+    customFieldTypes: payload.customFieldTypes ?? null,
+    conversations,
   });
 
   let mutations = 0;
@@ -130,6 +156,7 @@ async function runCase(c: EvalCase, clientId: string, payload: DashboardPayload,
     },
     now: () => new Date().toISOString(),
     newId: randomId,
+    ensureConversations: async (days) => (conversations = await ensureConversations(days)),
   };
 
   const datasetSummary = `${buildDatasetSummary(dataset, payload.locationId, syncedAt)}\n\n${buildPanelCatalogSummary(ctxOf())}`;
@@ -273,10 +300,11 @@ async function main(): Promise<void> {
     const cached = await readSync(client);
     if (!cached) throw new Error(`${id}: sin payload en caché (abre su panel una vez para sincronizar)`);
     const syncedAt = String(cached.syncedAt);
+    const ensureConversations = conversationLoader(client);
     console.log(`\n=== ${id} (datos del ${syncedAt})`);
     for (const c of CASES) {
       if (c.clients && !c.clients.includes(id)) continue;
-      const r = await runCase(c, id, cached.payload, syncedAt, anthropic);
+      const r = await runCase(c, id, cached.payload, syncedAt, anthropic, ensureConversations);
       results.push(r);
       console.log(`${r.pass ? "✓" : "✗"} ${c.id} · ${r.turns} turnos · $${r.cost.toFixed(4)} · ${r.reason}`);
     }

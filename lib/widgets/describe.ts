@@ -9,6 +9,7 @@ import { es } from "date-fns/locale";
 import { entityOf, fallbacksOf, glossaryKind, seriesOf, type DashboardDoc, type EntityId, type FilterClause, type FilterSpec, type QuerySpec, type RelatedFilterSpec, type SeriesSpec, type WidgetSpec } from "./spec";
 import { primarySeries, ratioKind } from "./engine";
 import { SOURCE_DEFS, isDateField, knownCustomFields, type EngineContext } from "./semantic";
+import { cfValues } from "@/lib/custom-fields";
 import { ENTITY_NOUNS, METRIC_PHRASES, RANGE_LABELS, SOURCE_LABELS, VIZ_LABELS, fieldLabel, valueLabel } from "./labels";
 
 export const PANEL_SNAPSHOT_MARKER = "=== PANEL ACTUAL ===";
@@ -257,7 +258,12 @@ export function buildPanelCatalogSummary(ctx: EngineContext): string {
       .filter(([, t]) => t === "DATE")
       .map(([k]) => {
         const [model, ...rest] = k.split(":");
-        return `cf:${rest.join(":")} (${model === "opportunity" ? "oportunidad" : "contacto"})`;
+        const name = rest.join(":");
+        // How many records hold it: a DATE field nobody fills is a "Sin fecha" chart.
+        const rows: Array<{ customFieldsResolved?: Record<string, string | string[]> }> = model === "opportunity" ? ctx.dataset.opportunities : ctx.dataset.contacts;
+        const filled = rows.filter((r) => cfValues(r.customFieldsResolved, name).length > 0).length;
+        const pct = rows.length ? Math.round((100 * filled) / rows.length) : 0;
+        return `cf:${name} (${model === "opportunity" ? "oportunidad" : "contacto"}, ${pct}% con dato)`;
       })
       .sort((a, b) => a.localeCompare(b, "es"));
     if (dates.length) lines.push(`Campos de fecha personalizados: ${dates.join(", ")}`);

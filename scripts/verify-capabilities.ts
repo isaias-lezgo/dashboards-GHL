@@ -794,7 +794,8 @@ function describeSection(): void {
   });
   check("the catalog lists custom date fields and conversations", () => {
     const text = buildPanelCatalogSummary({ ...makeCloseDateFixture() });
-    assert.ok(text.includes("Campos de fecha personalizados: cf:Fecha de Cierre (oportunidad)"), text);
+    // 4 of the 6 opportunities carry a close date (oA, oB, oE, oF).
+    assert.ok(text.includes("Campos de fecha personalizados: cf:Fecha de Cierre (oportunidad, 67% con dato)"), text);
     assert.ok(text.includes("Conversaciones: fuente «conversations»"), text);
     const old = buildPanelCatalogSummary({ ...makeCloseDateFixture(), customFieldTypes: null });
     assert.ok(old.includes("Campos de fecha personalizados: disponibles después de la próxima actualización"), old);
