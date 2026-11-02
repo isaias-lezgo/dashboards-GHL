@@ -22,13 +22,14 @@ import { runQuery, type QueryResult } from "@/lib/widgets/engine"
 import { describeFilterChips, describeWidget } from "@/lib/widgets/describe"
 import { fieldLabel, SOURCE_LABELS } from "@/lib/widgets/labels"
 import type { EngineContext } from "@/lib/widgets/semantic"
-import type { Widget } from "@/lib/widgets/spec"
+import type { SourceId, Widget } from "@/lib/widgets/spec"
 import { sanitizeBrand } from "@/lib/pdf/branding"
 import { WidgetDrill, type WidgetDrillState } from "./widget-drill"
 import { VizBar } from "./viz-bar"
 import { VizLine } from "./viz-line"
 import { VizFunnel } from "./viz-funnel"
 import { VizTable } from "./viz-table"
+import { VizMatrix } from "./viz-matrix"
 import { VizKpi, VizRecordList, VizText } from "./viz-simple"
 import type { VizProps } from "./viz-types"
 
@@ -68,6 +69,7 @@ export function WidgetCard({
   onEditWithAi,
   onEditFilters,
   onDelete,
+  onRetryConversations,
 }: {
   widget: Widget
   ctx: EngineContext
@@ -75,6 +77,8 @@ export function WidgetCard({
   onEditWithAi: (id: string) => void
   onEditFilters: (id: string) => void
   onDelete: (id: string) => void
+  /** Reloads the conversation index after a failed load. */
+  onRetryConversations?: () => void
 }) {
   const [drill, setDrill] = useState<WidgetDrillState | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -89,6 +93,19 @@ export function WidgetCard({
   }, [widget, ctx])
 
   const chips = useMemo(() => describeFilterChips(widget), [widget])
+
+  // Conversation rows drill into their contacts — what a person can act on.
+  const openDrill = (title: string, records: Record<string, unknown>[], source: SourceId | undefined) => {
+    if (!source || source === "ads_daily" || records.length === 0) return
+    if (source === "conversations") {
+      const byId = new Map(ctx.dataset.contacts.map((c) => [c.id, c]))
+      const ids = [...new Set(records.map((r) => String(r.contactId ?? "")))]
+      const contacts = ids.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => !!c)
+      if (contacts.length) setDrill({ title, source: "contacts", records: contacts as unknown as Record<string, unknown>[] })
+      return
+    }
+    setDrill({ title, source, records })
+  }
   const overridden = outcome && "result" in outcome ? outcome.result.meta.overriddenGlobals.length > 0 : false
   const crmFilterActive = ctx.pipelineFilter.length > 0 || ctx.globalFilters.length > 0
   const height = PLOT_HEIGHT[widget.height]
@@ -106,6 +123,29 @@ export function WidgetCard({
     }
     const { result } = outcome
     const meta = result.meta
+    // Conversations load on demand: until they cover the card, say so — never
+    // draw the zeros an empty index would produce.
+    if (meta.conversations?.status === "loading") {
+      const scanned = meta.conversations.scanned ?? 0
+      return (
+        <Notice tone="muted" title="Cargando conversaciones…">
+          {scanned > 0 ? `${scanned.toLocaleString("es-MX")} revisadas` : `Últimos ${meta.conversations.days} días`}
+          {meta.conversations.days > 60 ? ". Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga." : ""}
+        </Notice>
+      )
+    }
+    if (meta.conversations?.status === "error") {
+      return (
+        <Notice tone="amber" title="No se pudieron cargar las conversaciones">
+          {meta.conversations.message}{" "}
+          {onRetryConversations && (
+            <button type="button" className="font-medium underline underline-offset-2" onClick={onRetryConversations}>
+              Reintentar
+            </button>
+          )}
+        </Notice>
+      )
+    }
     if (meta.adsStatus === "pending") {
       return (
         <Notice tone="muted" title="Todavía no revisamos el gasto de Meta para esta cuenta">
@@ -137,9 +177,7 @@ export function WidgetCard({
       widget,
       currency,
       height,
-      onDrill: (title, records) => {
-        if (widget.query && widget.query.source !== "ads_daily" && records.length) setDrill({ title, source: widget.query.source, records })
-      },
+      onDrill: (title, records, source) => openDrill(title, records, source ?? widget.query?.source),
     }
     switch (widget.viz) {
       case "kpi":
@@ -156,6 +194,8 @@ export function WidgetCard({
         return <VizFunnel {...props} />
       case "table":
         return <VizTable {...props} />
+      case "matrix":
+        return <VizMatrix {...props} />
       case "record_list":
         return <VizRecordList {...props} />
     }
@@ -223,7 +263,21 @@ export function WidgetCard({
           <Notice tone="muted" title="Meta no tiene pipeline, asesor ni etapa: este bloque ignora esos filtros" />
         )}
         <div className="flex-1">{body}</div>
-        {result?.meta.warnings.map((w) => <ChartHint key={w}>{w}</ChartHint>)}
+        {result?.meta.warnings.map((w) =>
+          // The custom-date line names records the window left out: open them.
+          result.meta.undated && /sin «.+» no aparecen?$/.test(w) ? (
+            <button
+              key={w}
+              type="button"
+              className="text-left"
+              onClick={() => openDrill(`${widget.title}: sin fecha`, result.meta.undated!.records, widget.query?.source)}
+            >
+              <ChartHint>{w} · ver</ChartHint>
+            </button>
+          ) : (
+            <ChartHint key={w}>{w}</ChartHint>
+          )
+        )}
       </ChartCardContent>
       <WidgetDrill drill={drill} onClose={() => setDrill(null)} ctx={ctx} />
     </DashboardCard>

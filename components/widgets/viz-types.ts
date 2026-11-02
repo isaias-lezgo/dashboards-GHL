@@ -1,5 +1,5 @@
 import type { QueryResult } from "@/lib/widgets/engine"
-import type { Widget } from "@/lib/widgets/spec"
+import type { SourceId, Widget } from "@/lib/widgets/spec"
 
 export type Row = Record<string, unknown>
 
@@ -9,7 +9,8 @@ export interface VizProps {
   currency?: string
   /** Height of the plot area in px. */
   height: number
-  onDrill: (title: string, records: Row[]) => void
+  /** `source` when the records are not the widget's own source (a series from another source). */
+  onDrill: (title: string, records: Row[], source?: SourceId) => void
 }
 
 export const KEY_SEP = "\u0000"
@@ -43,7 +44,9 @@ export function pivot(result: QueryResult, metricIndex = 0) {
   const data = categories.map((cat) => {
     const datum: Record<string, string | number | null> = { label: cat }
     series.forEach((ser, i) => {
-      datum[seriesKey(i)] = values.get(`${cat}${KEY_SEP}${ser}`) ?? 0
+      // A missing cell is 0; a null one (a ratio over nothing) stays a gap.
+      const v = values.get(`${cat}${KEY_SEP}${ser}`)
+      datum[seriesKey(i)] = v === undefined ? 0 : v
     })
     return datum
   })

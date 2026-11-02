@@ -7,18 +7,21 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { BRAND_AMBER, CHART_GRID_STROKE, CHART_TICK, NonZeroTooltipContent } from "@/components/dashboard/dashboard-ui"
 import { METRIC_PHRASES } from "@/lib/widgets/labels"
-import { colorForKey, formatMetric, formatTick } from "./format"
+import { colorForKey, ratioText, valueFormatters } from "./format"
 import { KEY_SEP, pivot, shortLabel, type Row, type VizProps } from "./viz-types"
 
 export function VizBar({ result, widget, currency, height, onDrill }: VizProps) {
-  const metric = widget.query!.metrics[0].metric
+  const q = widget.query!
+  const metric = q.metrics[0].metric
   const horizontal = widget.viz === "bar_horizontal"
-  const multi = widget.viz === "stacked_bar" || widget.viz === "grouped_bar"
-  const fmt = (v: number) => formatMetric(v, metric, currency)
+  // Several series (spec 2026-11-02 §3.1) come back as 2-dimension rows whatever the viz says.
+  const multi = widget.viz === "stacked_bar" || widget.viz === "grouped_bar" || result.rows.some((r) => r.key.length > 1)
+  const { fmt, tick } = valueFormatters(result, widget, currency)
+  const ratio = result.meta.ratio
 
   if (!multi) {
-    const data = result.rows.map((r) => ({ label: r.label.join(" · "), value: r.values[0] ?? 0, records: r.records }))
-    const config: ChartConfig = { value: { label: widget.query!.metrics[0].label ?? METRIC_PHRASES[metric], color: BRAND_AMBER } }
+    const data = result.rows.map((r) => ({ label: r.label.join(" · "), value: ratio ? r.values[0] : (r.values[0] ?? 0), records: r.records, parts: r.parts }))
+    const config: ChartConfig = { value: { label: q.ratio?.label ?? q.metrics[0].label ?? METRIC_PHRASES[metric], color: BRAND_AMBER } }
     const onClick = (d: { payload?: { label: string; records: Row[] } }) => {
       if (d?.payload) onDrill(`${widget.title}: ${d.payload.label}`, d.payload.records)
     }
@@ -32,7 +35,7 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
           <CartesianGrid stroke={CHART_GRID_STROKE} vertical={horizontal} horizontal={!horizontal} />
           {/* Recharts 2 finds axes only among DIRECT children — never wrap them in a fragment. */}
           {horizontal ? (
-            <XAxis type="number" tick={CHART_TICK} tickLine={false} axisLine={false} tickFormatter={(v) => formatTick(Number(v), metric)} />
+            <XAxis type="number" tick={CHART_TICK} tickLine={false} axisLine={false} tickFormatter={(v) => tick(Number(v))} />
           ) : (
             <XAxis
               dataKey="label"
@@ -52,9 +55,15 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
             // biggest bar can end up nameless. Short enough not to wrap in 150px.
             <YAxis type="category" dataKey="label" width={150} interval={0} tick={CHART_TICK} tickLine={false} axisLine={false} tickFormatter={(v) => shortLabel(String(v), 20)} />
           ) : (
-            <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => formatTick(Number(v), metric)} />
+            <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => tick(Number(v))} />
           )}
-          <ChartTooltip content={<NonZeroTooltipContent formatter={(v) => fmt(Number(v))} />} />
+          <ChartTooltip
+            content={
+              <NonZeroTooltipContent
+                formatter={(v, _n, item) => (ratio ? ratioText(Number(v), (item?.payload as { parts?: [number | null, number | null] } | undefined)?.parts) : fmt(Number(v)))}
+              />
+            }
+          />
           <Bar dataKey="value" fill="var(--color-value)" radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]} className="cursor-pointer" onClick={onClick} />
         </BarChart>
       </ChartContainer>
@@ -69,7 +78,7 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
       <BarChart data={p.data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
         <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
         <XAxis dataKey="label" tick={CHART_TICK} tickLine={false} axisLine={false} interval={0} tickFormatter={(v) => shortLabel(String(v), 14)} />
-        <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => formatTick(Number(v), metric)} />
+        <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => tick(Number(v))} />
         <ChartTooltip content={<NonZeroTooltipContent formatter={(v, name) => `${config[String(name)]?.label ?? name}: ${fmt(Number(v))}`} />} />
         {p.series.map((s, i) => (
           <Bar
@@ -81,7 +90,10 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
             className="cursor-pointer"
             onClick={(d: { payload?: { label: string } }) => {
               const cat = d?.payload?.label
-              if (cat !== undefined) onDrill(`${widget.title}: ${cat} · ${s}`, p.records.get(`${cat}${KEY_SEP}${s}`) ?? [])
+              if (cat === undefined) return
+              const i = result.meta.seriesLabels?.indexOf(s) ?? -1
+              const source = i > 0 ? q.series?.[i - 1]?.source : undefined
+              onDrill(`${widget.title}: ${cat} · ${s}`, p.records.get(`${cat}${KEY_SEP}${s}`) ?? [], source)
             }}
           />
         ))}

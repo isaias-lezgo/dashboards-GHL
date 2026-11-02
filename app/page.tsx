@@ -712,6 +712,7 @@ export default function DashboardPage() {
             }}
             onEditFilters={(id) => setFilterEditorId(id)}
             onDelete={removeWidget}
+            onRetryConversations={conversationIndex.retry}
           />
         )}
         <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />

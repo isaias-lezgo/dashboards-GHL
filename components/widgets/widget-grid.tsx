@@ -24,6 +24,7 @@ export function WidgetGrid({
   onEditWithAi,
   onEditFilters,
   onDelete,
+  onRetryConversations,
 }: {
   tab: Tab
   ctx: EngineContext
@@ -32,6 +33,7 @@ export function WidgetGrid({
   onEditWithAi: (id: string) => void
   onEditFilters: (id: string) => void
   onDelete: (id: string) => void
+  onRetryConversations?: () => void
 }) {
   if (tab.widgets.length === 0) {
     return (
@@ -58,6 +60,7 @@ export function WidgetGrid({
             onEditWithAi={onEditWithAi}
             onEditFilters={onEditFilters}
             onDelete={onDelete}
+            onRetryConversations={onRetryConversations}
           />
         </div>
       ))}

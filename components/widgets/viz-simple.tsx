@@ -9,7 +9,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react"
 import { METRICS } from "@/lib/widgets/metrics"
 import { METRIC_PHRASES } from "@/lib/widgets/labels"
 import type { SourceId } from "@/lib/widgets/spec"
-import { formatMetric } from "./format"
+import { valueFormatters } from "./format"
 import type { Row, VizProps } from "./viz-types"
 
 export function VizKpi({ result, widget, currency, onDrill }: VizProps) {
@@ -28,6 +28,9 @@ export function VizKpi({ result, widget, currency, onDrill }: VizProps) {
     }
   }
   const records = result.rows[0]?.records ?? []
+  const { fmt } = valueFormatters(result, widget, currency)
+  const parts = result.meta.ratio?.parts
+  const count = (x: number | null) => (x === null ? "—" : x.toLocaleString("es-MX", { maximumFractionDigits: 0 }))
   return (
     <button
       type="button"
@@ -35,9 +38,10 @@ export function VizKpi({ result, widget, currency, onDrill }: VizProps) {
       disabled={records.length === 0 || q.source === "ads_daily"}
       onClick={() => onDrill(widget.title, records)}
     >
-      <span className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{formatMetric(value, metric, currency)}</span>
+      <span className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{fmt(value)}</span>
       <span className="text-[11px] text-muted-foreground">
-        {q.metrics[0].label ?? METRIC_PHRASES[metric]}
+        {q.ratio?.label ?? q.metrics[0].label ?? METRIC_PHRASES[metric]}
+        {parts && <span className="ml-1 tabular-nums">· {count(parts[0])} de {count(parts[1])}</span>}
         {delta && (
           <span className={`ml-2 inline-flex items-center gap-0.5 font-medium ${delta.up ? "text-emerald-600" : "text-red-600"}`}>
             {delta.up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}

@@ -5,20 +5,20 @@
 import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { BRAND_AMBER, CHART_GRID_STROKE, CHART_TICK, NonZeroTooltipContent } from "@/components/dashboard/dashboard-ui"
-import { colorForKey, formatMetric, formatTick } from "./format"
+import { colorForKey, valueFormatters } from "./format"
 import { pivot, type VizProps } from "./viz-types"
 
 export function VizLine({ result, widget, currency, height, onDrill }: VizProps) {
-  const metric = widget.query!.metrics[0].metric
+  const q = widget.query!
   const multi = result.rows.some((r) => r.key.length > 1)
   const p = pivot(result)
-  // A single series has no second label; name it after the metric.
-  const names = multi ? p.series : [widget.query!.metrics[0].label ?? widget.title]
+  // A single series has no second label; name it after the ratio or the metric.
+  const names = multi ? p.series : [q.ratio?.label ?? q.metrics[0].label ?? widget.title]
   // One series is the lead series: amber. Several get their stable entity colors.
   const config: ChartConfig = Object.fromEntries(
     names.map((s, i) => [p.seriesKey(i), { label: s, color: multi ? colorForKey(s) : BRAND_AMBER }])
   )
-  const fmt = (v: number) => formatMetric(v, metric, currency)
+  const { fmt, tick } = valueFormatters(result, widget, currency)
   const onClick = (state: { activeLabel?: string | number } | null) => {
     const label = state?.activeLabel
     if (label === undefined) return
@@ -36,7 +36,7 @@ export function VizLine({ result, widget, currency, height, onDrill }: VizProps)
   const axes = [
     <CartesianGrid key="grid" stroke={CHART_GRID_STROKE} vertical={false} />,
     <XAxis key="x" dataKey="label" tick={CHART_TICK} tickLine={false} axisLine={false} minTickGap={16} />,
-    <YAxis key="y" tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => formatTick(Number(v), metric)} />,
+    <YAxis key="y" tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => tick(Number(v))} />,
     <ChartTooltip key="tip" content={<NonZeroTooltipContent formatter={(v, name) => `${config[String(name)]?.label ?? name}: ${fmt(Number(v))}`} />} />,
   ]
   return (
