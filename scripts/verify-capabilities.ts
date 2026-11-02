@@ -52,6 +52,7 @@ import { listFieldValues } from "../lib/widgets/semantic";
 import { ids } from "./lib/widget-test-kit";
 import type { FilterControl } from "../lib/widgets/spec";
 import { ASSISTANT_SYSTEM_PROMPT, PANEL_PROMPT_SECTION } from "../lib/ai-context";
+import { planEnsure, stableForEngine } from "../hooks/use-conversation-index";
 import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
@@ -1012,6 +1013,25 @@ function finalReviewSection(): void {
     const all = { ...convQuery, time: { ...convQuery.time, range: "all" as const } };
     assert.equal(runQuery(all, wide).totals[0], 1);
     assert.equal(runQuery({ ...all, conversationDays: 90 }, wide).totals[0], 2);
+  });
+
+  check("progress frames do not change what the engine sees (no recompute per frame)", () => {
+    const first = stableForEngine({ status: "idle" }, { status: "loading", days: 60, scanned: 0, threads: 0 });
+    const later = stableForEngine(first, { status: "loading", days: 60, scanned: 900, threads: 40 });
+    assert.equal(later, first, "same object while the same load runs");
+    const wider = stableForEngine(first, { status: "loading", days: 90, scanned: 0, threads: 0 });
+    assert.notEqual(wider, first);
+    const ready = readyState([], 60);
+    assert.equal(stableForEngine(first, ready), ready);
+  });
+
+  check("after a reset (Actualizar) the index loads again instead of reusing the old one", () => {
+    const ready = readyState([], 60);
+    assert.deepEqual(planEnsure(ready, null, 60), { kind: "reuse" });
+    assert.deepEqual(planEnsure({ status: "idle" }, null, 60), { kind: "load", days: 60 });
+    assert.deepEqual(planEnsure(ready, null, 90), { kind: "load", days: 90 });
+    assert.deepEqual(planEnsure({ status: "loading", days: 60, scanned: 1, threads: 0 }, 60, 60), { kind: "reuse" });
+    assert.deepEqual(planEnsure({ status: "error", days: 60, message: "x" }, null, 60), { kind: "reuse" });
   });
 
   check("series filter fallbacks are validated like the query's", () => {

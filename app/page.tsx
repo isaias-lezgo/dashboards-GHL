@@ -374,9 +374,10 @@ export default function DashboardPage() {
       globalFilters,
       now: panelNow,
       customFieldTypes: data?.customFieldTypes ?? null,
-      conversations: conversationIndex.state,
+      // The stable view: progress frames must not recompute every card.
+      conversations: conversationIndex.engineState,
     }),
-    [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow, conversationIndex.state]
+    [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow, conversationIndex.engineState]
   )
 
   // Computed over the whole account, not the filtered slice: a suggestion is a
@@ -455,6 +456,14 @@ export default function DashboardPage() {
     return max
   }, [activeDocTab])
   const ensureConversations = conversationIndex.ensure
+  // "Actualizar" brings fresh CRM data: the conversations read before it would be
+  // stale with no sign of it, so they are forgotten and load again.
+  const resetConversations = conversationIndex.reset
+  const conversationsData = useRef(data)
+  useEffect(() => {
+    if (conversationsData.current && data && conversationsData.current !== data) resetConversations()
+    conversationsData.current = data
+  }, [data, resetConversations])
   useEffect(() => {
     if (panelEnabled && data && conversationDays > 0) void ensureConversations(conversationDays)
   }, [panelEnabled, data, conversationDays, ensureConversations])
@@ -713,6 +722,7 @@ export default function DashboardPage() {
             onEditFilters={(id) => setFilterEditorId(id)}
             onDelete={removeWidget}
             onRetryConversations={conversationIndex.retry}
+            conversationProgress={conversationIndex.state.status === "loading" ? conversationIndex.state : null}
           />
         )}
         <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />

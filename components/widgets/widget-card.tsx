@@ -70,6 +70,7 @@ export function WidgetCard({
   onEditFilters,
   onDelete,
   onRetryConversations,
+  conversationProgress,
 }: {
   widget: Widget
   ctx: EngineContext
@@ -79,6 +80,8 @@ export function WidgetCard({
   onDelete: (id: string) => void
   /** Reloads the conversation index after a failed load. */
   onRetryConversations?: () => void
+  /** Live counters of the running conversation load (kept out of ctx so cards do not recompute per frame). */
+  conversationProgress?: { scanned: number; threads: number } | null
 }) {
   const [drill, setDrill] = useState<WidgetDrillState | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -126,7 +129,7 @@ export function WidgetCard({
     // Conversations load on demand: until they cover the card, say so — never
     // draw the zeros an empty index would produce.
     if (meta.conversations?.status === "loading") {
-      const scanned = meta.conversations.scanned ?? 0
+      const scanned = conversationProgress?.scanned ?? meta.conversations.scanned ?? 0
       return (
         <Notice tone="muted" title="Cargando conversaciones…">
           {scanned > 0 ? `${scanned.toLocaleString("es-MX")} revisadas` : `Últimos ${meta.conversations.days} días`}

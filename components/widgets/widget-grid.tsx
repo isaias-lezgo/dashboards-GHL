@@ -25,6 +25,7 @@ export function WidgetGrid({
   onEditFilters,
   onDelete,
   onRetryConversations,
+  conversationProgress,
 }: {
   tab: Tab
   ctx: EngineContext
@@ -34,6 +35,7 @@ export function WidgetGrid({
   onEditFilters: (id: string) => void
   onDelete: (id: string) => void
   onRetryConversations?: () => void
+  conversationProgress?: { scanned: number; threads: number } | null
 }) {
   if (tab.widgets.length === 0) {
     return (
@@ -61,6 +63,7 @@ export function WidgetGrid({
             onEditFilters={onEditFilters}
             onDelete={onDelete}
             onRetryConversations={onRetryConversations}
+            conversationProgress={conversationProgress}
           />
         </div>
       ))}
