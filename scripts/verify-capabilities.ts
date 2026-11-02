@@ -27,6 +27,7 @@ import {
   type WidgetSpec,
 } from "../lib/widgets/spec";
 import { section, check, q } from "./lib/widget-test-kit";
+import { customFieldTypeMap } from "../lib/sync";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -196,8 +197,28 @@ function specSection(): void {
   });
 }
 
+// ─── Task 2: custom field types in the payload ────────────────────────────────
+
+function syncSection(): void {
+  section("sync: custom field types");
+
+  check("customFieldTypeMap keys by model and name", () => {
+    const m = customFieldTypeMap([
+      { id: "1", name: "Fecha de Cierre", dataType: "DATE", model: "opportunity" },
+      { id: "2", name: "Fecha de Cierre", dataType: "TEXT", model: "contact" },
+      { id: "3", name: "Sin tipo" },
+    ]);
+    assert.deepEqual(m, { "opportunity:Fecha de Cierre": "DATE", "contact:Fecha de Cierre": "TEXT" });
+  });
+
+  check("a field without model is a contact field and dataType is upper-cased", () => {
+    assert.deepEqual(customFieldTypeMap([{ id: "1", name: "Cumpleaños", dataType: "date" }]), { "contact:Cumpleaños": "DATE" });
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
+  syncSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

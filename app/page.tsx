@@ -370,6 +370,7 @@ export default function DashboardPage() {
       pipelineFilter,
       globalFilters,
       now: panelNow,
+      customFieldTypes: data?.customFieldTypes ?? null,
     }),
     [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow]
   )

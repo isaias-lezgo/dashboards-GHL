@@ -41,6 +41,8 @@ export interface EngineContext {
   pipelineFilter: PipelineFilter;
   globalFilters: ActiveGlobalFilter[];
   now: Date;
+  /** GHL's dataType per custom field ("<model>:<name>"). null/absent = the cache predates it. */
+  customFieldTypes?: Record<string, string> | null;
 }
 
 interface DatasetDerived {

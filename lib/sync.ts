@@ -23,6 +23,7 @@ import {
   type GHLOpportunity,
   type GHLCalendarEvent,
   type GHLTask,
+  type GHLCustomField,
 } from "@/lib/ghl-client";
 import { withClient } from "@/lib/ghl-context";
 import { fetchAdsReport } from "@/lib/ads-sync";
@@ -61,6 +62,21 @@ function firstAttr(attributions?: Attribution[]): Attribution | undefined {
 function buildCampaignLabel(content?: string, campaign?: string): string | undefined {
   const parts = [content, campaign].filter(Boolean) as string[];
   return parts.length > 0 ? parts.join(" / ") : undefined;
+}
+
+/**
+ * GHL's type of every custom field, keyed "<model>:<name>" — the panel treats a
+ * custom field as a date ONLY when GHL says DATE. Text fields that look like
+ * dates are not dates: one account's "Fecha de última asignación" mixes
+ * 10/22/2025 (month first) and 20/05/2026 (day first) in the same field.
+ */
+export function customFieldTypeMap(defs: GHLCustomField[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const d of defs) {
+    if (!d.dataType) continue;
+    out[`${(d.model ?? "contact").toLowerCase()}:${d.name}`] = d.dataType.toUpperCase();
+  }
+  return out;
 }
 
 function resolveCustomFields(
@@ -648,6 +664,7 @@ export async function syncProject(
       sources: Array.from(sourceSet),
       pautas,
       ads,
+      customFieldTypes: customFieldTypeMap(customFieldsRaw.customFields),
       locationId: client.locationId,
       meta: {
         totalContacts: contacts.length,
