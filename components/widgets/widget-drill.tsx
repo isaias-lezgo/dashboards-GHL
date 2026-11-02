@@ -28,7 +28,7 @@ export function WidgetDrill({
   const contactById = useMemo(() => new Map(ds.contacts.map((c) => [c.id, c])), [ds.contacts])
 
   const state: DrillState = useMemo(() => {
-    if (!drill || drill.source === "appointments" || drill.source === "ads_daily") return DRILL_CLOSED
+    if (!drill || drill.source === "appointments" || drill.source === "ads_daily" || drill.source === "conversations") return DRILL_CLOSED
     const base = { open: true, title: drill.title, opportunities: [] as Opportunity[] }
     switch (drill.source) {
       case "opportunities":

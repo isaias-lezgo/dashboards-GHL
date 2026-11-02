@@ -28,6 +28,7 @@ export const VIZ_TYPES = [
   "area",
   "funnel",
   "table",
+  "matrix",
   "record_list",
   "text",
 ] as const;
@@ -35,19 +36,26 @@ export type VizType = (typeof VIZ_TYPES)[number];
 
 // Messages are a sample and calls are always empty, so neither is a source: a
 // widget over a sample would count wrong without saying so.
-export const SOURCES = ["contacts", "opportunities", "appointments", "tasks", "pautas", "ads_daily"] as const;
+// conversations is loaded on demand (lib/conversation-index.ts), never cached:
+// it has no entity, no custom fields and no related filters.
+export const SOURCES = ["contacts", "opportunities", "appointments", "tasks", "pautas", "ads_daily", "conversations"] as const;
 export type SourceId = (typeof SOURCES)[number];
 
 export const ENTITIES = ["contact", "opportunity", "appointment", "task", "pauta"] as const;
 export type EntityId = (typeof ENTITIES)[number];
 
-export const SOURCE_ENTITY: Record<Exclude<SourceId, "ads_daily">, EntityId> = {
+export const SOURCE_ENTITY: Record<Exclude<SourceId, "ads_daily" | "conversations">, EntityId> = {
   contacts: "contact",
   opportunities: "opportunity",
   appointments: "appointment",
   tasks: "task",
   pautas: "pauta",
 };
+
+/** The CRM object a source's rows are; null for Meta days and conversations, which have none. */
+export function entityOf(source: SourceId): EntityId | null {
+  return source === "ads_daily" || source === "conversations" ? null : SOURCE_ENTITY[source];
+}
 
 // cost_per_appointment and roas stay out until the owner defines their
 // denominators — a metric whose definition nobody agreed on is a wrong number
@@ -88,6 +96,10 @@ export const FILTER_OPS = [
   "gte",
   "lt",
   "lte",
+  /** The date is at least N whole days before today (values[0] = N). */
+  "days_ago_gte",
+  /** The date is at most N whole days before today. */
+  "days_ago_lte",
 ] as const;
 export type FilterOp = (typeof FILTER_OPS)[number];
 
@@ -107,7 +119,8 @@ export const RANGE_PRESETS = [
 ] as const;
 export type RangePreset = (typeof RANGE_PRESETS)[number];
 
-export const BUCKETS = ["day", "week", "month", "quarter", "weekday", "hour"] as const;
+// "age" = whole days between the date and today, in ranges (GroupBySpec.edges).
+export const BUCKETS = ["day", "week", "month", "quarter", "weekday", "hour", "age"] as const;
 export type Bucket = (typeof BUCKETS)[number];
 
 export const SIZES = ["s", "m", "l", "xl"] as const;
@@ -132,6 +145,14 @@ export const DOC_LIMITS = {
   /** Conditions per clause (`FilterClause.anyOf`). */
   maxAnyOf: 5,
   maxGlossary: 50,
+  /** Series beyond the query's own (spec 2026-11-02 §3.1): 6 lines at most. */
+  maxExtraSeries: 5,
+  /** Fields read after the first one of a combined field. */
+  maxFallbacks: 3,
+  maxAgeEdges: 8,
+  defaultAgeEdges: [7, 15, 30, 60],
+  /** Days of conversations a card loads unless the user explicitly asked for more. */
+  defaultConversationDays: 60,
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -141,6 +162,8 @@ export interface FilterSpec {
   field: string;
   op: FilterOp;
   values: string[];
+  /** Combined field: read these, in order, when the previous one is empty. */
+  fallbacks?: string[] | null;
 }
 
 /**
@@ -167,6 +190,30 @@ export interface GroupBySpec {
   dimension: string;
   bucket: Bucket | null;
   join: "latest" | "each" | null;
+  /** Combined field: read these, in order, when the previous one is empty. */
+  fallbacks?: string[] | null;
+  /** Only with bucket "age": ascending upper bounds in days. null = DOC_LIMITS.defaultAgeEdges. */
+  edges?: number[] | null;
+}
+
+/** One more line on the widget's axis, from any source (spec 2026-11-02 §3.1). */
+export interface SeriesSpec {
+  label: string;
+  source: SourceId;
+  metric: MetricId;
+  filters: FilterClause[];
+  relatedFilters: RelatedFilterSpec[];
+  /** The series' own date: its window and, on a date axis, its bucket. */
+  dateField: string;
+  /** Category axis read from this source; null = the widget's groupBy[0].dimension. */
+  dimension: string | null;
+}
+
+/** numerator / denominator are series indexes: 0 = the query itself, i ≥ 1 = series[i-1]. */
+export interface RatioSpec {
+  label: string;
+  numerator: number;
+  denominator: number;
 }
 
 export interface TimeSpec {
@@ -187,6 +234,10 @@ export interface QuerySpec {
   globalFilters: "inherit" | "ignore";
   sort: { by: "value" | "label" | "natural"; dir: "asc" | "desc" };
   limit: number | null;
+  series?: SeriesSpec[] | null;
+  ratio?: RatioSpec | null;
+  /** Days of conversations to load; null = DOC_LIMITS.defaultConversationDays. */
+  conversationDays?: number | null;
 }
 
 export interface WidgetSpec {
@@ -224,6 +275,7 @@ export interface FilterControl {
   defaultValues: string[];
   clause: FilterClause | null;
   defaultOn: boolean;
+  fallbacks?: string[] | null;
 }
 
 export interface PanelFilters {
@@ -240,6 +292,10 @@ export interface GlossaryEntry {
   meaning: FilterClause[];
   note: string;
   createdAt: string;
+  /** "condition" (default): meaning is a filter. "field": the concept is a combined field. */
+  kind?: "condition" | "field" | null;
+  /** kind "field": the fields to read, in order (first with a value wins). */
+  fields?: string[] | null;
 }
 
 export interface DashboardDoc {
@@ -258,6 +314,7 @@ const filterSpecZ = z
     field: z.string().min(1).max(120),
     op: z.enum(FILTER_OPS),
     values: z.array(z.string().max(200)).max(100),
+    fallbacks: z.array(z.string().min(1).max(120)).max(L.maxFallbacks).nullish(),
   })
   .strict();
 
@@ -278,16 +335,42 @@ const groupByZ = z
     dimension: z.string().min(1).max(120),
     bucket: z.enum(BUCKETS).nullable(),
     join: z.enum(["latest", "each"]).nullable(),
+    fallbacks: z.array(z.string().min(1).max(120)).max(L.maxFallbacks).nullish(),
+    edges: z.array(z.number().int().min(1).max(3650)).min(1).max(L.maxAgeEdges).nullish(),
   })
-  .strict();
+  .strict()
+  .superRefine((g, ctx) => {
+    if (g.edges && g.edges.some((e, i) => i > 0 && e <= g.edges![i - 1]))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["edges"], message: "Los rangos de días van en orden ascendente" });
+  });
 
 const timeZ = z
   .object({
-    field: z.string().min(1).max(40),
+    field: z.string().min(1).max(120),
     range: z.union([z.literal("inherit"), z.literal("absolute"), z.enum(RANGE_PRESETS)]),
     from: z.string().max(40).nullable(),
     to: z.string().max(40).nullable(),
     compare: z.enum(COMPARES),
+  })
+  .strict();
+
+const seriesZ = z
+  .object({
+    label: z.string().min(1).max(L.maxTitle),
+    source: z.enum(SOURCES),
+    metric: z.enum(METRIC_IDS),
+    filters: z.array(filterClauseSchema).max(L.maxConditions),
+    relatedFilters: z.array(relatedFilterZ).max(L.maxRelatedFilters),
+    dateField: z.string().min(1).max(120),
+    dimension: z.string().min(1).max(120).nullable(),
+  })
+  .strict();
+
+const ratioZ = z
+  .object({
+    label: z.string().min(1).max(L.maxTitle),
+    numerator: z.number().int().min(0).max(L.maxExtraSeries),
+    denominator: z.number().int().min(0).max(L.maxExtraSeries),
   })
   .strict();
 
@@ -305,6 +388,9 @@ const queryZ = z
     globalFilters: z.enum(["inherit", "ignore"]),
     sort: z.object({ by: z.enum(["value", "label", "natural"]), dir: z.enum(["asc", "desc"]) }).strict(),
     limit: z.number().int().min(1).max(L.maxLimit).nullable(),
+    series: z.array(seriesZ).max(L.maxExtraSeries).nullish(),
+    ratio: ratioZ.nullish(),
+    conversationDays: z.number().int().min(1).max(3650).nullish(),
   })
   .strict();
 
@@ -368,6 +454,7 @@ const filterControlZ = z
     defaultValues: z.array(z.string().max(200)).max(100),
     clause: filterClauseSchema.nullable(),
     defaultOn: z.boolean(),
+    fallbacks: z.array(z.string().min(1).max(120)).max(L.maxFallbacks).nullish(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -391,11 +478,21 @@ const glossaryEntryZ = z
     term: z.string().min(1).max(L.maxTitle),
     aliases: z.array(z.string().min(1).max(L.maxTitle)).max(10),
     entity: z.enum(ENTITIES),
-    meaning: z.array(filterClauseSchema).min(1).max(L.maxConditions),
+    meaning: z.array(filterClauseSchema).max(L.maxConditions),
     note: z.string().max(300),
     createdAt: isoZ,
+    kind: z.enum(["condition", "field"]).nullish(),
+    fields: z.array(z.string().min(1).max(120)).max(L.maxFallbacks + 1).nullish(),
   })
-  .strict();
+  .strict()
+  .superRefine((g, ctx) => {
+    if (g.kind === "field") {
+      if (!g.fields || g.fields.length < 2)
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fields"], message: "Un concepto de tipo campo necesita al menos dos campos" });
+    } else if (g.meaning.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["meaning"], message: "Un concepto de tipo condición necesita su significado" });
+    }
+  });
 
 export const dashboardDocSchema: z.ZodType<DashboardDoc> = z
   .object({
@@ -417,6 +514,14 @@ export function docProblem(doc: DashboardDoc): string | null {
   const issue = parsed.error.issues[0];
   return `El panel no se guardó: ${issue.path.join(".")}: ${issue.message}`;
 }
+
+// ─── Normalizers: absent or null optional properties mean the old behavior ────
+
+export const seriesOf = (q: QuerySpec): SeriesSpec[] => q.series ?? [];
+export const fallbacksOf = (x: { fallbacks?: string[] | null }): string[] => x.fallbacks ?? [];
+export const edgesOf = (g: GroupBySpec): number[] => g.edges ?? [...DOC_LIMITS.defaultAgeEdges];
+export const conversationDaysOf = (q: QuerySpec): number => q.conversationDays ?? DOC_LIMITS.defaultConversationDays;
+export const glossaryKind = (g: GlossaryEntry): "condition" | "field" => g.kind ?? "condition";
 
 export function emptyDoc(): DashboardDoc {
   return {
@@ -467,7 +572,8 @@ export const FILTER_SPEC_JSON_SCHEMA = obj({
     "Field of the record being filtered: a native field ('status', 'stage', 'pipelineName', 'assignedTo', 'source', 'tags'…), a derived one ('won', 'dePauta', 'funnelState', 'platform', 'sourceCategory', 'campaignResolved') or a custom field as 'cf:<Field Name>'."
   ),
   op: enumOf(FILTER_OPS),
-  values: arr(str(), "Values to compare against. OR across values. Empty for is_empty / is_not_empty."),
+  values: arr(str(), "Values to compare against. OR across values. Empty for is_empty / is_not_empty. For days_ago_gte / days_ago_lte: one whole number of days."),
+  fallbacks: nullable(arr(str(), "Combined field: the next fields to read, in order, when the previous one is empty (first with a value wins). From opportunities, 'contact.<field>' reads the contact. Max 3. null = a single field.")),
 });
 
 export const FILTER_CLAUSE_JSON_SCHEMA = obj(
@@ -493,6 +599,8 @@ const QUERY_JSON_SCHEMA = obj({
           "Only for 'opportunity.*' dimensions: 'latest' = the contact's most recent opportunity (bars add up to the row count); 'each' = once per opportunity."
         )
       ),
+      fallbacks: nullable(arr(str(), "Combined field: the next fields to read, in order, when the previous one is empty (first with a value wins). From opportunities, 'contact.<field>' reads the contact. Max 3. null = a single field.")),
+      edges: nullable(arr({ type: "integer" }, "Only with bucket 'age': ascending upper bounds in days. null = 7, 15, 30, 60 (0–7, 8–15, 16–30, 31–60, más de 60).")),
     }),
     "0 to 2 dimensions. The second one is the series."
   ),
@@ -515,6 +623,40 @@ const QUERY_JSON_SCHEMA = obj({
   globalFilters: enumOf(["inherit", "ignore"], "Whether the panel's pipeline and added filters apply."),
   sort: obj({ by: enumOf(["value", "label", "natural"]), dir: enumOf(["asc", "desc"]) }),
   limit: nullable({ type: "integer", description: "Top N (max 50); the rest is folded into 'Otros'." }),
+  series: nullable(
+    arr(
+      obj({
+        label: str("Series name shown in the legend."),
+        source: enumOf(SOURCES),
+        metric: enumOf(METRIC_IDS),
+        filters: arr(FILTER_CLAUSE_JSON_SCHEMA),
+        relatedFilters: arr(
+          obj({
+            entity: enumOf(ENTITIES),
+            quantifier: enumOf(["any", "none"]),
+            conditions: arr(FILTER_CLAUSE_JSON_SCHEMA),
+          })
+        ),
+        dateField: str("This series' own date: its window and, on a date axis, its bucket (contacts/opportunities: createdAt…)."),
+        dimension: nullable(str("Category axis read from this source; null = groupBy[0].dimension.")),
+      }),
+      "Extra series on the same x-axis (groupBy[0]), from ANY source — e.g. contacts AND opportunities created per week. The query itself is series 0. All shown series share one unit (counts with counts, money with money). Max 5. null = a single series."
+    )
+  ),
+  ratio: nullable(
+    obj(
+      {
+        label: str("e.g. '% con oportunidad'."),
+        numerator: { type: "integer", description: "Series index: 0 = this query, 1.. = series[i-1]." },
+        denominator: { type: "integer", description: "Series index: 0 = this query, 1.. = series[i-1]." },
+      },
+      "Plot numerator ÷ denominator instead of the series. Same source + same date + the numerator adds conditions = a conversion within one group (counted to date). Otherwise it compares two different groups and the card says so."
+    )
+  ),
+  conversationDays: nullable({
+    type: "integer",
+    description: "Days of conversations to load when the widget uses conversations or a contact's message dates. null = 60. Only raise it when the user explicitly asks.",
+  }),
 });
 
 export const WIDGET_SPEC_JSON_SCHEMA: Record<string, unknown> = obj({

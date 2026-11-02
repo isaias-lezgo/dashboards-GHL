@@ -5,7 +5,7 @@
 // is_error tool_result with a suggested fix, so it corrects itself like a
 // compiler loop instead of saving a widget that renders zero.
 import type { AdsStatus } from "@/lib/types";
-import { SOURCE_ENTITY, type EntityId, type FilterClause, type SourceId, type WidgetSpec } from "./spec";
+import { SOURCES, entityOf, type EntityId, type FilterClause, type SourceId, type WidgetSpec } from "./spec";
 import { metricAllowed } from "./metrics";
 import {
   DERIVED_FIELDS,
@@ -35,7 +35,7 @@ export interface ValidationIssue {
   suggestion: string | null;
 }
 
-const ALL_SOURCES: SourceId[] = ["contacts", "opportunities", "appointments", "tasks", "pautas", "ads_daily"];
+const ALL_SOURCES: SourceId[] = [...SOURCES];
 
 export function buildCatalog(ctx: EngineContext): Catalog {
   const customFields = {
@@ -208,7 +208,7 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
       add("query.filters", "El gasto de Meta no admite filtros de CRM: Meta no tiene pipeline, asesor ni etapa.");
     }
   } else {
-    const sourceEntity = SOURCE_ENTITY[q.source];
+    const sourceEntity = entityOf(q.source);
     checkClauses("query.filters", q.filters, own, q.source);
     q.relatedFilters.forEach((rf, i) => {
       const path = `query.relatedFilters[${i}]`;

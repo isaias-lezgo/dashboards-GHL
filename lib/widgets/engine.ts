@@ -35,7 +35,7 @@ import type { AdsStatus, Opportunity } from "@/lib/types";
 import type { ResolvedDateRange } from "@/lib/date-range";
 import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelines } from "@/lib/pipeline-filter";
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
-import { DOC_LIMITS, SOURCE_ENTITY, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
+import { DOC_LIMITS, entityOf, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
 import { ENUM_LABELS_ES } from "./labels";
@@ -193,8 +193,8 @@ function globalPlan(q: QuerySpec, ctx: EngineContext): GlobalPlan {
     for (const f of fields) set.add(f);
     own.set(entity, set);
   };
-  const sourceEntity = SOURCE_ENTITY[q.source];
-  for (const c of q.filters) add(sourceEntity, clauseFields(c));
+  const sourceEntity = entityOf(q.source);
+  if (sourceEntity) for (const c of q.filters) add(sourceEntity, clauseFields(c));
   for (const rf of q.relatedFilters) for (const c of rf.conditions) add(rf.entity, clauseFields(c));
 
   const overridden: string[] = [];
@@ -224,7 +224,7 @@ function applyGlobals(source: SourceId, rows: Row[], plan: GlobalPlan, ctx: Reso
     }
   }
   if (source === "ads_daily") return out;
-  const sourceEntity = SOURCE_ENTITY[source];
+  const sourceEntity = entityOf(source);
   for (const g of plan.active) {
     out =
       g.entity === sourceEntity
@@ -339,6 +339,8 @@ function bucketKey(d: Date, b: Bucket): string {
       return String(getISODay(d));
     case "hour":
       return format(d, "HH");
+    case "age":
+      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
   }
 }
 
@@ -359,6 +361,8 @@ function bucketLabel(key: string, b: Bucket): string {
       return WEEKDAY_LABELS[Number(key) - 1] ?? key;
     case "hour":
       return `${key}:00`;
+    case "age":
+      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
   }
 }
 
@@ -378,6 +382,8 @@ function bucketsInSpan(from: Date, to: Date, b: Bucket): string[] {
       return ["1", "2", "3", "4", "5", "6", "7"];
     case "hour":
       return Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
+    case "age":
+      throw new QueryError("unsupported", "Agrupar por días desde una fecha todavía no está disponible");
   }
 }
 
@@ -471,7 +477,7 @@ function labelFor(key: string, dim: DimPlan, source: SourceId): string {
   if (dim.bucket) return bucketLabel(key, dim.bucket);
   const related = /^(opportunity|contact)\.(.+)$/.exec(dim.spec.dimension);
   const field = related ? related[2] : dim.spec.dimension;
-  const entity: EntityId | null = related ? (related[1] as EntityId) : source === "ads_daily" ? null : SOURCE_ENTITY[source];
+  const entity: EntityId | null = related ? (related[1] as EntityId) : entityOf(source);
   if (field === "sourceCategory") return catLabel(key);
   if (field === "dePauta" || field === "won") return key === "true" ? "Sí" : key === "false" ? "No" : key;
   const translated = entity ? ENUM_LABELS_ES[`${entity}.${field}`]?.[key] : undefined;

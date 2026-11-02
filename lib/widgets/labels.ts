@@ -11,6 +11,7 @@ export const SOURCE_LABELS: Record<SourceId, string> = {
   tasks: "Tareas",
   pautas: "Pautas",
   ads_daily: "Gasto de Meta",
+  conversations: "Conversaciones",
 };
 
 export const ENTITY_NOUNS: Record<EntityId, string> = {
@@ -31,6 +32,7 @@ export const VIZ_LABELS: Record<VizType, string> = {
   area: "Área",
   funnel: "Embudo",
   table: "Tabla",
+  matrix: "Matriz",
   record_list: "Lista",
   text: "Nota",
 };

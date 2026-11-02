@@ -6,7 +6,7 @@
 //  - the panel snapshot the model reads on every turn (spec §9.1).
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { SOURCE_ENTITY, type DashboardDoc, type EntityId, type FilterClause, type FilterSpec, type QuerySpec, type WidgetSpec } from "./spec";
+import { entityOf, type DashboardDoc, type EntityId, type FilterClause, type FilterSpec, type QuerySpec, type WidgetSpec } from "./spec";
 import { SOURCE_DEFS, isDateField, knownCustomFields, type EngineContext } from "./semantic";
 import { ENTITY_NOUNS, METRIC_PHRASES, RANGE_LABELS, SOURCE_LABELS, VIZ_LABELS, fieldLabel, valueLabel } from "./labels";
 
@@ -45,6 +45,10 @@ function conditionText(entity: EntityId | null, f: FilterSpec): string {
       return `${label} < ${f.values[0]}`;
     case "lte":
       return `${label} ≤ ${f.values[0]}`;
+    case "days_ago_gte":
+      return `${label} hace ≥ ${f.values[0]} días`;
+    case "days_ago_lte":
+      return `${label} en los últimos ${f.values[0]} días`;
   }
 }
 
@@ -104,7 +108,7 @@ export function describeWidget(spec: WidgetSpec): string {
   if (spec.viz !== "record_list") parts.push(q.metrics.map((m) => METRIC_PHRASES[m.metric]).join(" y "));
   const group = groupText(q);
   if (group) parts.push(group);
-  const sourceEntity = q.source === "ads_daily" ? null : SOURCE_ENTITY[q.source];
+  const sourceEntity = entityOf(q.source);
   if (q.filters.length) parts.push(`solo ${clausesText(sourceEntity, q.filters)}`);
   for (const rf of q.relatedFilters) {
     const noun = ENTITY_NOUNS[rf.entity];
@@ -133,7 +137,7 @@ export function describeFilterChips(spec: WidgetSpec): string[] {
     const period = q.time.range === "absolute" ? periodText({ ...q, time: { ...q.time, compare: "none" } }) : RANGE_LABELS[q.time.range];
     chips.push(`${capitalize(period)} · fijo`);
   }
-  const sourceEntity = q.source === "ads_daily" ? null : SOURCE_ENTITY[q.source];
+  const sourceEntity = entityOf(q.source);
   for (const c of q.filters) chips.push(capitalize(clauseText(sourceEntity, c)));
   for (const rf of q.relatedFilters) {
     const noun = ENTITY_NOUNS[rf.entity];

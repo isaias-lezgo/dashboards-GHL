@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { describeClause } from "@/lib/widgets/describe"
 import { ENTITY_NOUNS, RANGE_LABELS, SOURCE_LABELS, fieldLabel } from "@/lib/widgets/labels"
 import { SOURCE_DEFS, type EngineContext } from "@/lib/widgets/semantic"
-import { ENTITIES, RANGE_PRESETS, SOURCE_ENTITY, type QuerySpec, type Widget, type WidgetSpec } from "@/lib/widgets/spec"
+import { ENTITIES, RANGE_PRESETS, entityOf, type QuerySpec, type Widget, type WidgetSpec } from "@/lib/widgets/spec"
 import { FilterFieldPicker } from "./filter-field-picker"
 
 const selectClass = "h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground"
@@ -36,7 +36,7 @@ export function WidgetFilterEditor({
   if (!widget || !draft) return null
   const source = draft.source
   const isAds = source === "ads_daily"
-  const sourceEntity = isAds ? null : SOURCE_ENTITY[source]
+  const sourceEntity = entityOf(source)
   const update = (patch: Partial<QuerySpec>) => setDraft({ ...draft, ...patch })
 
   return (

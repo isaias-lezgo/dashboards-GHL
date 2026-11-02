@@ -152,6 +152,13 @@ export const SOURCE_DEFS: Record<SourceId, SourceDef> = {
     contactIdOf: () => undefined,
     rows: (ctx) => asRows(ctx.ads?.daily ?? []),
   },
+  // Filled in by the conversations task; until then the source has no rows.
+  conversations: {
+    dateFields: ["lastMessageAt"],
+    primaryDate: "lastMessageAt",
+    contactIdOf: (r) => str(r.contactId),
+    rows: () => [],
+  },
 };
 
 export const ENTITY_SOURCE: Record<EntityId, Exclude<SourceId, "ads_daily">> = {
@@ -179,6 +186,7 @@ export const NATIVE_FIELDS: Record<SourceId, string[]> = {
   tasks: ["id", "title", "status", "assignedTo", "assignedToName", "contactId", "opportunityId", "dueDate", "createdAt"],
   pautas: ["id", "tipo", "nombrePauta", "contactId", "createdAt"],
   ads_daily: ["date"],
+  conversations: [],
 };
 
 export const DERIVED_FIELDS: Partial<Record<SourceId, string[]>> = {
@@ -363,6 +371,9 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
       if (f.op === "lt") return a < b;
       return a <= b;
     }
+    case "days_ago_gte":
+    case "days_ago_lte":
+      throw new QueryError("unsupported", "Los filtros de «hace N días» todavía no están disponibles");
   }
 }
 
