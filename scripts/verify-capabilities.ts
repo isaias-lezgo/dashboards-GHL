@@ -51,6 +51,7 @@ import { activeGlobalFilters, initialFilterState } from "../lib/widgets/filter-s
 import { listFieldValues } from "../lib/widgets/semantic";
 import { ids } from "./lib/widget-test-kit";
 import type { FilterControl } from "../lib/widgets/spec";
+import { ASSISTANT_SYSTEM_PROMPT, PANEL_PROMPT_SECTION } from "../lib/ai-context";
 import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
@@ -904,6 +905,24 @@ async function filterBarSection(): Promise<void> {
   });
 }
 
+// ─── Task 13: the copilot's prompt ────────────────────────────────────────────
+
+function promptSection(): void {
+  section("prompt: the copilot knows the new capabilities");
+
+  check("panel prompt carries the new sections and the dictated copy", () => {
+    for (const h of ["## Cuando algo no se puede", "## Varias fuentes y proporciones", "## Fechas personalizadas", "## Campos combinados", "## Conversaciones", "## Días desde"]) {
+      assert.ok(PANEL_PROMPT_SECTION.includes(h), h);
+    }
+    assert.ok(PANEL_PROMPT_SECTION.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    assert.match(PANEL_PROMPT_SECTION, /cuando se puede/);
+  });
+
+  check("the assistant prompt does not carry panel-only sections", () => {
+    assert.ok(!ASSISTANT_SYSTEM_PROMPT.includes("## Cuando algo no se puede"));
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -916,6 +935,7 @@ async function main(): Promise<void> {
   describeSection();
   await glossaryFieldSection();
   await filterBarSection();
+  promptSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 
