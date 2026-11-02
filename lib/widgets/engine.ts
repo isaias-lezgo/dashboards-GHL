@@ -102,8 +102,10 @@ export interface QueryMeta {
   pipelineIgnored?: true;
   /** Multi-series widgets: one label per series, in index order (0 = the query itself). */
   seriesLabels?: string[];
-  /** How values read when several metrics meet in one chart (series or a ratio). */
+  /** How values read when several metrics meet in one chart (series or a ratio). Absent in a mixed-unit table. */
   valueKind?: ValueKind;
+  /** Multi-series: each series' unit, in index order (a table formats each column by its own). */
+  seriesKinds?: ValueKind[];
   /** Widgets that read conversations: where the on-demand load stands. */
   conversations?: {
     status: "loading" | "error" | "ready";
@@ -967,7 +969,7 @@ export function runQuery(q: QuerySpec, ctx: EngineContext, run: RunOptions = {})
     const pending = conversationGate(q, ctx, need);
     if (pending) return pending;
   }
-  const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx) : withCompare(runQueryOnce(q, ctx, run), q, ctx);
+  const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx, run) : withCompare(runQueryOnce(q, ctx, run), q, ctx);
   return need !== null ? withConversationMeta(res, q, ctx) : res;
 }
 
@@ -1091,13 +1093,14 @@ export function ratioKind(num: SeriesSpec, den: SeriesSpec): "same_group" | "bet
     : "between_series";
 }
 
-function runMultiQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
+function runMultiQuery(q: QuerySpec, ctx: EngineContext, run: RunOptions = {}): QueryResult {
   const all = [primarySeries(q), ...seriesOf(q)];
   const axis = q.groupBy[0] ?? null;
   const axisIsDate = !!axis && isDateField(q.source, axis.dimension, ctx);
   const kinds = all.map((s) => METRICS[s.metric].kind as ValueKind);
 
-  if (!q.ratio && new Set(kinds).size > 1) {
+  // One unit per CHART (never two axes); a table gives each series its own column.
+  if (!q.ratio && run.viz !== "table" && new Set(kinds).size > 1) {
     throw new QueryError("invalid", MISMATCHED_UNITS([...new Set(kinds)].map((k) => KIND_NOUN[k]).join(" y ")));
   }
 
@@ -1174,6 +1177,7 @@ function runMultiQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
     foldedIntoOtros: folded.length,
     warnings,
     seriesLabels: all.map((s) => s.label),
+    seriesKinds: kinds,
     ...(subs.some((sub) => sub.res.meta.pipelineIgnored) ? { pipelineIgnored: true as const } : {}),
   };
 
@@ -1221,7 +1225,8 @@ function runMultiQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
         })
       )
     : subs.map((sub, i) => ({ key: [`s${i}`], label: [all[i].label], values: [totals[i]], records: sub.res.rows.flatMap((row) => row.records) }));
-  return { rows, totals, margins: null, compare: null, meta: { ...meta, valueKind: kinds[0] } };
+  const oneKind = new Set(kinds).size === 1;
+  return { rows, totals, margins: null, compare: null, meta: { ...meta, ...(oneKind ? { valueKind: kinds[0] } : {}) } };
 }
 
 function runQueryOnce(q: QuerySpec, ctx: EngineContext, run: RunOptions = {}): QueryResult {

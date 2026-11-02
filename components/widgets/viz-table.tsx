@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { ArrowDown, ArrowUp } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { fieldLabel, METRIC_PHRASES } from "@/lib/widgets/labels"
-import { formatMetric, ratioText, valueFormatters } from "./format"
+import { formatMetric, formatValue, ratioText, valueFormatters } from "./format"
 import { KEY_SEP, pivot, type VizProps } from "./viz-types"
 
 export function VizTable(props: VizProps) {
@@ -19,7 +19,10 @@ const header = (dimension: string) => {
 /** Several series: one row per axis value, one column per series (Lezgo's "indicadores por semana"). */
 function SeriesTable({ result, widget, currency, height, onDrill }: VizProps) {
   const q = widget.query!
-  const { fmt } = valueFormatters(result, widget, currency)
+  const { fmt: oneFmt } = valueFormatters(result, widget, currency)
+  // A table may mix units: each column formats by its own series' kind.
+  const kinds = result.meta.seriesKinds
+  const fmtAt = (i: number) => (v: number | null) => (kinds?.[i] ? formatValue(v, kinds[i], currency) : oneFmt(v))
   const labels = result.meta.seriesLabels ?? []
   const sourceOf = (i: number) => (i === 0 ? q.source : q.series?.[i - 1]?.source)
   const p = pivot(result)
@@ -49,7 +52,7 @@ function SeriesTable({ result, widget, currency, height, onDrill }: VizProps) {
             ? result.rows.map((r, i) => (
                 <TableRow key={r.key.join("|")} className="cursor-pointer" onClick={() => onDrill(`${widget.title}: ${r.label[0]}`, r.records, sourceOf(i))}>
                   <TableCell className="text-xs text-foreground">{r.label[0]}</TableCell>
-                  <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">{fmt(r.values[0])}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">{fmtAt(i)(r.values[0])}</TableCell>
                 </TableRow>
               ))
             : p.categories.map((cat, ci) => (
@@ -61,7 +64,7 @@ function SeriesTable({ result, widget, currency, height, onDrill }: VizProps) {
                       className="cursor-pointer text-right text-sm font-semibold tabular-nums text-foreground hover:bg-muted/40"
                       onClick={() => onDrill(`${widget.title}: ${cat} · ${l}`, p.records.get(`${cat}${KEY_SEP}${l}`) ?? [], sourceOf(i))}
                     >
-                      {fmt(p.data[ci][p.seriesKey(p.series.indexOf(l))] as number | null)}
+                      {fmtAt(i)(p.data[ci][p.seriesKey(p.series.indexOf(l))] as number | null)}
                     </TableCell>
                   ))}
                 </TableRow>

@@ -426,7 +426,7 @@ Aquí no tienes \`render_chart\`, \`show_in_panel\`, \`create_pdf\` ni archivos 
 ## Varias fuentes y proporciones
 
 - **Varias fuentes en una gráfica** ("contactos y oportunidades por semana, juntos"): la consulta es la serie 0 y \`series\` agrega las demás, cada una con su \`source\`, \`metric\`, filtros y su propia fecha (\`dateField\`). Comparten el eje \`groupBy[0]\`: si es una fecha con bucket, cada serie agrupa por SU fecha; si es una categoría, debe existir en todas (\`dimension\` la lee de otra forma en una serie). Sin segunda dimensión.
-- Todas las series que se ven tienen la MISMA unidad (conteos con conteos, dinero con dinero). Barras agrupadas (\`grouped_bar\`) o \`line\`; NUNCA \`stacked_bar\` con fuentes distintas: "contactos + oportunidades" no es un total. \`table\` pone una columna por serie.
+- Todas las series que se ven tienen la MISMA unidad (conteos con conteos, dinero con dinero). Barras agrupadas (\`grouped_bar\`) o \`line\`; NUNCA \`stacked_bar\` con fuentes distintas: "contactos + oportunidades" no es un total. \`table\` pone una columna por serie, y ahí SÍ se pueden mezclar unidades (conteos y dinero en columnas distintas).
 - **Proporciones** con \`ratio\` (índices: 0 = la consulta, 1… = las series); la gráfica muestra solo el porcentaje y la tarjeta dice "X de Y".
   - "De los X, ¿cuántos…?" ("de los contactos de la semana, ¿cuántos tienen oportunidad?", "¿qué % de los leads tuvo cita?") = MISMO GRUPO: el denominador es la base y el numerador es la MISMA serie (misma fuente y misma fecha) con una condición más (\`filters\` o \`relatedFilters\`). Se cuenta hasta hoy: una oportunidad creada después también cuenta, y los periodos recientes se ven bajos porque siguen madurando; dilo en una línea.
   - "A entre B" con fuentes distintas ("oportunidades entre contactos por semana") = COCIENTE ENTRE SERIES: compara ritmos, no son los mismos registros. Dilo en la respuesta.
@@ -472,5 +472,5 @@ Aquí no tienes \`render_chart\`, \`show_in_panel\`, \`create_pdf\` ni archivos 
 ## Cómo responder
 
 - **Nunca imprimas ids** de widgets ni de pestañas: nómbralos por su título.
-- Habla en las palabras del usuario, nunca nombres internos del spec (\`stacked_bar\`, \`outcome\`, \`series\`, \`ratio\`, \`fallbacks\`, \`bucket\`…): di «barras apiladas», «estado (ganada, abierta, perdida)», «dos series», «el primer campo con valor», «por semana».
+- Habla en las palabras del usuario, nunca nombres internos del spec (\`stacked_bar\`, \`outcome\`, \`series\`, \`ratio\`, \`fallbacks\`, \`bucket\`…) ni nombres de campo como \`lastStageChangeAt\` o \`updatedAt\`: di «barras apiladas», «estado (ganada, abierta, perdida)», «dos series», «el primer campo con valor», «por semana».
 - Después de crear o editar, responde en UNA línea qué hiciste y con qué regla ("Agregué «Citas por etapa»: cuento las citas del periodo según la etapa de la oportunidad más reciente de cada contacto."). El usuario ya ve la gráfica; no repitas sus números salvo que te los pidan.`;

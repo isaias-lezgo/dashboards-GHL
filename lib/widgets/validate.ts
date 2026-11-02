@@ -343,7 +343,7 @@ export function validateWidget(spec: WidgetSpec, catalog: Catalog): ValidationIs
         else rf.conditions.forEach((c, m) => c.anyOf.forEach((f, j) => checkField(`${path}.relatedFilters[${k}].conditions[${m}].anyOf[${j}].field`, f.field, entityFields(rf.entity, catalog), ENTITY_SOURCE[rf.entity])));
       });
     });
-    if (!q.ratio) {
+    if (!q.ratio && spec.viz !== "table") {
       const kinds = [...new Set([q.metrics[0], ...extra].map((m) => METRICS[m.metric].kind))];
       const noun: Record<string, string> = { count: "conteo", amount: "monto", rate: "porcentaje" };
       if (kinds.length > 1) add("query.series", `Las series mezclan unidades (${kinds.map((k) => noun[k]).join(" y ")}): usa dos tarjetas, nunca dos ejes.`);

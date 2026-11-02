@@ -950,6 +950,18 @@ function appFixesSection(): void {
     assert.ok(asBars.rows.some((r) => r.label[1] === "Otros"), "bars keep the 6-series cap");
   });
 
+  check("a table may mix units (one column per series); charts may not", () => {
+    const ctx = makeSeriesFixture();
+    const mixed = { groupBy: [dim("createdAt", "month")], series: [series("Valor", "opportunities", "value_sum", "createdAt")], time: OCT };
+    const res = runQuery(q({ source: "contacts", ...mixed }), ctx, { viz: "table" });
+    assert.deepEqual(res.meta.seriesKinds, ["count", "amount"]);
+    assert.equal(res.meta.valueKind, undefined);
+    const cat = buildCatalog(ctx);
+    assert.deepEqual(validateWidget(widget("table", mixed), cat), []);
+    assert.equal(validateWidget(widget("grouped_bar", mixed), cat).length, 1);
+    assert.throws(() => runQuery(q({ source: "contacts", ...mixed }), ctx, { viz: "grouped_bar" }), /mezclan unidades/);
+  });
+
   check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
     const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
     assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);
