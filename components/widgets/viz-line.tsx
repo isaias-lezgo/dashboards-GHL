@@ -6,6 +6,7 @@ import { Area, AreaChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "r
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
 import { BRAND_AMBER, CHART_GRID_STROKE, CHART_TICK, NonZeroTooltipContent } from "@/components/dashboard/dashboard-ui"
 import { colorForKey, valueFormatters } from "./format"
+import { SeriesLegend } from "./series-legend"
 import { pivot, type VizProps } from "./viz-types"
 
 export function VizLine({ result, widget, currency, height, onDrill }: VizProps) {
@@ -40,6 +41,8 @@ export function VizLine({ result, widget, currency, height, onDrill }: VizProps)
     <ChartTooltip key="tip" content={<NonZeroTooltipContent formatter={(v, name) => `${config[String(name)]?.label ?? name}: ${fmt(Number(v))}`} />} />,
   ]
   return (
+    <>
+    {multi && <SeriesLegend items={names.map((s) => ({ label: s, color: colorForKey(s) }))} />}
     <ChartContainer config={config} className="aspect-auto w-full" style={{ height }}>
       {widget.viz === "area" ? (
         <AreaChart {...common}>
@@ -64,5 +67,6 @@ export function VizLine({ result, widget, currency, height, onDrill }: VizProps)
         </LineChart>
       )}
     </ChartContainer>
+    </>
   )
 }

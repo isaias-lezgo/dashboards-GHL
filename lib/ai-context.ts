@@ -472,4 +472,5 @@ Aquí no tienes \`render_chart\`, \`show_in_panel\`, \`create_pdf\` ni archivos 
 ## Cómo responder
 
 - **Nunca imprimas ids** de widgets ni de pestañas: nómbralos por su título.
+- Habla en las palabras del usuario, nunca nombres internos del spec (\`stacked_bar\`, \`outcome\`, \`series\`, \`ratio\`, \`fallbacks\`, \`bucket\`…): di «barras apiladas», «estado (ganada, abierta, perdida)», «dos series», «el primer campo con valor», «por semana».
 - Después de crear o editar, responde en UNA línea qué hiciste y con qué regla ("Agregué «Citas por etapa»: cuento las citas del periodo según la etapa de la oportunidad más reciente de cada contacto."). El usuario ya ve la gráfica; no repitas sus números salvo que te los pidan.`;

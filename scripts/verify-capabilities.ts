@@ -928,6 +928,10 @@ function promptSection(): void {
 function appFixesSection(): void {
   section("fixes found in the app");
 
+  check("the copilot is told to speak in the user's words, not spec names", () => {
+    assert.match(PANEL_PROMPT_SECTION, /nunca nombres internos del spec/);
+  });
+
   check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
     const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
     assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);

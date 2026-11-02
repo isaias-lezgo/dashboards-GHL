@@ -8,6 +8,7 @@ import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/
 import { BRAND_AMBER, CHART_GRID_STROKE, CHART_TICK, NonZeroTooltipContent } from "@/components/dashboard/dashboard-ui"
 import { METRIC_PHRASES } from "@/lib/widgets/labels"
 import { colorForKey, ratioText, valueFormatters } from "./format"
+import { SeriesLegend } from "./series-legend"
 import { KEY_SEP, pivot, shortLabel, type Row, type VizProps } from "./viz-types"
 
 export function VizBar({ result, widget, currency, height, onDrill }: VizProps) {
@@ -74,10 +75,23 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
   const config: ChartConfig = Object.fromEntries(p.series.map((s, i) => [p.seriesKey(i), { label: s, color: colorForKey(s) }]))
   const stacked = widget.viz === "stacked_bar"
   return (
+    <>
+    <SeriesLegend items={p.series.map((s) => ({ label: s, color: colorForKey(s) }))} />
     <ChartContainer config={config} className="aspect-auto w-full" style={{ height }}>
       <BarChart data={p.data} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
         <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-        <XAxis dataKey="label" tick={CHART_TICK} tickLine={false} axisLine={false} interval={0} tickFormatter={(v) => shortLabel(String(v), 14)} />
+        <XAxis
+          dataKey="label"
+          tick={CHART_TICK}
+          tickLine={false}
+          axisLine={false}
+          interval={0}
+          // Many categories (months of a year): tilt instead of letting labels collide.
+          angle={p.data.length > 6 ? -30 : 0}
+          textAnchor={p.data.length > 6 ? "end" : "middle"}
+          height={p.data.length > 6 ? 64 : 30}
+          tickFormatter={(v) => shortLabel(String(v), p.data.length > 6 ? 18 : 14)}
+        />
         <YAxis tick={CHART_TICK} tickLine={false} axisLine={false} width={48} tickFormatter={(v) => tick(Number(v))} />
         <ChartTooltip content={<NonZeroTooltipContent formatter={(v, name) => `${config[String(name)]?.label ?? name}: ${fmt(Number(v))}`} />} />
         {p.series.map((s, i) => (
@@ -99,5 +113,6 @@ export function VizBar({ result, widget, currency, height, onDrill }: VizProps) 
         ))}
       </BarChart>
     </ChartContainer>
+    </>
   )
 }
