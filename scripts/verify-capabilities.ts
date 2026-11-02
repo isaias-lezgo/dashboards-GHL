@@ -41,7 +41,7 @@ import type { Opportunity } from "../lib/types";
 import { QueryError } from "../lib/widgets/semantic";
 import { ageBucketKey, runQuery } from "../lib/widgets/engine";
 import { byLabel, dim } from "./lib/widget-test-kit";
-import type { FilterClause, TimeSpec } from "../lib/widgets/spec";
+import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
 import { customFieldTypeMap } from "../lib/sync";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -424,11 +424,100 @@ function engineDimsSection(): void {
   });
 }
 
+// ─── Task 5: several series and proportions ───────────────────────────────────
+
+const OCT: TimeSpec = { field: "createdAt", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "none" };
+const ANY_OPP: RelatedFilterSpec = { entity: "opportunity", quantifier: "any", conditions: [] };
+const NONE_OPP: RelatedFilterSpec = { entity: "opportunity", quantifier: "none", conditions: [] };
+
+function series(label: string, source: SourceId, metric: MetricId, dateField: string, extra: Partial<SeriesSpec> = {}): SeriesSpec {
+  return { label, source, metric, filters: [], relatedFilters: [], dateField, dimension: null, ...extra };
+}
+
+// k1 Oct 2 (opp Oct 3), k2 Oct 9 (opp Sep 1), k3 Oct 9 (no opp), k9 Oct 20 (opp Nov 2, after the window).
+function makeSeriesFixture(): EngineContext {
+  const base = makeFixture().ctx;
+  const contacts = [
+    mkContact("k1", { createdAt: "2026-10-02T15:00:00Z" }),
+    mkContact("k2", { createdAt: "2026-10-09T15:00:00Z" }),
+    mkContact("k3", { createdAt: "2026-10-09T16:00:00Z" }),
+    mkContact("k9", { createdAt: "2026-10-20T15:00:00Z" }),
+  ];
+  const opps = [
+    mkOpp("pk1", "k1", "p1", "Nuevo", "2026-10-03T15:00:00Z"),
+    mkOpp("pk2", "k2", "p2", "Nuevo", "2026-09-01T15:00:00Z"),
+    mkOpp("pk9", "k9", "p1", "Nuevo", "2026-11-02T15:00:00Z"),
+  ];
+  return { ...base, now: new Date(2026, 10, 10, 12, 0, 0), dataset: { ...base.dataset, contacts, opportunities: opps } };
+}
+
+function seriesSection(): void {
+  section("engine: several series and proportions");
+  const ctx = makeSeriesFixture();
+
+  check("contacts and opportunities created per week share one axis", () => {
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], series: [series("Oportunidades", "opportunities", "count", "createdAt")], time: OCT }), ctx);
+    assert.deepEqual(res.meta.seriesLabels, ["Contactos", "Oportunidades"]);
+    assert.deepEqual(res.totals, [4, 1]);
+    assert.equal(res.meta.valueKind, "count");
+    const week5 = res.rows.filter((r) => r.key[0] === "2026-10-05");
+    assert.deepEqual(week5.map((r) => [r.label[1], r.values[0]]), [["Contactos", 2], ["Oportunidades", 0]]);
+  });
+
+  check("same-group proportion counts the condition over all time (cohort)", () => {
+    const res = runQuery(
+      q({ source: "contacts", series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "% con oportunidad", numerator: 1, denominator: 0 }, time: OCT }),
+      ctx
+    );
+    assert.equal(res.meta.ratio!.kind, "same_group");
+    assert.deepEqual(res.meta.ratio!.parts, [3, 4]);
+    assert.equal(res.totals[0], 0.75);
+    assert.equal(res.meta.valueKind, "rate");
+    assert.ok(res.meta.warnings.includes("Cuenta hasta hoy: los periodos recientes siguen madurando."), res.meta.warnings.join(" | "));
+  });
+
+  check("between-series ratio says they are not the same records", () => {
+    const res = runQuery(q({ source: "opportunities", metrics: [{ metric: "count", label: "Oportunidades" }], series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 }, time: OCT }), ctx);
+    assert.equal(res.meta.ratio!.kind, "between_series");
+    assert.deepEqual(res.meta.ratio!.parts, [1, 4]);
+    assert.ok(res.meta.warnings.includes("«Oportunidades» y «Contactos» no son los mismos registros: el cociente compara ritmos, no es una conversión."), res.meta.warnings.join(" | "));
+  });
+
+  check("ratio with zero denominator is null", () => {
+    const res = runQuery(q({ source: "opportunities", groupBy: [dim("createdAt", "week")], series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 }, time: OCT }), ctx);
+    const wk12 = res.rows.find((r) => r.key[0] === "2026-10-12")!;
+    assert.equal(wk12.values[0], null);
+    assert.deepEqual(wk12.parts, [0, 0]);
+    const empty = runQuery(q({ source: "opportunities", series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "x", numerator: 0, denominator: 1 }, time: { ...OCT, from: "2026-01-01", to: "2026-01-31" } }), ctx);
+    assert.deepEqual(empty.totals, [null]);
+  });
+
+  check("mixed units are refused", () => {
+    assert.throws(() => runQuery(q({ series: [series("Valor", "opportunities", "value_sum", "createdAt")], time: OCT }), ctx), /mezclan unidades/);
+  });
+
+  check("has-opportunity contact queries ignore the pipeline filter and say so", () => {
+    const res = runQuery(q({ source: "contacts", relatedFilters: [NONE_OPP], time: ALL }), { ...ctx, pipelineFilter: ["p1"] });
+    assert.equal(res.totals[0], 1);
+    assert.equal(res.meta.pipelineIgnored, true);
+    assert.ok(res.meta.warnings.includes("Ignora el filtro de pipeline: con él, todos los contactos tendrían oportunidad."));
+    const plain = runQuery(q({ source: "contacts", relatedFilters: [NONE_OPP], time: ALL }), ctx);
+    assert.equal(plain.meta.pipelineIgnored, undefined);
+  });
+
+  check("a single-source widget still returns exactly what it did", () => {
+    const res = runQuery(q({ groupBy: [dim("stage")], time: ALL }), makeFixture().ctx);
+    assert.deepEqual(byLabel(res), { "Primera Cita": 1, Propuesta: 1, "Negocio Ganado": 1, Seguimiento: 1 });
+    assert.equal(res.meta.seriesLabels, undefined);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
   semanticSection();
   engineDimsSection();
+  seriesSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

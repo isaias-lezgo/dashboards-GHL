@@ -35,10 +35,10 @@ import type { AdsStatus, Opportunity } from "@/lib/types";
 import type { ResolvedDateRange } from "@/lib/date-range";
 import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelines } from "@/lib/pipeline-filter";
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
-import { DOC_LIMITS, edgesOf, entityOf, fallbacksOf, type Bucket, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
+import { DOC_LIMITS, edgesOf, entityOf, fallbacksOf, seriesOf, type Bucket, type SeriesSpec, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
-import { ENUM_LABELS_ES, fieldLabel } from "./labels";
+import { ENUM_LABELS_ES, METRIC_PHRASES, SOURCE_LABELS, fieldLabel } from "./labels";
 import { customFieldName } from "@/lib/custom-fields";
 import { catLabel } from "@/lib/source-platform";
 import {
@@ -72,7 +72,11 @@ export interface QueryRow {
   label: string[];
   values: (number | null)[];
   records: Row[];
+  /** Ratio rows: [numerator, denominator] behind the value ("X de Y"). */
+  parts?: [number | null, number | null];
 }
+
+export type ValueKind = "count" | "amount" | "rate";
 
 export interface QueryMeta {
   source: SourceId;
@@ -91,6 +95,18 @@ export interface QueryMeta {
   adsMessage: string | null;
   /** A windowed custom date left these records out (they have no date). */
   undated?: { field: string; records: Row[] };
+  /** A contacts query about having (or not) an opportunity ran without the panel's pipeline filter. */
+  pipelineIgnored?: true;
+  /** Multi-series widgets: one label per series, in index order (0 = the query itself). */
+  seriesLabels?: string[];
+  /** How values read when several metrics meet in one chart (series or a ratio). */
+  valueKind?: ValueKind;
+  ratio?: {
+    kind: "same_group" | "between_series";
+    numeratorLabel: string;
+    denominatorLabel: string;
+    parts: [number | null, number | null];
+  };
 }
 
 export interface QueryResult {
@@ -214,11 +230,12 @@ interface GlobalPlan {
   applyPipeline: boolean;
   active: ActiveGlobalFilter[];
   overridden: string[];
+  pipelineIgnored: boolean;
 }
 
 /** Which global filters apply to this widget, honoring "the widget's own filter on the same field wins". */
 function globalPlan(q: QuerySpec, ctx: EngineContext): GlobalPlan {
-  if (q.source === "ads_daily" || q.globalFilters === "ignore") return { applyPipeline: false, active: [], overridden: [] };
+  if (q.source === "ads_daily" || q.globalFilters === "ignore") return { applyPipeline: false, active: [], overridden: [], pipelineIgnored: false };
   const own = new Map<EntityId, Set<string>>();
   const add = (entity: EntityId, fields: string[]) => {
     const set = own.get(entity) ?? new Set<string>();
@@ -236,14 +253,24 @@ function globalPlan(q: QuerySpec, ctx: EngineContext): GlobalPlan {
     applyPipeline = false;
     overridden.push("pipeline");
   }
+  // "Contactos sin oportunidad" under a pipeline filter would always be 0 (the
+  // filter keeps only contacts WITH an opportunity in it), "% con oportunidad"
+  // always 100%: these cards ignore it and say so.
+  let pipelineIgnored = false;
+  if (applyPipeline && q.source === "contacts" && q.relatedFilters.some((rf) => rf.entity === "opportunity")) {
+    applyPipeline = false;
+    pipelineIgnored = true;
+  }
   const active: ActiveGlobalFilter[] = [];
   for (const g of ctx.globalFilters) {
     const mine = own.get(g.entity);
     if (mine && clauseFields(g.clause).every((f) => mine.has(f))) overridden.push(g.label);
     else active.push(g);
   }
-  return { applyPipeline, active, overridden };
+  return { applyPipeline, active, overridden, pipelineIgnored };
 }
+
+const PIPELINE_IGNORED = "Ignora el filtro de pipeline: con él, todos los contactos tendrían oportunidad.";
 
 function applyGlobals(source: SourceId, rows: Row[], plan: GlobalPlan, ctx: ResolvedCtx): Row[] {
   let out = rows;
@@ -894,7 +921,177 @@ function withCompare(result: QueryResult, q: QuerySpec, ctx: EngineContext): Que
 }
 
 export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
+  if (seriesOf(q).length > 0 || q.ratio) return runMultiQuery(q, ctx);
   return withCompare(runQueryOnce(q, ctx), q, ctx);
+}
+
+// ─── Several series and proportions (spec 2026-11-02 §3.1–3.2) ────────────────
+
+const MISMATCHED_UNITS = (kinds: string) => `Las series mezclan unidades (${kinds}); usa dos tarjetas.`;
+const COHORT_NOTE = "Cuenta hasta hoy: los periodos recientes siguen madurando.";
+const KIND_NOUN: Record<ValueKind, string> = { count: "conteo", amount: "monto", rate: "porcentaje" };
+const DEFAULT_CATEGORY_AXIS = 12;
+
+/** Series 0 is the query itself; its label defaults to the source ("Contactos") for a count. */
+function primarySeries(q: QuerySpec): SeriesSpec {
+  const m = q.metrics[0];
+  return {
+    label: m.label ?? (m.metric === "count" ? SOURCE_LABELS[q.source] : capitalize(METRIC_PHRASES[m.metric])),
+    source: q.source,
+    metric: m.metric,
+    filters: q.filters,
+    relatedFilters: q.relatedFilters,
+    dateField: q.time.field,
+    dimension: null,
+  };
+}
+
+const sameClauses = <T>(base: T[], sub: T[]): boolean => {
+  const have = new Set(sub.map((c) => JSON.stringify(c)));
+  return base.every((c) => have.has(JSON.stringify(c)));
+};
+
+/** "De los X, cuántos…": same records, the numerator only ADDS conditions. Anything else compares two groups. */
+function ratioKind(num: SeriesSpec, den: SeriesSpec): "same_group" | "between_series" {
+  return num.source === den.source &&
+    num.dateField === den.dateField &&
+    sameClauses(den.filters, num.filters) &&
+    sameClauses(den.relatedFilters, num.relatedFilters)
+    ? "same_group"
+    : "between_series";
+}
+
+function runMultiQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
+  const all = [primarySeries(q), ...seriesOf(q)];
+  const axis = q.groupBy[0] ?? null;
+  const axisIsDate = !!axis && isDateField(q.source, axis.dimension, ctx);
+  const kinds = all.map((s) => METRICS[s.metric].kind as ValueKind);
+
+  if (!q.ratio && new Set(kinds).size > 1) {
+    throw new QueryError("invalid", MISMATCHED_UNITS([...new Set(kinds)].map((k) => KIND_NOUN[k]).join(" y ")));
+  }
+
+  // One single-series sub-query per series, each on its own date and its own globals.
+  const r = resolveCtx(ctx);
+  const range = resolveWidgetRange(q.time, ctx);
+  const subs = all.map((s, i) => {
+    const groupBy: GroupBySpec[] = !axis
+      ? []
+      : i === 0
+        ? [axis]
+        : axisIsDate
+          ? [{ dimension: s.dateField, bucket: axis.bucket, join: null, edges: axis.edges ?? null }]
+          : [{ ...axis, dimension: s.dimension ?? axis.dimension }];
+    const sub: QuerySpec = {
+      source: s.source,
+      metrics: [{ metric: s.metric, label: null }],
+      groupBy,
+      filters: s.filters,
+      relatedFilters: s.relatedFilters,
+      time: { ...q.time, field: s.dateField, compare: "none" },
+      globalFilters: q.globalFilters,
+      sort: { by: "value", dir: "desc" },
+      limit: null,
+      conversationDays: q.conversationDays ?? null,
+    };
+    const res = runQueryOnce(sub, ctx);
+    const mctx: MetricCtx = { ...r, source: s.source, range };
+    const byKey = new Map(res.rows.map((row) => [row.key[0] ?? "", row]));
+    return { spec: s, res, mctx, byKey };
+  });
+
+  // The axis: chronological for dates (union of every series' buckets), by the
+  // primary series' value for categories, cut to the limit with "Otros".
+  const labelOf = new Map<string, string>();
+  for (const sub of subs) for (const row of sub.res.rows) if (row.key.length) labelOf.set(row.key[0], row.label[0]);
+  let axisKeys: string[] = [];
+  let folded: string[] = [];
+  if (axis) {
+    const seen: string[] = [];
+    for (const sub of subs) for (const row of sub.res.rows) if (row.key.length && !seen.includes(row.key[0])) seen.push(row.key[0]);
+    const emptyLast = (a: string, b: string) => (a === EMPTY_VALUE ? 1 : 0) - (b === EMPTY_VALUE ? 1 : 0);
+    if (axisIsDate) {
+      axisKeys = seen.sort((a, b) => emptyLast(a, b) || a.localeCompare(b));
+    } else {
+      axisKeys = seen.filter((k) => k !== OTROS_KEY).sort((a, b) => emptyLast(a, b));
+      const cap = q.limit ?? DEFAULT_CATEGORY_AXIS;
+      if (axisKeys.length > cap) {
+        folded = axisKeys.slice(cap);
+        axisKeys = axisKeys.slice(0, cap);
+      }
+    }
+  }
+
+  // Value and records of series i at an axis key (an absent key is an empty group).
+  const cell = (i: number, key: string): { value: number | null; records: Row[] } => {
+    const sub = subs[i];
+    if (key === OTROS_KEY) {
+      const recs = dedupe(folded.flatMap((k) => sub.byKey.get(k)?.records ?? []));
+      return { value: METRICS[sub.spec.metric].compute(recs, sub.mctx), records: recs };
+    }
+    const row = sub.byKey.get(key);
+    return row ? { value: row.values[0], records: row.records } : { value: METRICS[sub.spec.metric].compute([], sub.mctx), records: [] };
+  };
+  const keys = axis ? [...axisKeys, ...(folded.length ? [OTROS_KEY] : [])] : [""];
+  const axisLabel = (k: string) => (k === OTROS_KEY ? OTROS : labelOf.get(k) ?? k);
+  const totals = subs.map((sub) => sub.res.totals[0]);
+
+  const warnings = [...new Set(subs.flatMap((sub) => sub.res.meta.warnings))];
+  const base = subs[0].res.meta;
+  const meta: QueryMeta = {
+    ...base,
+    recordCount: subs.reduce((n, sub) => n + sub.res.meta.recordCount, 0),
+    foldedIntoOtros: folded.length,
+    warnings,
+    seriesLabels: all.map((s) => s.label),
+    ...(subs.some((sub) => sub.res.meta.pipelineIgnored) ? { pipelineIgnored: true as const } : {}),
+  };
+
+  if (q.ratio) {
+    const n = q.ratio.numerator;
+    const d = q.ratio.denominator;
+    if (n === d || !all[n] || !all[d]) throw new QueryError("invalid", "La proporción apunta a series que no existen");
+    const [kn, kd] = [kinds[n], kinds[d]];
+    const valueKind: ValueKind | null = kn === kd ? "rate" : kn === "amount" && kd === "count" ? "amount" : null;
+    if (!valueKind) throw new QueryError("invalid", "Esa proporción no tiene una unidad clara; usa dos tarjetas.");
+    const div = (a: number | null, b: number | null): number | null => (a === null || b === null || b === 0 ? null : a / b);
+    const kind = ratioKind(all[n], all[d]);
+    const rows: QueryRow[] = axis
+      ? keys.map((k) => {
+          const num = cell(n, k);
+          const den = cell(d, k);
+          return { key: [k], label: [axisLabel(k)], values: [div(num.value, den.value)], records: num.records, parts: [num.value, den.value] };
+        })
+      : [{ key: [], label: [], values: [div(totals[n], totals[d])], records: subs[n].res.rows.flatMap((row) => row.records), parts: [totals[n], totals[d]] }];
+    const ratioWarnings =
+      kind === "between_series"
+        ? [`«${all[n].label}» y «${all[d].label}» no son los mismos registros: el cociente compara ritmos, no es una conversión.`]
+        : axisIsDate || range
+          ? [COHORT_NOTE]
+          : [];
+    return {
+      rows,
+      totals: [div(totals[n], totals[d])],
+      margins: null,
+      compare: null,
+      meta: {
+        ...meta,
+        warnings: [...warnings, ...ratioWarnings],
+        valueKind,
+        ratio: { kind, numeratorLabel: all[n].label, denominatorLabel: all[d].label, parts: [totals[n], totals[d]] },
+      },
+    };
+  }
+
+  const rows: QueryRow[] = axis
+    ? keys.flatMap((k) =>
+        subs.map((_, i) => {
+          const c = cell(i, k);
+          return { key: [k, `s${i}`], label: [axisLabel(k), all[i].label], values: [c.value], records: c.records };
+        })
+      )
+    : subs.map((sub, i) => ({ key: [`s${i}`], label: [all[i].label], values: [totals[i]], records: sub.res.rows.flatMap((row) => row.records) }));
+  return { rows, totals, margins: null, compare: null, meta: { ...meta, valueKind: kinds[0] } };
 }
 
 function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
@@ -916,6 +1113,7 @@ function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
   // (an open opportunity's closedAt) is the normal state, not a gap to report.
   const undated = customFieldName(q.time.field) && ranged.undated.length ? applyGlobals(q.source, ranged.undated, plan, r) : [];
   if (undated.length) warnings.push(undatedWarning(q.source, q.time.field, undated.length));
+  if (plan.pipelineIgnored) warnings.push(PIPELINE_IGNORED);
 
   if (q.source === "appointments") {
     const earliest = startOfDay(subDays(ctx.now, APPT_WINDOW_DAYS)).getTime();
@@ -940,6 +1138,7 @@ function runQueryOnce(q: QuerySpec, ctx: EngineContext): QueryResult {
     compare: null,
     meta: {
       ...(undated.length ? { undated: { field: q.time.field, records: undated } } : {}),
+      ...(plan.pipelineIgnored ? { pipelineIgnored: true as const } : {}),
       source: q.source,
       recordCount: rows.length,
       range: rangeKeys(range),
