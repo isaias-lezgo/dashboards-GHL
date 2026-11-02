@@ -23,6 +23,7 @@
     "verify:widgets": "tsx scripts/verify-widgets.ts",
     "verify:capabilities": "tsx scripts/verify-capabilities.ts",
     "check:widget-parity": "tsx --env-file-if-exists=.env.local scripts/check-widget-parity.ts",
+    "check:vaeo-reference": "tsx --env-file-if-exists=.env.local scripts/check-vaeo-reference.ts",
     "verify:dashboard-store": "tsx --env-file-if-exists=.env.local scripts/verify-dashboard-store.ts",
     "eval:panel": "tsx --env-file-if-exists=.env.local scripts/eval-panel/run.ts",
     "check:strict-tools": "tsx --env-file-if-exists=.env.local scripts/check-strict-tools.ts"
