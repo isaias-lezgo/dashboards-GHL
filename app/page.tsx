@@ -687,7 +687,7 @@ export default function DashboardPage() {
           {panelEnabled && docApi.doc && !FIXED_TABS.has(activeTab) && (
             <>
               <FilterDivider />
-              <PanelFilterBar ctx={engineCtx} filters={docApi.doc.filters} api={panelFilters} now={panelNow} onUndo={() => void undoChange()} />
+              <PanelFilterBar ctx={engineCtx} filters={docApi.doc.filters} glossary={docApi.doc.glossary} api={panelFilters} now={panelNow} onUndo={() => void undoChange()} />
             </>
           )}
         </FilterBar>

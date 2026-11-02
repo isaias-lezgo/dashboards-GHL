@@ -79,7 +79,9 @@ export function initialFilterState(filters: PanelFilters, now: Date): PanelFilte
 function toActive(c: Omit<FilterControl, "id">, values: string[], isOn: boolean): ActiveGlobalFilter | null {
   if (c.kind === "field") {
     if (!c.field || values.length === 0) return null;
-    return { entity: c.entity, label: c.label, clause: { anyOf: [{ field: c.field, op: "in", values }] } };
+    // A combined field filters by its first filled field, the same rule its chart groups by.
+    const fallbacks = c.fallbacks?.length ? { fallbacks: c.fallbacks } : {};
+    return { entity: c.entity, label: c.label, clause: { anyOf: [{ field: c.field, op: "in", values, ...fallbacks }] } };
   }
   return isOn && c.clause ? { entity: c.entity, label: c.label, clause: c.clause } : null;
 }

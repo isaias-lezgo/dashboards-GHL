@@ -47,6 +47,10 @@ import { conversationDaysNeeded } from "../lib/widgets/engine";
 import { buildPanelCatalogSummary, buildPanelSnapshot, describeFilterChips, describeWidget } from "../lib/widgets/describe";
 import { PANEL_MODE_TOOLS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
 import { resolveTerm } from "../lib/widgets/terms";
+import { activeGlobalFilters, initialFilterState } from "../lib/widgets/filter-state";
+import { listFieldValues } from "../lib/widgets/semantic";
+import { ids } from "./lib/widget-test-kit";
+import type { FilterControl } from "../lib/widgets/spec";
 import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
@@ -856,6 +860,50 @@ async function glossaryFieldSection(): Promise<void> {
   });
 }
 
+// ─── Task 12: a filter-bar control on a combined field ────────────────────────
+
+async function filterBarSection(): Promise<void> {
+  section("filter bar: combined-field control");
+  const { ctx } = makeComboFixture();
+  const ctrl: FilterControl = { id: "k9", kind: "field", entity: "opportunity", label: "Sucursal", field: "cf:Sucursal VAEO", fallbacks: ["cf:Sucursal MESH"], defaultValues: [], clause: null, defaultOn: false };
+  const filters = { defaultDate: null, defaultPipelines: [], controls: [ctrl] };
+
+  check("a combined-field control filters by first-filled value", () => {
+    const state = initialFilterState(filters, new Date(2026, 9, 29));
+    const active = activeGlobalFilters({ ...state, values: { k9: ["Valle"] } }, filters);
+    const res = runQuery(q({ time: ALL }), { ...ctx, globalFilters: active });
+    assert.deepEqual(ids(res), ["oMesh"]);
+  });
+
+  check("the control lists first-filled values", () => {
+    const values = listFieldValues("opportunity", "cf:Sucursal VAEO", resolveCtx(ctx), ["cf:Sucursal MESH"]).map((v) => [v.value, v.count]);
+    assert.deepEqual(values.filter(([v]) => v !== EMPTY_VALUE), [["Tanarah", 1], ["Valle", 1]]);
+  });
+
+  await checkAsync("set_panel_filters saves a control with fallbacks", async () => {
+    let doc = JSON.parse(JSON.stringify(LEGACY_DOC)) as DashboardDoc;
+    const deps = {
+      engineCtx: () => ctx,
+      getDoc: () => doc,
+      commit: async (mutate: (d: DashboardDoc) => DashboardDoc) => {
+        doc = mutate(doc);
+        return { ok: true as const, version: 2 };
+      },
+      getFilterState: () => initialFilterState(doc.filters, new Date(2026, 9, 29)),
+      applyFilterState: () => {},
+      now: () => NOW_ISO,
+      newId: () => "k9",
+    } as unknown as PanelToolDeps;
+    const out = (await executePanelTool(
+      "set_panel_filters",
+      { defaultDate: null, defaultPipelines: null, controls: [{ kind: "field", entity: "opportunity", label: "Sucursal", field: "cf:Sucursal VAEO", fallbacks: ["cf:Sucursal MESH"], defaultValues: [], clause: null, defaultOn: false }] },
+      deps
+    )) as { ok?: boolean; error?: string };
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(doc.filters.controls[0].fallbacks, ["cf:Sucursal MESH"]);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -867,6 +915,7 @@ async function main(): Promise<void> {
   await conversationsEngineSection();
   describeSection();
   await glossaryFieldSection();
+  await filterBarSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

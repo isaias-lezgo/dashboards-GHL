@@ -78,6 +78,7 @@ const CONTROL_SCHEMA = obj({
   defaultValues: arr(str(), "Default chosen values of a field control; [] = todos."),
   clause: nullable(FILTER_CLAUSE_JSON_SCHEMA),
   defaultOn: { type: "boolean", description: "Whether a condition starts on. false for field controls." },
+  fallbacks: nullable(arr(str(), "Field controls on a combined field (a glossary concept of kind field): the fields after `field`, in order. null = a single field.")),
 });
 
 export const PANEL_TOOL_DEFINITIONS: Anthropic.Tool[] = [
@@ -558,7 +559,21 @@ export async function executePanelTool(name: string, input: Record<string, unkno
           if (!c.field) return issues.push({ path: `${path}.field`, message: "Un control de campo necesita `field`.", suggestion: null });
           const issue = validateEntityField(c.entity, c.field, catalog, `${path}.field`);
           if (issue) return issues.push(issue);
-          controls.push({ ...c, label: c.label?.trim() || controlLabel(c.entity, c.field), clause: null, defaultOn: false });
+          const fallbacks = Array.isArray(c.fallbacks) ? c.fallbacks.filter((f): f is string => typeof f === "string" && f.length > 0) : [];
+          for (const [j, f] of fallbacks.entries()) {
+            const fbIssue =
+              f.startsWith("contact.") && c.entity !== "contact"
+                ? validateEntityField("contact", f.slice("contact.".length), catalog, `${path}.fallbacks[${j}]`)
+                : validateEntityField(c.entity, f, catalog, `${path}.fallbacks[${j}]`);
+            if (fbIssue) return issues.push(fbIssue);
+          }
+          controls.push({
+            ...c,
+            label: c.label?.trim() || controlLabel(c.entity, c.field),
+            clause: null,
+            defaultOn: false,
+            fallbacks: fallbacks.length ? fallbacks.slice(0, DOC_LIMITS.maxFallbacks) : null,
+          });
         } else {
           if (!c.clause) return issues.push({ path: `${path}.clause`, message: "Una condición necesita `clause`.", suggestion: null });
           const clauseShape = clauseShapeIssue(`${path}.clause`, c.clause);

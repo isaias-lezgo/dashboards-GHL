@@ -20,6 +20,8 @@ export interface PickedFilter {
   label: string
   values: string[]
   quantifier: "any" | "none"
+  /** A combined field (glossary concept of kind field): the fields read after `field`. */
+  fallbacks?: string[]
 }
 
 const ENTITY_TITLES: Record<EntityId, string> = {
@@ -36,8 +38,11 @@ export function FilterFieldPicker({
   allowQuantifier,
   subjectLabel,
   onPick,
+  concepts = [],
 }: {
   ctx: EngineContext
+  /** Glossary concepts of kind "field", offered first: one chip over several fields. */
+  concepts?: { label: string; entity: EntityId; fields: string[] }[]
   entityScope: EntityId[]
   allowQuantifier: boolean
   /** What is being filtered, for the confirmation sentence ("Contactos", "Registros"…). */
@@ -45,7 +50,7 @@ export function FilterFieldPicker({
   onPick: (picked: PickedFilter) => void
 }) {
   const [query, setQuery] = useState("")
-  const [field, setField] = useState<{ entity: EntityId; field: string; label: string } | null>(null)
+  const [field, setField] = useState<{ entity: EntityId; field: string; label: string; fallbacks?: string[] } | null>(null)
   const [chosen, setChosen] = useState<string[]>([])
   const [quantifier, setQuantifier] = useState<"any" | "none">("any")
   const r = useMemo(() => resolveCtx(ctx), [ctx])
@@ -62,7 +67,7 @@ export function FilterFieldPicker({
     })
   }, [entityScope, ctx, query])
 
-  const values = useMemo(() => (field ? listFieldValues(field.entity, field.field, r) : []), [field, r])
+  const values = useMemo(() => (field ? listFieldValues(field.entity, field.field, r, field.fallbacks ?? []) : []), [field, r])
   const shownValues = values.filter((v) => !query.trim() || v.value.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 200)
 
   if (!field) {
@@ -73,6 +78,27 @@ export function FilterFieldPicker({
           <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar campo…" className="h-8 pl-7 text-xs" />
         </div>
         <div className="max-h-72 overflow-y-auto">
+          {concepts.some((c) => entityScope.includes(c.entity)) && (
+            <div className="mb-2">
+              <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Conceptos</p>
+              {concepts
+                .filter((c) => entityScope.includes(c.entity) && (!query.trim() || c.label.toLowerCase().includes(query.trim().toLowerCase())))
+                .map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    title={c.fields.join(" → ")}
+                    onClick={() => {
+                      setField({ entity: c.entity, field: c.fields[0], label: c.label, fallbacks: c.fields.slice(1) })
+                      setQuery("")
+                    }}
+                    className="flex w-full rounded-md px-2 py-1 text-left text-xs hover:bg-muted"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+            </div>
+          )}
           {groups.map((g) =>
             g.fields.length === 0 ? null : (
               <div key={g.entity} className="mb-2">
@@ -149,7 +175,7 @@ export function FilterFieldPicker({
         size="sm"
         className="h-7 w-full text-xs"
         disabled={chosen.length === 0}
-        onClick={() => onPick({ entity: field.entity, field: field.field, label: field.label, values: chosen, quantifier })}
+        onClick={() => onPick({ entity: field.entity, field: field.field, label: field.label, values: chosen, quantifier, fallbacks: field.fallbacks })}
       >
         Aplicar
       </Button>

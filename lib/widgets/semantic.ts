@@ -536,12 +536,13 @@ export function clauseFields(c: FilterClause): string[] {
   return [...new Set(c.anyOf.map((f) => f.field))];
 }
 
-/** Distinct values of an object's field over ALL its records, most frequent first. */
-export function listFieldValues(entity: EntityId, field: string, ctx: ResolvedCtx): { value: string; count: number }[] {
+/** Distinct values of an object's field over ALL its records, most frequent first. With fallbacks: of the combined field. */
+export function listFieldValues(entity: EntityId, field: string, ctx: ResolvedCtx, fallbacks: string[] = []): { value: string; count: number }[] {
   const source = ENTITY_SOURCE[entity];
   const counts = new Map<string, number>();
   for (const r of SOURCE_DEFS[source].rows(ctx)) {
-    for (const v of dimensionValues(source, r, field, ctx)) counts.set(v, (counts.get(v) ?? 0) + 1);
+    const vals = fallbacks.length ? fieldValuesWithFallbacks(source, r, [field, ...fallbacks], ctx) : dimensionValues(source, r, field, ctx);
+    for (const v of vals) counts.set(v, (counts.get(v) ?? 0) + 1);
   }
   return [...counts.entries()]
     .map(([value, count]) => ({ value, count }))

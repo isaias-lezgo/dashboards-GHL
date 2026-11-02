@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { describeClause } from "@/lib/widgets/describe"
 import { isDefaultState, staleValues } from "@/lib/widgets/filter-state"
-import { ENTITIES, type FilterControl, type PanelFilters } from "@/lib/widgets/spec"
+import { ENTITIES, glossaryKind, type FilterControl, type GlossaryEntry, type PanelFilters } from "@/lib/widgets/spec"
 import { listFieldValues, resolveCtx, type EngineContext } from "@/lib/widgets/semantic"
 import { valueLabel } from "@/lib/widgets/labels"
 import type { CommitResult } from "@/hooks/use-dashboard-doc"
@@ -34,7 +34,7 @@ function ValuesEditor({
   onChange: (values: string[]) => void
 }) {
   const r = useMemo(() => resolveCtx(ctx), [ctx])
-  const values = useMemo(() => (control.field ? listFieldValues(control.entity, control.field, r) : []), [control, r])
+  const values = useMemo(() => (control.field ? listFieldValues(control.entity, control.field, r, control.fallbacks ?? []) : []), [control, r])
   const all = [...stale.map((value) => ({ value, count: 0 })), ...values]
   return (
     <div className="w-64 space-y-1">
@@ -74,12 +74,15 @@ function chipText(c: Omit<FilterControl, "id">, chosen: string[]): string {
 export function PanelFilterBar({
   ctx,
   filters,
+  glossary = [],
   api,
   now,
   onUndo,
 }: {
   ctx: EngineContext
   filters: PanelFilters
+  /** The client's concepts: those of kind "field" can become a combined-field control. */
+  glossary?: GlossaryEntry[]
   api: PanelFiltersApi
   now: Date
   /** Undo of the last saved change (the page's docApi.undo with its toasts). */
@@ -177,6 +180,9 @@ export function PanelFilterBar({
             entityScope={[...ENTITIES]}
             allowQuantifier={false}
             subjectLabel="Registros"
+            concepts={glossary
+              .filter((g) => glossaryKind(g) === "field" && (g.fields?.length ?? 0) >= 2)
+              .map((g) => ({ label: g.term.charAt(0).toUpperCase() + g.term.slice(1), entity: g.entity, fields: g.fields! }))}
             onPick={async (p) => {
               setAdding(false)
               const existing = filters.controls.find((c) => c.kind === "field" && c.entity === p.entity && c.field === p.field)
@@ -186,7 +192,10 @@ export function PanelFilterBar({
               }
               // Saved as a control (default "todos"); the values just picked apply for this session.
               report(
-                await api.addControl({ kind: "field", entity: p.entity, label: p.label, field: p.field, defaultValues: [], clause: null, defaultOn: false }, p.values),
+                await api.addControl(
+                  { kind: "field", entity: p.entity, label: p.label, field: p.field, defaultValues: [], clause: null, defaultOn: false, fallbacks: p.fallbacks?.length ? p.fallbacks : null },
+                  p.values
+                ),
                 `Se agregó el filtro «${p.label}» a la barra`
               )
             }}
