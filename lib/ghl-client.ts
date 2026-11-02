@@ -583,6 +583,47 @@ export async function getConversations(params?: {
   });
 }
 
+/**
+ * A document of the PAGINATED /conversations/search. Its lastMessageDate is
+ * epoch MILLISECONDS (a number), unlike the ISO the rest of the API returns —
+ * verified on a real sub-account (DASHBOARDS_VAEO, 2026-08). Normalize with
+ * lib/conversation-index.ts toIso before use.
+ */
+export type GHLConversationSearchDoc = Omit<GHLConversation, "lastMessageDate" | "dateAdded"> & {
+  lastMessageDate?: string | number;
+  dateAdded?: string | number;
+  /** Direction of the LAST message: when "outbound", lastMessageDate IS our last outbound. */
+  lastMessageDirection?: "inbound" | "outbound";
+  /** The API's cursor: sort[0] is lastMessageDate in epoch ms. */
+  sort?: Array<number | string>;
+};
+
+export interface GHLConversationSearchResponse {
+  conversations: GHLConversationSearchDoc[];
+  total?: number;
+}
+
+/**
+ * One page of /conversations/search, newest last message first. Paginated by
+ * CURSOR (startAfterDate = sort[0] of the previous page's last document): two
+ * conversations with the same lastMessageDate to the millisecond can repeat at
+ * the cut, so callers dedupe by id.
+ */
+export async function searchConversationsPage(params: {
+  limit?: number;
+  startAfterDate?: number | string;
+}): Promise<GHLConversationSearchResponse> {
+  return ghlFetch<GHLConversationSearchResponse>("/conversations/search", {
+    params: {
+      limit: params.limit ?? 100,
+      sortBy: "last_message_date",
+      sort: "desc",
+      status: "all",
+      startAfterDate: params.startAfterDate,
+    },
+  });
+}
+
 export interface GHLMessage {
   id: string;
   conversationId: string;

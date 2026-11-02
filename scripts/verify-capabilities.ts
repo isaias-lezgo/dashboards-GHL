@@ -42,6 +42,7 @@ import { QueryError } from "../lib/widgets/semantic";
 import { ageBucketKey, runQuery } from "../lib/widgets/engine";
 import { byLabel, dim } from "./lib/widget-test-kit";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
+import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow } from "../lib/conversation-index";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
 import { customFieldTypeMap } from "../lib/sync";
@@ -567,6 +568,73 @@ function validateSection(): void {
   });
 }
 
+// ─── Task 7: the conversation index (pure part) ───────────────────────────────
+
+function convRow(over: Partial<ConversationRow>): ConversationRow {
+  return {
+    id: "cv",
+    contactId: "c1",
+    channel: "WhatsApp",
+    assignedTo: null,
+    lastMessageAt: null,
+    lastDirection: null,
+    unreadCount: 0,
+    createdAt: null,
+    lastOutboundAt: null,
+    waitingReply: false,
+    ...over,
+  };
+}
+
+function conversationIndexSection(): void {
+  section("conversations: pure index");
+  const NOW = Date.UTC(2026, 9, 29, 12);
+  const CUTOFF = NOW - 60 * 86_400_000;
+  const recent = new Date(NOW - 2 * 86_400_000).toISOString();
+  const old = new Date(NOW - 90 * 86_400_000).toISOString();
+
+  check("toIso reads epoch number, numeric string and ISO", () => {
+    assert.equal(toIso(1786082787710), new Date(1786082787710).toISOString());
+    assert.equal(toIso("1786082787710"), new Date(1786082787710).toISOString());
+    assert.equal(toIso("2026-10-01T10:00:00.000Z"), "2026-10-01T10:00:00.000Z");
+    assert.equal(toIso(""), null);
+    assert.equal(toIso(undefined), null);
+    assert.equal(toIso("no es fecha"), null);
+  });
+
+  check("a conversation ending outbound needs no thread; inbound inside the window does", () => {
+    assert.equal(needsThread("outbound", recent, CUTOFF), false);
+    assert.equal(needsThread("inbound", recent, CUTOFF), true);
+    assert.equal(needsThread("inbound", old, CUTOFF), false);
+    assert.equal(needsThread(null, recent, CUTOFF), true);
+  });
+
+  check("last outbound skips activities and counts automated messages", () => {
+    const out = { direction: "outbound", dateAdded: "2026-10-20T10:00:00.000Z", messageType: "TYPE_WHATSAPP", source: "workflow" };
+    const activity = { direction: "outbound", dateAdded: "2026-10-25T10:00:00.000Z", messageType: "TYPE_ACTIVITY_OPPORTUNITY" };
+    const inbound = { direction: "inbound", dateAdded: "2026-10-26T10:00:00.000Z", messageType: "TYPE_WHATSAPP" };
+    assert.equal(lastOutboundFrom([out, activity, inbound]), "2026-10-20T10:00:00.000Z");
+    assert.equal(lastOutboundFrom([inbound]), null);
+  });
+
+  check("channel labels are Spanish and fall back to Otro", () => {
+    assert.equal(channelLabel("TYPE_WHATSAPP"), "WhatsApp");
+    assert.equal(channelLabel("TYPE_EMAIL"), "Correo");
+    assert.equal(channelLabel("TYPE_SOMETHING_NEW"), "Otro");
+    assert.equal(channelLabel(undefined), "Otro");
+  });
+
+  check("contact dates take the max across conversations", () => {
+    const m = contactMessageDates([
+      convRow({ id: "a", lastMessageAt: "2026-10-10T00:00:00.000Z", lastOutboundAt: "2026-10-10T00:00:00.000Z" }),
+      convRow({ id: "b", lastMessageAt: "2026-10-20T00:00:00.000Z", lastOutboundAt: "2026-10-05T00:00:00.000Z" }),
+      convRow({ id: "c", contactId: "c2", lastMessageAt: "2026-10-01T00:00:00.000Z" }),
+    ]);
+    assert.deepEqual(m.get("c1"), { lastOutboundAt: "2026-10-10T00:00:00.000Z", lastMessageAt: "2026-10-20T00:00:00.000Z" });
+    assert.deepEqual(m.get("c2"), { lastOutboundAt: null, lastMessageAt: "2026-10-01T00:00:00.000Z" });
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -574,6 +642,7 @@ async function main(): Promise<void> {
   engineDimsSection();
   seriesSection();
   validateSection();
+  conversationIndexSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

@@ -58,6 +58,11 @@ const ACTIVITY_BY_TYPE: Record<string, { kind: ActivityKind; label: string }> = 
   TYPE_ACTIVITY_WHATSAPP: { kind: "other", label: "Actividad de WhatsApp" },
 }
 
+/** GHL system events (opportunity moved, appointment booked…) travel as messages; they are not conversation. */
+export function isActivityMessage(m: { messageType?: string }): boolean {
+  return Boolean(m.messageType && m.messageType in ACTIVITY_BY_TYPE)
+}
+
 export function ghlMessageToInternal(
   m: GHLMessage,
   contactId: string,
