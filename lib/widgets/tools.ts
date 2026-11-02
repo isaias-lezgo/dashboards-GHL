@@ -21,6 +21,7 @@ import { TOOL_DEFINITIONS } from "@/lib/ai-tools";
 import type { DateFilter } from "@/lib/date-range";
 import type { CommitResult, DashboardDocApi } from "@/hooks/use-dashboard-doc";
 import {
+  DOC_LIMITS,
   ENTITIES,
   FILTER_CLAUSE_JSON_SCHEMA,
   HEIGHTS,
@@ -191,13 +192,16 @@ export const PANEL_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "save_term",
     description:
-      "Saves (or redefines) the client's meaning of a business concept in the glossary, after the user chose it: e.g. 'perdido' = status lost OR stage 'Negocio Perdido'. `meaning` holds the clauses as resolve_term returned them. Later conversations read it from the snapshot and do not ask again.",
-    strict: true,
+      "Saves (or redefines) the client's meaning of a business concept in the glossary, after the user chose it. kind 'condition': 'perdido' = status lost OR stage 'Negocio Perdido', with `meaning` holding the clauses as resolve_term returned them. kind 'field': the concept is a combined field (resolve_term's combined_fields), e.g. 'sucursal' = ['cf:Sucursal VAEO', 'cf:Sucursal MESH'] with `meaning` []. Later conversations read it from the snapshot and do not ask again.",
+    // Not strict: the API compiles at most ~9 strict tools per request (2026-10-30);
+    // this one is validated in executePanelTool instead.
     input_schema: obj({
       term: str("The concept as the user says it, singular, e.g. 'perdido'."),
       aliases: arr(str(), "Other words for the same concept, e.g. ['perdidos', 'negocio perdido']."),
-      entity: enumOf(ENTITIES, "Object the meaning filters."),
-      meaning: arr(FILTER_CLAUSE_JSON_SCHEMA, "1 to 5 clauses, AND'ed."),
+      entity: enumOf(ENTITIES, "Object the meaning filters, or the object the fields belong to."),
+      kind: nullable(enumOf(["condition", "field"], "null = condition.")),
+      meaning: arr(FILTER_CLAUSE_JSON_SCHEMA, "kind condition: 1 to 5 clauses, AND'ed. kind field: []."),
+      fields: nullable(arr(str(), "kind field only: 2 to 4 fields in reading order; from an opportunity, 'contact.<field>' reads its contact.")),
       note: str("The meaning in plain Spanish, with this account's real names, e.g. 'estado perdida o etapa «Negocio Perdido»'."),
     }) as Anthropic.Tool.InputSchema,
   },
@@ -665,6 +669,26 @@ export async function executePanelTool(name: string, input: Record<string, unkno
       const meaning = asArray<FilterClause>(input.meaning);
       if (!term) return { error: "Falta el término." };
       if (!(ENTITIES as readonly string[]).includes(entity)) return { error: `Objeto desconocido: ${String(entity)}.` };
+      const aliases = asArray<string>(input.aliases).filter((a) => typeof a === "string").map((a) => a.trim()).filter(Boolean);
+      const note = typeof input.note === "string" ? input.note : "";
+      if (input.kind === "field") {
+        const fields = asArray<string>(input.fields).filter((f) => typeof f === "string" && f.length > 0);
+        if (fields.length < 2 || fields.length > DOC_LIMITS.maxFallbacks + 1) {
+          return { error: `Un concepto de tipo campo lleva de 2 a ${DOC_LIMITS.maxFallbacks + 1} campos.` };
+        }
+        const catalog = buildCatalog(deps.engineCtx());
+        const issues = fields
+          .map((f, i) =>
+            f.startsWith("contact.") && entity !== "contact"
+              ? validateEntityField("contact", f.slice("contact.".length), catalog, `fields[${i}]`)
+              : validateEntityField(entity, f, catalog, `fields[${i}]`)
+          )
+          .filter((x): x is ValidationIssue => x !== null);
+        if (issues.length) return invalid(issues, "El término no se guardó");
+        return outcome(
+          await deps.commit((d) => saveTerm(d, { term: term.trim(), aliases, entity, meaning: [], note, kind: "field", fields }, opMeta(deps)), `Glosario: «${term}»`, "ai")
+        );
+      }
       if (meaning.length === 0) return { error: "El significado necesita al menos una cláusula." };
       const issues = validateEntityClauses(entity, meaning, buildCatalog(deps.engineCtx()), "meaning");
       if (issues.length) return invalid(issues, "El término no se guardó");

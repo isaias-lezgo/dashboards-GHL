@@ -1329,7 +1329,8 @@ async function panelToolsSection(): Promise<void> {
 
   check("strict solo en el conjunto que la API compiló (2026-10-30: 10 strict → «compiled grammar is too large»)", () => {
     const strict = PANEL_MODE_TOOLS.filter((t) => (t as { strict?: boolean }).strict === true).map((t) => t.name).sort();
-    assert.deepEqual(strict, ["arrange_tab", "delete_tab", "delete_widgets", "forget_term", "get_dashboard", "get_widget_data", "move_widgets", "save_term", "upsert_tab"]);
+    // save_term left the set on 2026-11-02 (kind "field" grew its schema): 8 strict, validated in the executor.
+    assert.deepEqual(strict, ["arrange_tab", "delete_tab", "delete_widgets", "forget_term", "get_dashboard", "get_widget_data", "move_widgets", "upsert_tab"]);
   });
 
   await checkAsync("set_panel_filters / apply_filters (sin strict) rechazan una forma inválida con issues, sin lanzar", async () => {

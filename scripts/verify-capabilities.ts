@@ -45,7 +45,8 @@ import { buildCatalog, validateWidget } from "../lib/widgets/validate";
 import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow, type ConversationState } from "../lib/conversation-index";
 import { conversationDaysNeeded } from "../lib/widgets/engine";
 import { buildPanelCatalogSummary, buildPanelSnapshot, describeFilterChips, describeWidget } from "../lib/widgets/describe";
-import { executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
+import { PANEL_MODE_TOOLS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
+import { resolveTerm } from "../lib/widgets/terms";
 import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
@@ -795,6 +796,66 @@ function describeSection(): void {
   });
 }
 
+// ─── Task 11: glossary concepts of kind "field" ───────────────────────────────
+
+function makeSucursalFixture(overlap: boolean): EngineContext {
+  const base = makeFixture().ctx;
+  const opps = [
+    ...Array.from({ length: 6 }, (_, i) =>
+      mkOpp(`v${i}`, "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", {
+        customFieldsResolved: { "Sucursal VAEO": i % 2 ? "Tanarah" : "Valle", ...(overlap && i < 5 ? { "Sucursal MESH": "Centro" } : {}) },
+      })
+    ),
+    ...Array.from({ length: overlap ? 0 : 4 }, (_, i) => mkOpp(`m${i}`, "c2", "p2", "Nuevo", "2026-10-01T12:00:00Z", { customFieldsResolved: { "Sucursal MESH": "Centro" } })),
+  ];
+  return { ...base, dataset: { ...base.dataset, opportunities: opps } };
+}
+
+async function glossaryFieldSection(): Promise<void> {
+  section("glossary: concepts of kind field");
+
+  check("two disjoint fields named after the concept become a combined candidate", () => {
+    const r = resolveTerm("sucursal", "opportunity", makeSucursalFixture(false));
+    const comb = r.candidates.find((c) => c.kind === "combined_fields");
+    assert.ok(comb, JSON.stringify(r.candidates.map((c) => [c.kind, c.field])));
+    assert.deepEqual(comb.fields, ["cf:Sucursal VAEO", "cf:Sucursal MESH"]);
+    assert.equal(comb.records, 10);
+    assert.equal(r.materiallyDifferent, false);
+  });
+
+  check("overlapping fields do not combine", () => {
+    const r = resolveTerm("sucursal", "opportunity", makeSucursalFixture(true));
+    assert.equal(r.candidates.some((c) => c.kind === "combined_fields"), false);
+  });
+
+  await checkAsync("save_term kind field persists, and an unknown field is refused", async () => {
+    let doc = JSON.parse(JSON.stringify(LEGACY_DOC)) as DashboardDoc;
+    const ctx = makeSucursalFixture(false);
+    const deps = {
+      engineCtx: () => ctx,
+      getDoc: () => doc,
+      commit: async (mutate: (d: DashboardDoc) => DashboardDoc) => {
+        doc = mutate(doc);
+        return { ok: true as const, version: 2 };
+      },
+      now: () => NOW_ISO,
+      newId: () => "g2",
+    } as unknown as PanelToolDeps;
+    const ok = (await executePanelTool("save_term", { term: "sucursal", aliases: [], entity: "opportunity", kind: "field", fields: ["cf:Sucursal VAEO", "cf:Sucursal MESH"], meaning: [], note: "" }, deps)) as { ok?: boolean; error?: string };
+    assert.equal(ok.ok, true, ok.error);
+    const saved = doc.glossary.find((g) => g.term === "sucursal")!;
+    assert.equal(saved.kind, "field");
+    assert.deepEqual(saved.fields, ["cf:Sucursal VAEO", "cf:Sucursal MESH"]);
+    const bad = (await executePanelTool("save_term", { term: "ciudad", aliases: [], entity: "opportunity", kind: "field", fields: ["cf:Sucursal VAEO", "cf:Ciudad Inexistente"], meaning: [], note: "" }, deps)) as { error?: string };
+    assert.match(bad.error ?? "", /no se guardó/);
+  });
+
+  check("strict set is 8 tools without save_term", () => {
+    const strict = PANEL_MODE_TOOLS.filter((t) => (t as { strict?: boolean }).strict === true).map((t) => t.name).sort();
+    assert.deepEqual(strict, ["arrange_tab", "delete_tab", "delete_widgets", "forget_term", "get_dashboard", "get_widget_data", "move_widgets", "upsert_tab"]);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -805,6 +866,7 @@ async function main(): Promise<void> {
   conversationIndexSection();
   await conversationsEngineSection();
   describeSection();
+  await glossaryFieldSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

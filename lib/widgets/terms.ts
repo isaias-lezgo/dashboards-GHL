@@ -14,6 +14,7 @@ import {
   EMPTY_VALUE,
   SOURCE_DEFS,
   contactsMatchingRelated,
+  fieldValuesWithFallbacks,
   knownCustomFields,
   listFieldValues,
   matchesClause,
@@ -29,7 +30,10 @@ export interface TermCandidate {
   fieldLabel: string;
   values: string[];
   matched: string;
-  kind: "value" | "field_name";
+  /** "combined_fields": several fields named after the concept, each record filling one — read first-with-a-value. */
+  kind: "value" | "field_name" | "combined_fields";
+  /** combined_fields only: the fields in reading order (most filled first). */
+  fields?: string[];
   clause: FilterClause;
   records: number;
   contacts: number;
@@ -103,6 +107,74 @@ const RELEVANT_SHARE = 0.2;
 
 function labelOf(entity: EntityId, field: string): string {
   return ENTITY_FIELDS[entity].find((f) => f.field === field)?.label ?? fieldLabel(field);
+}
+
+/** Two fields "barely overlap" when at most this share of the smaller one is filled on the same records. */
+const COMBINE_OVERLAP = 0.1;
+
+type Row = Record<string, unknown>;
+
+/**
+ * One concept split across fields — "Sucursal VAEO" on one pipeline's
+ * opportunities, "Sucursal MESH" on the other's; "Canal de contacto" on the
+ * opportunity or else on its contact. When the fields NAMED after the concept
+ * rarely fill on the same record, they are offered combined (spec 2026-11-02 §3.4).
+ */
+function combinedFieldsCandidate(drafts: Omit<TermCandidate, "records" | "contacts">[], ctx: ResolvedCtx): { c: TermCandidate; set: Set<string> } | null {
+  const named = drafts.filter((d) => d.kind === "field_name");
+  for (const entity of ["opportunity", "contact"] as const) {
+    const own = named.filter((d) => d.entity === entity).map((d) => d.field);
+    if (own.length === 0) continue;
+    const cross = entity === "opportunity" ? named.filter((d) => d.entity === "contact").map((d) => `contact.${d.field}`) : [];
+    const fields = [...own, ...cross];
+    if (fields.length < 2) continue;
+    const source = ENTITY_SOURCE[entity];
+    const filled = new Map(fields.map((f) => [f, new Set<Row>()]));
+    for (const row of SOURCE_DEFS[source].rows(ctx)) {
+      for (const f of fields) {
+        const vals = fieldValuesWithFallbacks(source, row, [f], ctx);
+        if (!vals.every((v) => v === EMPTY_VALUE || v === EMPTY_TAG)) filled.get(f)!.add(row);
+      }
+    }
+    const order = fields.filter((f) => filled.get(f)!.size > 0).sort((a, b) => filled.get(b)!.size - filled.get(a)!.size);
+    const chosen: string[] = [];
+    for (const f of order) {
+      const set = filled.get(f)!;
+      const disjoint = chosen.every((g) => {
+        const other = filled.get(g)!;
+        let both = 0;
+        for (const x of set) if (other.has(x)) both++;
+        return both <= COMBINE_OVERLAP * Math.min(set.size, other.size);
+      });
+      if (disjoint) chosen.push(f);
+    }
+    if (chosen.length < 2) continue;
+    const union = new Set<Row>();
+    for (const f of chosen) for (const x of filled.get(f)!) union.add(x);
+    const contacts = new Set<string>();
+    for (const x of union) {
+      const cid = SOURCE_DEFS[source].contactIdOf(x);
+      if (cid) contacts.add(cid);
+    }
+    const label = (f: string) => (f.startsWith("contact.") ? `${fieldLabel(f.slice("contact.".length))} (contacto)` : labelOf(entity, f));
+    const ownChosen = chosen.filter((f) => !f.startsWith("contact."));
+    return {
+      c: {
+        entity,
+        field: chosen[0],
+        fieldLabel: chosen.map(label).join(" / "),
+        values: [],
+        matched: chosen.map(label).join(" / "),
+        kind: "combined_fields",
+        fields: chosen,
+        clause: { anyOf: ownChosen.map((f) => ({ field: f, op: "is_not_empty" as const, values: [] })) },
+        records: union.size,
+        contacts: contacts.size,
+      },
+      set: contacts,
+    };
+  }
+  return null;
 }
 
 function countRecords(entity: EntityId, clause: FilterClause, ctx: ResolvedCtx): number {
@@ -180,6 +252,11 @@ export function resolveTerm(term: string, entityHint: EntityId | null, ctx: Engi
     contactSets.set(c, set);
     return c;
   });
+  const combined = combinedFieldsCandidate(drafts, r);
+  if (combined) {
+    candidates.push(combined.c);
+    contactSets.set(combined.c, combined.set);
+  }
 
   candidates.sort((a, b) => {
     if (entityHint) {
@@ -210,7 +287,11 @@ export function resolveTerm(term: string, entityHint: EntityId | null, ctx: Engi
   // evidence, but on lezgo-suite it alone made nested readings (stage ⊂ status,
   // 398 of 419 contacts) look like a question worth asking.
   const values = ordered.map((c, i) => ({ c, set: orderedSets[i] })).filter(({ c }) => c.kind === "value");
-  const pool = values.length ? values : ordered.map((c, i) => ({ c, set: orderedSets[i] }));
+  // Fields that a combined reading joins are ONE concept, not rival readings.
+  const joined = new Set((combined?.c.fields ?? []).map((f) => `${f.startsWith("contact.") ? "contact" : combined!.c.entity}:${f.replace(/^contact\./, "")}`));
+  const pool = values.length
+    ? values
+    : ordered.map((c, i) => ({ c, set: orderedSets[i] })).filter(({ c }) => !(c.kind === "field_name" && joined.has(`${c.entity}:${c.field}`)));
   const maxContacts = Math.max(0, ...pool.map(({ c }) => c.contacts));
   const relevant = pool.filter(({ c }) => c.records >= 3 && c.contacts >= RELEVANT_SHARE * maxContacts);
   let materiallyDifferent = false;
