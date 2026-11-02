@@ -26,7 +26,18 @@ import {
   type GlossaryEntry,
   type WidgetSpec,
 } from "../lib/widgets/spec";
-import { section, check, q } from "./lib/widget-test-kit";
+import { section, check, q, makeFixture, mkContact, mkOpp } from "./lib/widget-test-kit";
+import {
+  EMPTY_VALUE,
+  dateValue,
+  fieldValuesWithFallbacks,
+  isDateField,
+  matchesFilter,
+  outcomeOf,
+  resolveCtx,
+  type EngineContext,
+} from "../lib/widgets/semantic";
+import type { Opportunity } from "../lib/types";
 import { customFieldTypeMap } from "../lib/sync";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -216,9 +227,105 @@ function syncSection(): void {
   });
 }
 
+// ─── Task 3: semantic layer ───────────────────────────────────────────────────
+
+type Row = Record<string, unknown>;
+
+function fixtureWithTypes(types: Record<string, string> | null): EngineContext {
+  return { ...makeFixture().ctx, customFieldTypes: types };
+}
+
+// Combined-field fixture: the channel lives on the opportunity, or else on its contact.
+function makeComboFixture(): { ctx: EngineContext; o: Record<string, Opportunity> } {
+  const contacts = [
+    mkContact("c1"),
+    mkContact("c2", { customFieldsResolved: { "Canal de Contacto": "Facebook" } }),
+    mkContact("c3"),
+  ];
+  const o = {
+    o1: mkOpp("o1", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", { customFieldsResolved: { "Canal de contacto": "WhatsApp" } }),
+    o2: mkOpp("o2", "c2", "p1", "Nuevo", "2026-10-02T12:00:00Z"),
+    o3: mkOpp("o3", "c3", "p1", "Nuevo", "2026-10-03T12:00:00Z"),
+    oBoth: mkOpp("oBoth", "c3", "p1", "Nuevo", "2026-10-04T12:00:00Z", { customFieldsResolved: { "Sucursal VAEO": "Tanarah", "Sucursal MESH": "Valle" } }),
+    oMesh: mkOpp("oMesh", "c3", "p1", "Nuevo", "2026-10-05T12:00:00Z", { customFieldsResolved: { "Sucursal MESH": "Valle" } }),
+  };
+  const base = makeFixture().ctx;
+  return { ctx: { ...base, dataset: { ...base.dataset, contacts, opportunities: Object.values(o) } }, o };
+}
+
+function semanticSection(): void {
+  section("semantic: custom dates, combined fields, outcome, relative filters");
+
+  check("dateValue reads epoch number, epoch string and ISO the same day", () => {
+    const ctx = resolveCtx(fixtureWithTypes({ "opportunity:Fecha de Cierre": "DATE" }));
+    for (const v of [1790812800000, "1790812800000", "2026-10-01T00:00:00.000Z"]) {
+      const d = dateValue("opportunities", { customFieldsResolved: { "Fecha de Cierre": v } }, "cf:Fecha de Cierre", ctx);
+      assert.ok(d, String(v));
+      assert.deepEqual([d.getFullYear(), d.getMonth(), d.getDate()], [2026, 9, 1], String(v));
+    }
+  });
+
+  check("a TEXT custom field that looks like a date is not a date", () => {
+    const ctx = fixtureWithTypes({ "contact:Fecha de última asignación": "TEXT" });
+    assert.equal(isDateField("contacts", "cf:Fecha de última asignación", ctx), false);
+    assert.equal(dateValue("contacts", { customFieldsResolved: { "Fecha de última asignación": "20/05/2026" } }, "cf:Fecha de última asignación", resolveCtx(ctx)), null);
+  });
+
+  check("unknown types (old cache) make custom dates unavailable", () => {
+    assert.equal(isDateField("opportunities", "cf:Fecha de Cierre", fixtureWithTypes(null)), false);
+    assert.equal(isDateField("opportunities", "cf:Fecha de Cierre", fixtureWithTypes({ "opportunity:fecha de cierre": "DATE" })), true);
+  });
+
+  check("stage and status change dates are opportunity dates; contact dates reach through", () => {
+    const ctx = fixtureWithTypes({});
+    assert.equal(isDateField("opportunities", "lastStageChangeAt", ctx), true);
+    assert.equal(isDateField("opportunities", "lastStatusChangeAt", ctx), true);
+    assert.equal(isDateField("appointments", "contact.createdAt", ctx), true);
+    assert.equal(isDateField("contacts", "contact.createdAt", ctx), false);
+  });
+
+  check("fallbacks read the first filled field, crossing to the contact", () => {
+    const { ctx, o } = makeComboFixture();
+    const r = resolveCtx(ctx);
+    const fields = ["cf:Canal de contacto", "contact.cf:Canal de Contacto"];
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o1 as unknown as Row, fields, r), ["WhatsApp"]);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o2 as unknown as Row, fields, r), ["Facebook"]);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o3 as unknown as Row, fields, r), [EMPTY_VALUE]);
+  });
+
+  check("fallback filter agrees with fallback grouping", () => {
+    const { ctx, o } = makeComboFixture();
+    const r = resolveCtx(ctx);
+    const f = { field: "cf:Sucursal VAEO", op: "eq" as const, values: ["Valle"], fallbacks: ["cf:Sucursal MESH"] };
+    assert.equal(matchesFilter("opportunities", o.oBoth as unknown as Row, f, r), false);
+    assert.equal(matchesFilter("opportunities", o.oMesh as unknown as Row, f, r), true);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.oBoth as unknown as Row, ["cf:Sucursal VAEO", "cf:Sucursal MESH"], r), ["Tanarah"]);
+  });
+
+  check("outcome follows isWonOpp and folds abandoned into Perdida", () => {
+    const base = mkOpp("x", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z");
+    assert.equal(outcomeOf({ ...base, status: "open", stage: "Negocio Ganado" }), "Ganada");
+    assert.equal(outcomeOf({ ...base, status: "won" }), "Ganada");
+    assert.equal(outcomeOf({ ...base, status: "abandoned" }), "Perdida");
+    assert.equal(outcomeOf({ ...base, status: "lost" }), "Perdida");
+    assert.equal(outcomeOf({ ...base, status: "open" }), "Abierta");
+  });
+
+  check("days_ago filters count whole local days from ctx.now", () => {
+    const ctx = resolveCtx(fixtureWithTypes({}));
+    const opp = { ...mkOpp("s16", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z"), lastStageChangeAt: new Date(2026, 9, 13, 23, 0, 0).toISOString() } as unknown as Row;
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }, ctx), true);
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["17"] }, ctx), false);
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_lte", values: ["16"] }, ctx), true);
+    const noDate = mkOpp("nd", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z") as unknown as Row;
+    assert.equal(matchesFilter("opportunities", noDate, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["1"] }, ctx), false);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
+  semanticSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

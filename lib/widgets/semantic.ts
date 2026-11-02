@@ -14,7 +14,8 @@ import { getChatIndex, type ChatIndex } from "@/lib/ai-index";
 import { campaignTitle, isDePauta, rankPautasByContact, resolveCampaignName } from "@/lib/pauta";
 import { isWonOpp } from "@/lib/opportunity-status";
 import { platformLabel, sourceCategory } from "@/lib/source-platform";
-import { cfValues, customFieldName, type CustomFieldsResolved } from "@/lib/custom-fields";
+import { cfLookup, cfValues, customFieldName, type CustomFieldsResolved } from "@/lib/custom-fields";
+import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { EntityId, FilterClause, FilterSpec, RelatedFilterSpec, SourceId } from "./spec";
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ export const SOURCE_DEFS: Record<SourceId, SourceDef> = {
     rows: (ctx) => asRows(ctx.dataset.contacts),
   },
   opportunities: {
-    dateFields: ["createdAt", "closedAt", "updatedAt"],
+    dateFields: ["createdAt", "closedAt", "updatedAt", "lastStageChangeAt", "lastStatusChangeAt"],
     primaryDate: "createdAt",
     contactIdOf: (r) => str(r.contactId),
     rows: (ctx) => asRows(ctx.dataset.opportunities),
@@ -192,7 +193,7 @@ export const NATIVE_FIELDS: Record<SourceId, string[]> = {
 };
 
 export const DERIVED_FIELDS: Partial<Record<SourceId, string[]>> = {
-  opportunities: ["dePauta", "campaignResolved", "won", "funnelState", "sourceCategory", "platform"],
+  opportunities: ["dePauta", "campaignResolved", "won", "funnelState", "sourceCategory", "platform", "outcome"],
 };
 
 const CF_SOURCES: SourceId[] = ["contacts", "opportunities"];
@@ -204,6 +205,7 @@ export const ENTITY_FIELDS: Record<EntityId, { field: string; label: string }[]>
     { field: "stage", label: "Etapa" },
     { field: "status", label: "Estado" },
     { field: "won", label: "Ganada" },
+    { field: "outcome", label: "Estado (ganada/abierta/perdida)" },
     { field: "assignedTo", label: "Asesor" },
     { field: "source", label: "Fuente" },
     { field: "platform", label: "Plataforma" },
@@ -235,8 +237,63 @@ export function isRelatedDimension(d: string): boolean {
   return d.startsWith("contact.") || d.startsWith("opportunity.");
 }
 
-export function isDateField(source: SourceId, field: string): boolean {
+const CF_MODEL: Partial<Record<SourceId, string>> = { contacts: "contact", opportunities: "opportunity" };
+
+/** GHL's dataType of a custom field of this source, or null (no custom fields here, or a cache without types). */
+export function customFieldType(source: SourceId, cfName: string, ctx: EngineContext): string | null {
+  const model = CF_MODEL[source];
+  const types = ctx.customFieldTypes;
+  if (!model || !types) return null;
+  const want = `${model}:${cfName}`.toLowerCase();
+  for (const [k, v] of Object.entries(types)) if (k.toLowerCase() === want) return v;
+  return null;
+}
+
+/**
+ * Is `field` a date of `source`? Native dates, a custom field GHL types as DATE
+ * (never one whose text merely looks like a date), or a contact date reached
+ * from a source that has a contact ("contact.createdAt").
+ */
+export function isDateField(source: SourceId, field: string, ctx?: EngineContext): boolean {
+  if (field.startsWith("contact.")) {
+    return source !== "contacts" && source !== "ads_daily" && isDateField("contacts", field.slice("contact.".length), ctx);
+  }
+  if (field.startsWith("opportunity.")) return false;
+  const cf = customFieldName(field);
+  if (cf) return !!ctx && customFieldType(source, cf, ctx) === "DATE";
   return SOURCE_DEFS[source].dateFields.includes(field) || field === "lastActivity" || field === "dateUpdated";
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const EPOCH_MS = /^\d{9,13}$/;
+
+/** A native date value: ISO, a bare "yyyy-MM-dd" (local day), or epoch milliseconds as a number or a numeric string. */
+export function toDate(v: unknown): Date | null {
+  if (typeof v === "number") return Number.isFinite(v) ? new Date(v) : null;
+  if (typeof v !== "string" || !v) return null;
+  const d = DATE_ONLY.test(v) ? parseISO(v) : EPOCH_MS.test(v) ? new Date(Number(v)) : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * The date a row holds for `field`. A DATE custom field is a CALENDAR day that
+ * GHL stores at UTC midnight, so it is read in UTC and returned as that local
+ * day — read in local time, the 1st of a month lands in the previous month.
+ */
+export function dateValue(source: SourceId, row: Row, field: string, ctx: ResolvedCtx): Date | null {
+  if (field.startsWith("contact.")) {
+    const cid = SOURCE_DEFS[source].contactIdOf(row);
+    const contact = cid ? ctx.index.contactById.get(cid) : undefined;
+    return contact ? dateValue("contacts", contact as unknown as Row, field.slice("contact.".length), ctx) : null;
+  }
+  const cf = customFieldName(field);
+  if (cf) {
+    if (customFieldType(source, cf, ctx) !== "DATE") return null;
+    const raw: unknown = cfLookup(row.customFieldsResolved as CustomFieldsResolved, cf);
+    const d = toDate(Array.isArray(raw) ? raw[0] : raw);
+    return d ? new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : null;
+  }
+  return toDate(row[field]);
 }
 
 export function knownCustomFields(source: SourceId, ctx: EngineContext): Set<string> {
@@ -270,6 +327,16 @@ export const EMPTY_TAG = "(sin tag)";
  * por etapa" (components/dashboard/sales-dashboard.tsx). There is no stage
  * history in the sync, so this is a snapshot, never a conversion step.
  */
+export type Outcome = "Ganada" | "Abierta" | "Perdida";
+export const OUTCOME_ORDER: Outcome[] = ["Ganada", "Abierta", "Perdida"];
+
+/** The three-way state the hand-built dashboards stack by: won (isWonOpp), lost or abandoned, or still open. */
+export function outcomeOf(opp: Opportunity): Outcome {
+  if (isWonOpp(opp)) return "Ganada";
+  if (opp.status === "lost" || opp.status === "abandoned") return "Perdida";
+  return "Abierta";
+}
+
 export function funnelState(opp: Opportunity): string {
   if (isWonOpp(opp)) return "Ganado";
   if (opp.status === "abandoned") return "Abandonado";
@@ -287,6 +354,8 @@ function derivedValue(field: string, opp: Opportunity, ctx: ResolvedCtx): string
       return campaignTitle(resolveCampaignName(opp, ctx.index.pautaNameByContact)) || EMPTY_VALUE;
     case "funnelState":
       return funnelState(opp);
+    case "outcome":
+      return outcomeOf(opp);
     case "sourceCategory":
       return sourceCategory(opp);
     case "platform":
@@ -331,19 +400,37 @@ export function dimensionValues(source: SourceId, row: Row, field: string, ctx: 
   return [scalar(raw)];
 }
 
+/**
+ * A combined field: the values of the first field in `fields` that holds any.
+ * From a source with a contact, "contact.<field>" reads the contact. The same
+ * rule groups AND filters, so a record whose two fields disagree is counted
+ * under the first one everywhere.
+ */
+export function fieldValuesWithFallbacks(source: SourceId, row: Row, fields: string[], ctx: ResolvedCtx): string[] {
+  for (const f of fields) {
+    let vals: string[];
+    if (f.startsWith("contact.") && source !== "contacts") {
+      const cid = SOURCE_DEFS[source].contactIdOf(row);
+      const contact = cid ? ctx.index.contactById.get(cid) : undefined;
+      vals = contact ? dimensionValues("contacts", contact as unknown as Row, f.slice("contact.".length), ctx) : [EMPTY_VALUE];
+    } else {
+      vals = dimensionValues(source, row, f, ctx);
+    }
+    if (!vals.every(isEmptyValue)) return vals;
+  }
+  return [EMPTY_VALUE];
+}
+
 // ─── Filters ──────────────────────────────────────────────────────────────────
 
 const lc = (s: string): string => s.trim().toLowerCase();
 const isEmptyValue = (v: string): boolean => v === EMPTY_VALUE || v === EMPTY_TAG;
 
-function asComparable(v: string, dateLike: boolean): number {
-  if (dateLike) return Date.parse(v);
-  return Number(v);
-}
-
 /** One condition against a row of `source`. Case-insensitive; `in`/`eq` = any of values. */
 export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: ResolvedCtx): boolean {
-  const have = dimensionValues(source, row, f.field, ctx);
+  const have = f.fallbacks?.length
+    ? fieldValuesWithFallbacks(source, row, [f.field, ...f.fallbacks], ctx)
+    : dimensionValues(source, row, f.field, ctx);
   const haveLc = have.map(lc);
   const wanted = f.values.map(lc);
   switch (f.op) {
@@ -364,9 +451,17 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
     case "lt":
     case "lte": {
       if (have.every(isEmptyValue) || f.values.length === 0) return false;
-      const dateLike = isDateField(source, f.field);
-      const a = asComparable(have[0], dateLike);
-      const b = asComparable(f.values[0], dateLike);
+      if (isDateField(source, f.field, ctx)) {
+        const a = dateValue(source, row, f.field, ctx)?.getTime();
+        const b = toDate(f.values[0])?.getTime();
+        if (a === undefined || b === undefined) return false;
+        if (f.op === "gt") return a > b;
+        if (f.op === "gte") return a >= b;
+        if (f.op === "lt") return a < b;
+        return a <= b;
+      }
+      const a = Number(have[0]);
+      const b = Number(f.values[0]);
       if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
       if (f.op === "gt") return a > b;
       if (f.op === "gte") return a >= b;
@@ -374,8 +469,13 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
       return a <= b;
     }
     case "days_ago_gte":
-    case "days_ago_lte":
-      throw new QueryError("unsupported", "Los filtros de «hace N días» todavía no están disponibles");
+    case "days_ago_lte": {
+      const d = dateValue(source, row, f.field, ctx);
+      const n = Number(f.values[0]);
+      if (!d || !Number.isFinite(n)) return false;
+      const days = differenceInCalendarDays(ctx.now, d);
+      return f.op === "days_ago_gte" ? days >= n : days >= 0 && days <= n;
+    }
   }
 }
 
