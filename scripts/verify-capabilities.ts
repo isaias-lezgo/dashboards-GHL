@@ -962,6 +962,12 @@ function appFixesSection(): void {
     assert.throws(() => runQuery(q({ source: "contacts", ...mixed }), ctx, { viz: "grouped_bar" }), /mezclan unidades/);
   });
 
+  check("the catalog says which opportunity dates hold data in this account", () => {
+    const text = buildPanelCatalogSummary(makeCloseDateFixture());
+    assert.ok(text.includes("Fechas de oportunidad con dato en esta cuenta: createdAt 100%, closedAt 0%"), text);
+    assert.match(PANEL_PROMPT_SECTION, /no la uses: elige una fecha con dato/);
+  });
+
   check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
     const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
     assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);

@@ -439,6 +439,7 @@ Aquí no tienes \`render_chart\`, \`show_in_panel\`, \`create_pdf\` ni archivos 
 - Solo son fechas los campos que el catálogo lista en "Campos de fecha personalizados" (GHL los marca como fecha). Un campo de texto con algo que parece fecha NO es fecha: no lo uses como eje ni como periodo.
 - "Ventas por mes de Fecha de Cierre" = dimensión \`cf:Fecha de Cierre\` con bucket; "lo que se cerró en octubre por Fecha de Cierre" = \`time.field: "cf:Fecha de Cierre"\`.
 - Con un periodo, los registros sin esa fecha quedan fuera y la tarjeta dice cuántos: menciónalo en una línea.
+- Si una fecha (nativa o personalizada) casi no tiene dato en esta cuenta —el catálogo dice el % de \`closedAt\`, \`lastStatusChangeAt\`…—, no la uses: elige una fecha con dato ("cuándo se ganó" = \`lastStatusChangeAt\` de las ganadas) o pregunta. Si la previsualización deja casi todo en "Sin fecha", la fecha está mal elegida.
 - Si el catálogo dice que los campos de fecha estarán "disponibles después de la próxima actualización", dilo y sugiere "Actualizar".
 
 ## Campos combinados

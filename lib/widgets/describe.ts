@@ -262,6 +262,16 @@ export function buildPanelCatalogSummary(ctx: EngineContext): string {
       .sort((a, b) => a.localeCompare(b, "es"));
     if (dates.length) lines.push(`Campos de fecha personalizados: ${dates.join(", ")}`);
   }
+  // A native date GHL leaves empty in this account (closedAt on many) would put
+  // every record in "Sin fecha": say which ones hold data so the model picks one.
+  const opps = ctx.dataset.opportunities;
+  if (opps.length) {
+    const share = (f: "createdAt" | "closedAt" | "lastStatusChangeAt" | "lastStageChangeAt") =>
+      `${f} ${Math.round((100 * opps.filter((o) => !!o[f]).length) / opps.length)}%`;
+    lines.push(
+      `Fechas de oportunidad con dato en esta cuenta: ${share("createdAt")}, ${share("closedAt")}, ${share("lastStatusChangeAt")}, ${share("lastStageChangeAt")}. lastStatusChangeAt = cuando cambió el estado (para una ganada, cuándo se ganó).`
+    );
+  }
   lines.push(
     "Conversaciones: fuente «conversations» (canal, asesor, último mensaje, esperando respuesta) y fechas del contacto lastOutboundAt (nuestro último mensaje) y lastMessageAt; se cargan bajo demanda, 60 días por omisión."
   );
