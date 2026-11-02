@@ -39,6 +39,7 @@ import { DOC_LIMITS, conversationDaysOf, edgesOf, entityOf, fallbacksOf, seriesO
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
 import { ENUM_LABELS_ES, METRIC_PHRASES, SOURCE_LABELS, fieldLabel } from "./labels";
+import { contactMessageDates, type ConversationState } from "@/lib/conversation-index";
 import { customFieldName } from "@/lib/custom-fields";
 import { catLabel } from "@/lib/source-platform";
 import {
@@ -968,6 +969,9 @@ export function runQuery(q: QuerySpec, ctx: EngineContext, run: RunOptions = {})
   if (need !== null) {
     const pending = conversationGate(q, ctx, need);
     if (pending) return pending;
+    // The session may hold MORE days (a sibling card asked for 90): this card
+    // still measures its own window, so its number never depends on its neighbours.
+    ctx = { ...ctx, conversations: clipConversations(ctx.conversations as ReadyConversations, need, ctx.now) };
   }
   const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx, run) : withCompare(runQueryOnce(q, ctx, run), q, ctx);
   return need !== null ? withConversationMeta(res, q, ctx) : res;
@@ -996,6 +1000,27 @@ export function conversationDaysNeeded(q: QuerySpec): number | null {
       p.related.some((rf) => rf.entity === "contact" && rf.conditions.some((c) => c.anyOf.some((f) => MESSAGE_DATE_FIELDS.includes(f.field))))
   );
   return uses ? conversationDaysOf(q) : null;
+}
+
+type ReadyConversations = Extract<ConversationState, { status: "ready" }>;
+const clipped = new WeakMap<ReadyConversations, Map<string, ReadyConversations>>();
+
+/** The index cut to the last `days` before `now`: older conversations out, older outbound dates unknown ("beyond"). */
+function clipConversations(state: ReadyConversations, days: number, now: Date): ReadyConversations {
+  if (state.days <= days) return state;
+  const key = `${days}:${now.getTime()}`;
+  const memo = clipped.get(state) ?? new Map<string, ReadyConversations>();
+  clipped.set(state, memo);
+  const hit = memo.get(key);
+  if (hit) return hit;
+  const cutoff = now.getTime() - days * 86_400_000;
+  const inWindow = (iso: string | null) => !!iso && Date.parse(iso) >= cutoff;
+  const rows = state.rows
+    .filter((r) => inWindow(r.lastMessageAt))
+    .map((r) => (r.lastOutboundAt && !inWindow(r.lastOutboundAt) ? { ...r, lastOutboundAt: null } : r));
+  const out: ReadyConversations = { ...state, days, rows, byContact: contactMessageDates(rows) };
+  memo.set(key, out);
+  return out;
 }
 
 /** Until the index covers the card's window, the result is "loading"/"error" — never measured zeros. */

@@ -996,6 +996,24 @@ function finalReviewSection(): void {
     assert.deepEqual(ok, []);
   });
 
+  check("a 60-day card measures 60 days even when the session loaded 90 for a sibling", () => {
+    const { ctx } = makeStaleFixture();
+    const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString();
+    const rows = [
+      convRow({ id: "v1", contactId: "c1", lastMessageAt: at(1), lastDirection: "outbound", lastOutboundAt: at(1) }),
+      convRow({ id: "v2", contactId: "c2", lastMessageAt: at(70), lastDirection: "outbound", lastOutboundAt: at(70) }),
+    ];
+    const wide = { ...ctx, conversations: readyState(rows, 90) };
+    const alone = { ...ctx, conversations: readyState(rows.slice(0, 1), 60) };
+    const m60 = runQuery(staleMatrixQuery, wide);
+    assert.deepEqual(m60.rows.map((r) => [r.label[0], r.label[1], r.values[0]]), runQuery(staleMatrixQuery, alone).rows.map((r) => [r.label[0], r.label[1], r.values[0]]));
+    assert.ok(m60.rows.some((r) => r.label[1] === "Más de 60 días o sin mensajes"));
+    assert.ok(!m60.meta.warnings.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    const all = { ...convQuery, time: { ...convQuery.time, range: "all" as const } };
+    assert.equal(runQuery(all, wide).totals[0], 1);
+    assert.equal(runQuery({ ...all, conversationDays: 90 }, wide).totals[0], 2);
+  });
+
   check("series filter fallbacks are validated like the query's", () => {
     const cat = buildCatalog(makeComboFixture().ctx);
     const issues = validateWidget(
