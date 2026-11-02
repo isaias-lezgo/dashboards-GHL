@@ -16,6 +16,7 @@ import { isWonOpp } from "@/lib/opportunity-status";
 import { platformLabel, sourceCategory } from "@/lib/source-platform";
 import { cfLookup, cfValues, customFieldName, type CustomFieldsResolved } from "@/lib/custom-fields";
 import { differenceInCalendarDays, parseISO } from "date-fns";
+import type { ConversationState } from "@/lib/conversation-index";
 import type { EntityId, FilterClause, FilterSpec, RelatedFilterSpec, SourceId } from "./spec";
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -44,6 +45,8 @@ export interface EngineContext {
   now: Date;
   /** GHL's dataType per custom field ("<model>:<name>"). null/absent = the cache predates it. */
   customFieldTypes?: Record<string, string> | null;
+  /** Conversations, loaded on demand (hooks/use-conversation-index.ts). Absent = never asked for. */
+  conversations?: ConversationState;
 }
 
 interface DatasetDerived {
@@ -121,7 +124,8 @@ const asRows = (a: readonly unknown[]): Row[] => a as Row[];
 
 export const SOURCE_DEFS: Record<SourceId, SourceDef> = {
   contacts: {
-    dateFields: ["createdAt"],
+    // lastOutboundAt / lastMessageAt come from the conversation index (messageDate).
+    dateFields: ["createdAt", "lastOutboundAt", "lastMessageAt"],
     primaryDate: "createdAt",
     contactIdOf: (r) => str(r.id),
     rows: (ctx) => asRows(ctx.dataset.contacts),
@@ -156,12 +160,12 @@ export const SOURCE_DEFS: Record<SourceId, SourceDef> = {
     contactIdOf: () => undefined,
     rows: (ctx) => asRows(ctx.ads?.daily ?? []),
   },
-  // Filled in by the conversations task; until then the source has no rows.
+  // Only a READY index has rows; the engine never measures a loading one.
   conversations: {
-    dateFields: ["lastMessageAt"],
+    dateFields: ["lastMessageAt", "createdAt", "lastOutboundAt"],
     primaryDate: "lastMessageAt",
     contactIdOf: (r) => str(r.contactId),
-    rows: () => [],
+    rows: (ctx) => (ctx.conversations?.status === "ready" ? asRows(ctx.conversations.rows) : []),
   },
 };
 
@@ -190,10 +194,11 @@ export const NATIVE_FIELDS: Record<SourceId, string[]> = {
   tasks: ["id", "title", "status", "assignedTo", "assignedToName", "contactId", "opportunityId", "dueDate", "createdAt"],
   pautas: ["id", "tipo", "nombrePauta", "contactId", "createdAt"],
   ads_daily: ["date"],
-  conversations: [],
+  conversations: ["channel", "assignedTo", "lastDirection", "unreadCount", "waitingReply", "lastMessageAt", "createdAt", "lastOutboundAt", "contactId"],
 };
 
 export const DERIVED_FIELDS: Partial<Record<SourceId, string[]>> = {
+  contacts: ["lastOutboundAt", "lastMessageAt"],
   opportunities: ["dePauta", "campaignResolved", "won", "funnelState", "sourceCategory", "platform", "outcome"],
 };
 
@@ -282,6 +287,10 @@ export function toDate(v: unknown): Date | null {
  * day — read in local time, the 1st of a month lands in the previous month.
  */
 export function dateValue(source: SourceId, row: Row, field: string, ctx: ResolvedCtx): Date | null {
+  if (isMessageDateField(source, field)) {
+    const d = messageDate(source, row, field, ctx);
+    return d instanceof Date ? d : null;
+  }
   if (field.startsWith("contact.")) {
     const cid = SOURCE_DEFS[source].contactIdOf(row);
     const contact = cid ? ctx.index.contactById.get(cid) : undefined;
@@ -401,6 +410,35 @@ export function dimensionValues(source: SourceId, row: Row, field: string, ctx: 
   return [scalar(raw)];
 }
 
+// ─── Message dates (the conversation index) ───────────────────────────────────
+
+/** A contact's dates that live in the conversation index, not in the CRM sync. */
+export const MESSAGE_DATE_FIELDS = ["lastOutboundAt", "lastMessageAt"];
+
+/** Does `field` of `source` read the conversation index? */
+export function isMessageDateField(source: SourceId, field: string): boolean {
+  if (source === "conversations") return field === "lastOutboundAt";
+  if (source === "contacts") return MESSAGE_DATE_FIELDS.includes(field);
+  if (field.startsWith("contact.") && source !== "ads_daily") return MESSAGE_DATE_FIELDS.includes(field.slice("contact.".length));
+  return false;
+}
+
+/**
+ * A message date, or "beyond": the index is ready but holds no such message
+ * for the contact — nothing in the window, so it is older than the window or
+ * never happened. null = the index is not ready (the engine never gets here
+ * then: it returns a pending result first).
+ */
+export function messageDate(source: SourceId, row: Row, field: string, ctx: EngineContext): Date | "beyond" | null {
+  const state = ctx.conversations;
+  if (state?.status !== "ready") return null;
+  if (source === "conversations") return toDate(row[field]) ?? "beyond";
+  const name = field.startsWith("contact.") ? field.slice("contact.".length) : field;
+  const cid = source === "contacts" ? str(row.id) : SOURCE_DEFS[source].contactIdOf(row);
+  const v = cid ? state.byContact.get(cid)?.[name as "lastOutboundAt" | "lastMessageAt"] : null;
+  return (v && toDate(v)) || "beyond";
+}
+
 /**
  * A combined field: the values of the first field in `fields` that holds any.
  * From a source with a contact, "contact.<field>" reads the contact. The same
@@ -451,7 +489,7 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
     case "gte":
     case "lt":
     case "lte": {
-      if (have.every(isEmptyValue) || f.values.length === 0) return false;
+      if (f.values.length === 0) return false;
       if (isDateField(source, f.field, ctx)) {
         const a = dateValue(source, row, f.field, ctx)?.getTime();
         const b = toDate(f.values[0])?.getTime();
@@ -461,6 +499,7 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
         if (f.op === "lt") return a < b;
         return a <= b;
       }
+      if (have.every(isEmptyValue)) return false;
       const a = Number(have[0]);
       const b = Number(f.values[0]);
       if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
@@ -471,8 +510,13 @@ export function matchesFilter(source: SourceId, row: Row, f: FilterSpec, ctx: Re
     }
     case "days_ago_gte":
     case "days_ago_lte": {
-      const d = dateValue(source, row, f.field, ctx);
       const n = Number(f.values[0]);
+      if (isMessageDateField(source, f.field)) {
+        // "beyond" = no message in the window: at least window days ago, or never.
+        const md = messageDate(source, row, f.field, ctx);
+        if (md === "beyond") return f.op === "days_ago_gte" && ctx.conversations?.status === "ready" && n <= ctx.conversations.days;
+      }
+      const d = dateValue(source, row, f.field, ctx);
       if (!d || !Number.isFinite(n)) return false;
       const days = differenceInCalendarDays(ctx.now, d);
       return f.op === "days_ago_gte" ? days >= n : days >= 0 && days <= n;
@@ -512,7 +556,10 @@ export function listFieldValues(entity: EntityId, field: string, ctx: ResolvedCt
  * another pipeline and an open one in Ventas.
  */
 export function contactsMatchingRelated(rf: RelatedFilterSpec, ctx: ResolvedCtx): Set<string> {
-  const key = JSON.stringify({ e: rf.entity, c: rf.conditions });
+  // The conversation index joins the key: a set computed on 60 days of messages
+  // must not answer for 120.
+  const conv = ctx.conversations?.status === "ready" ? `${ctx.conversations.days}:${ctx.conversations.rows.length}` : "none";
+  const key = JSON.stringify({ e: rf.entity, c: rf.conditions, conv });
   const hit = ctx.relatedCache.get(key);
   if (hit) return hit;
   const source = ENTITY_SOURCE[rf.entity];

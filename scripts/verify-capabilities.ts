@@ -42,7 +42,10 @@ import { QueryError } from "../lib/widgets/semantic";
 import { ageBucketKey, runQuery } from "../lib/widgets/engine";
 import { byLabel, dim } from "./lib/widget-test-kit";
 import { buildCatalog, validateWidget } from "../lib/widgets/validate";
-import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow } from "../lib/conversation-index";
+import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow, type ConversationState } from "../lib/conversation-index";
+import { conversationDaysNeeded } from "../lib/widgets/engine";
+import { executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
+import { checkAsync } from "./lib/widget-test-kit";
 import type { QuerySpec, VizType } from "../lib/widgets/spec";
 import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
 import { customFieldTypeMap } from "../lib/sync";
@@ -635,6 +638,118 @@ function conversationIndexSection(): void {
   });
 }
 
+// ─── Task 8: conversations in the panel ───────────────────────────────────────
+
+function readyState(rows: ConversationRow[], days = 60): ConversationState {
+  return { status: "ready", days, rows, byContact: contactMessageDates(rows), truncated: false, threadErrors: 0 };
+}
+
+// now = 2026-10-29 12:00 local. x1/x2 open with a recent outbound, x3 open and its
+// contact silent for the whole window, x4 won (out of the matrix).
+function makeStaleFixture(): { ctx: EngineContext; rows: ConversationRow[] } {
+  const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString();
+  const base = makeFixture().ctx;
+  const opps = [
+    mkOpp("x1", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(3) }),
+    mkOpp("x2", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(5) }),
+    mkOpp("x3", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(20) }),
+    mkOpp("x4", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { status: "won", lastStageChangeAt: at(1) }),
+  ];
+  const rows = [
+    convRow({ id: "v1", contactId: "c1", lastMessageAt: at(1), lastDirection: "inbound", lastOutboundAt: at(2), waitingReply: true }),
+    convRow({ id: "v2", contactId: "c2", lastMessageAt: at(3), lastDirection: "outbound", lastOutboundAt: at(3) }),
+  ];
+  return { ctx: { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: {} }, rows };
+}
+
+const OPEN: FilterClause = { anyOf: [{ field: "outcome", op: "eq", values: ["Abierta"] }] };
+const staleMatrixQuery = q({
+  groupBy: [
+    { dimension: "lastStageChangeAt", bucket: "age", join: null },
+    { dimension: "contact.lastOutboundAt", bucket: "age", join: null },
+  ],
+  filters: [OPEN],
+  time: ALL,
+});
+const convQuery = q({ source: "conversations", time: { field: "lastMessageAt", range: "inherit", from: null, to: null, compare: "none" } });
+const cellOf = (res: ReturnType<typeof runQuery>, a: string, b: string) => res.rows.find((r) => r.label[0] === a && r.label[1] === b)?.values[0];
+
+async function conversationsEngineSection(): Promise<void> {
+  section("conversations in the panel");
+  const { ctx, rows } = makeStaleFixture();
+  const ready = { ...ctx, conversations: readyState(rows) };
+
+  check("pending conversations give a pending result, never zero rows", () => {
+    const res = runQuery(convQuery, { ...ctx, conversations: { status: "loading", days: 60, scanned: 100, threads: 3 } });
+    assert.equal(res.rows.length, 0);
+    assert.deepEqual(res.totals, [null]);
+    assert.equal(res.meta.conversations!.status, "loading");
+    const idle = runQuery(staleMatrixQuery, ctx);
+    assert.equal(idle.rows.length, 0);
+    assert.equal(idle.meta.conversations!.status, "loading");
+    const failed = runQuery(convQuery, { ...ctx, conversations: { status: "error", days: 60, message: "HTTP 500" } });
+    assert.equal(failed.meta.conversations!.status, "error");
+    assert.equal(failed.meta.conversations!.message, "HTTP 500");
+  });
+
+  check("stale matrix: open opps by stage age × our last outbound age", () => {
+    const res = runQuery(staleMatrixQuery, ready);
+    assert.equal(cellOf(res, "0–7 días", "0–7 días"), 2);
+    assert.equal(cellOf(res, "16–30 días", "Más de 60 días o sin mensajes"), 1);
+    const columns = [...new Set(res.rows.map((r) => r.label[1]))];
+    assert.ok(columns.includes("Más de 60 días o sin mensajes"));
+    assert.ok(!columns.includes("Más de 60 días"), columns.join(", "));
+    assert.equal(res.totals[0], 3);
+  });
+
+  check("a conversations card counts conversations and waiting replies", () => {
+    const res = runQuery({ ...convQuery, groupBy: [dim("waitingReply")], time: { ...convQuery.time, range: "all" } }, ready);
+    assert.deepEqual(byLabel(res), { "Sí": 1, No: 1 });
+  });
+
+  check("panel range wider than window shows the window notice", () => {
+    const res = runQuery({ ...convQuery, time: { ...convQuery.time, range: "all" } }, ready);
+    assert.ok(res.meta.warnings.includes("Mostrando los últimos 60 días de conversaciones."), res.meta.warnings.join(" | "));
+    const inside = runQuery({ ...convQuery, time: { ...convQuery.time, range: "last_7d" } }, ready);
+    assert.ok(!inside.meta.warnings.some((w) => w.startsWith("Mostrando")));
+  });
+
+  check("a widened window warns about load time", () => {
+    const res = runQuery({ ...convQuery, conversationDays: 120 }, { ...ctx, conversations: readyState(rows, 120) });
+    assert.ok(res.meta.warnings.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    const short = runQuery({ ...convQuery, conversationDays: 120 }, ready);
+    assert.equal(short.meta.conversations!.status, "loading", "a 60-day load does not serve a 120-day card");
+  });
+
+  check("days_ago beyond the window does not match and warns", () => {
+    const silentFor = (n: number) => q({ filters: [OPEN], relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: [String(n)] }] }] }], time: ALL });
+    assert.equal(runQuery(silentFor(16), ready).totals[0], 1);
+    const far = runQuery(silentFor(90), ready);
+    assert.equal(far.totals[0], 0);
+    assert.ok(far.meta.warnings.includes("No se puede medir más de 60 días con 60 días de conversaciones."), far.meta.warnings.join(" | "));
+  });
+
+  check("conversationDaysNeeded finds message dates in groupBy, related filters and the source", () => {
+    assert.equal(conversationDaysNeeded(staleMatrixQuery), 60);
+    assert.equal(conversationDaysNeeded(convQuery), 60);
+    assert.equal(conversationDaysNeeded({ ...convQuery, conversationDays: 120 }), 120);
+    assert.equal(conversationDaysNeeded(q({ relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["16"] }] }] }] })), 60);
+    assert.equal(conversationDaysNeeded(q({})), null);
+  });
+
+  const toolDeps = (ensure: PanelToolDeps["ensureConversations"]): PanelToolDeps =>
+    ({ engineCtx: () => ctx, ensureConversations: ensure, getDoc: () => JSON.parse(JSON.stringify(LEGACY_DOC)) } as unknown as PanelToolDeps);
+  const convWidget = { ...(LEGACY_KPI as WidgetSpec), query: { ...convQuery, time: { ...convQuery.time, range: "all" } } };
+
+  await checkAsync("preview of a conversations widget waits for the load", async () => {
+    const out = (await executePanelTool("preview_widget", { widget: convWidget }, toolDeps(async () => readyState(rows)))) as { totals?: unknown[]; error?: string };
+    assert.equal(out.error, undefined, out.error);
+    assert.deepEqual(out.totals, [2]);
+    const failed = (await executePanelTool("preview_widget", { widget: convWidget }, toolDeps(async () => ({ status: "error", days: 60, message: "HTTP 500" })))) as { error?: string };
+    assert.match(failed.error ?? "", /No se pudieron cargar las conversaciones: HTTP 500/);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   syncSection();
@@ -643,6 +758,7 @@ async function main(): Promise<void> {
   seriesSection();
   validateSection();
   conversationIndexSection();
+  await conversationsEngineSection();
   console.log("\n✅ capabilities — all assertions passed");
 }
 

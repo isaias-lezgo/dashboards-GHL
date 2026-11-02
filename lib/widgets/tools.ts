@@ -57,7 +57,8 @@ import {
   upsertTab,
   type OpMeta,
 } from "./doc-ops";
-import { runQuery } from "./engine";
+import { conversationDaysNeeded, runQuery } from "./engine";
+import type { ConversationState } from "@/lib/conversation-index";
 import { describeWidget } from "./describe";
 import { ENTITY_FIELDS, listFieldValues, resolveCtx, type EngineContext } from "./semantic";
 import { buildCatalog, suggestField, validateEntityClauses, validateEntityField, validateWidget, type Catalog, type ValidationIssue } from "./validate";
@@ -236,6 +237,26 @@ export interface PanelToolDeps {
   applyFilterState(next: PanelFilterState): void;
   now(): string;
   newId(): string;
+  /**
+   * Loads (or reuses) the conversation index for at least `days` and resolves
+   * with its final state. Absent where conversations cannot be loaded (the eval).
+   */
+  ensureConversations?: (days: number) => Promise<ConversationState>;
+}
+
+/**
+ * The context to compute a widget with. A widget that reads conversations waits
+ * for the index first, and gets the RESOLVED state — the browser's context may
+ * not have re-rendered with it yet when the promise settles.
+ */
+async function ctxForWidget(spec: WidgetSpec, deps: PanelToolDeps): Promise<EngineContext | { error: string }> {
+  const ctx = deps.engineCtx();
+  const need = spec.query ? conversationDaysNeeded(spec.query) : null;
+  if (need === null) return ctx;
+  if (!deps.ensureConversations) return { error: "Las conversaciones no están disponibles en este entorno." };
+  const state = await deps.ensureConversations(need);
+  if (state.status === "error") return { error: `No se pudieron cargar las conversaciones: ${state.message}` };
+  return { ...ctx, conversations: state };
 }
 
 type ToolOut = Record<string, unknown>;
@@ -400,9 +421,10 @@ export async function executePanelTool(name: string, input: Record<string, unkno
     }
 
     case "preview_widget": {
-      const ctx = deps.engineCtx();
-      const checked = checkSpec(input.widget, buildCatalog(ctx), "widget");
+      const checked = checkSpec(input.widget, buildCatalog(deps.engineCtx()), "widget");
       if ("issues" in checked) return invalid(checked.issues);
+      const ctx = await ctxForWidget(checked.spec, deps);
+      if ("error" in ctx) return ctx;
       return summarize(checked.spec, ctx, PREVIEW_ROWS);
     }
 
@@ -510,7 +532,9 @@ export async function executePanelTool(name: string, input: Record<string, unkno
       const hit = findWidget(deps.getDoc(), widgetId);
       if (!hit) return { error: `El widget ${widgetId} ya no existe; vuelve a leer el panel con get_dashboard.` };
       const limit = typeof input.limit === "number" ? Math.max(1, Math.min(50, Math.floor(input.limit))) : PREVIEW_ROWS;
-      return summarize(hit.widget, deps.engineCtx(), limit);
+      const ctx = await ctxForWidget(hit.widget, deps);
+      if ("error" in ctx) return ctx;
+      return summarize(hit.widget, ctx, limit);
     }
 
     case "set_panel_filters": {

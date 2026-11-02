@@ -26,6 +26,8 @@ import { WidgetGrid } from "@/components/widgets/widget-grid"
 import { panelSettled, useDashboardDoc, type CommitResult } from "@/hooks/use-dashboard-doc"
 import { deleteTab, deleteWidgets, findWidget, randomId, updateWidget, upsertTab } from "@/lib/widgets/doc-ops"
 import { usePanelFilters } from "@/hooks/use-panel-filters"
+import { useConversationIndex } from "@/hooks/use-conversation-index"
+import { conversationDaysNeeded } from "@/lib/widgets/engine"
 import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
 import { WidgetFilterEditor } from "@/components/widgets/widget-filter-editor"
 import { EmptyPanel } from "@/components/widgets/empty-panel"
@@ -349,6 +351,7 @@ export default function DashboardPage() {
     pipelines: pipelineFilter,
     setPipelines: setPipelineFilter,
   })
+  const conversationIndex = useConversationIndex()
   const globalFilters = useMemo(
     () => (panelEnabled && docApi.doc ? activeGlobalFilters(panelFilters.state, docApi.doc.filters) : []),
     [panelEnabled, docApi.doc, panelFilters.state]
@@ -371,8 +374,9 @@ export default function DashboardPage() {
       globalFilters,
       now: panelNow,
       customFieldTypes: data?.customFieldTypes ?? null,
+      conversations: conversationIndex.state,
     }),
-    [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow]
+    [data, messages, allPipelines, dateRange, pipelineFilter, globalFilters, panelNow, conversationIndex.state]
   )
 
   // Computed over the whole account, not the filtered slice: a suggestion is a
@@ -439,6 +443,21 @@ export default function DashboardPage() {
     else reportFailure(res)
   }
   const activeDocTab = docTabs.find((t) => t.id === activeTab) ?? null
+
+  // Conversations load only when a card on screen reads them, for the widest
+  // window any of those cards asked for (60 days unless one asked for more).
+  const conversationDays = useMemo(() => {
+    let max = 0
+    for (const w of activeDocTab?.widgets ?? []) {
+      const d = w.query ? conversationDaysNeeded(w.query) : null
+      if (d !== null && d > max) max = d
+    }
+    return max
+  }, [activeDocTab])
+  const ensureConversations = conversationIndex.ensure
+  useEffect(() => {
+    if (panelEnabled && data && conversationDays > 0) void ensureConversations(conversationDays)
+  }, [panelEnabled, data, conversationDays, ensureConversations])
   // Only on the client's own tabs (or the empty panel): Marketing, Ventas and
   // the Asistente IA tab are not the copilot's to edit. Hidden, never unmounted.
   const copilotVisible = panelEnabled && copilotOpen && !FIXED_TABS.has(activeTab)
@@ -783,6 +802,7 @@ export default function DashboardPage() {
         syncedAt={syncedAt ?? data.meta?.fetchedAt}
         initialPrompt={copilotPrompt}
         onPromptConsumed={clearCopilotPrompt}
+        ensureConversations={ensureConversations}
       />
     )}
     </>

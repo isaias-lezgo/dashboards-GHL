@@ -21,6 +21,7 @@ import { buildDatasetSummary } from "@/lib/ai-context"
 import { PANEL_SNAPSHOT_MARKER, buildPanelCatalogSummary, buildPanelSnapshot } from "@/lib/widgets/describe"
 import { describeFilterState, type PanelFilterState } from "@/lib/widgets/filter-state"
 import { executePanelTool, isPanelTool, type PanelToolDeps } from "@/lib/widgets/tools"
+import type { ConversationState } from "@/lib/conversation-index"
 import { randomId } from "@/lib/widgets/doc-ops"
 import { emptyDoc, type Widget } from "@/lib/widgets/spec"
 import type { EngineContext } from "@/lib/widgets/semantic"
@@ -70,6 +71,7 @@ export function CopilotDock({
   syncedAt,
   initialPrompt,
   onPromptConsumed,
+  ensureConversations,
 }: {
   open: boolean
   onClose: () => void
@@ -86,11 +88,12 @@ export function CopilotDock({
   /** Text to send as soon as the copilot is free (the empty panel, a suggestion). */
   initialPrompt: string | null
   onPromptConsumed: () => void
+  ensureConversations: (days: number) => Promise<ConversationState>
 }) {
   // Tools run long after the render that started them: they read everything
   // through this ref so they always see the current panel.
-  const latest = useRef({ engineCtx, docApi, activeTabId, setActiveTabId, selectedWidget, filters })
-  latest.current = { engineCtx, docApi, activeTabId, setActiveTabId, selectedWidget, filters }
+  const latest = useRef({ engineCtx, docApi, activeTabId, setActiveTabId, selectedWidget, filters, ensureConversations })
+  latest.current = { engineCtx, docApi, activeTabId, setActiveTabId, selectedWidget, filters, ensureConversations }
 
   // A filter change reaches `filters.state` only on the next render; two filter
   // tools in one turn must still build on each other.
@@ -124,6 +127,7 @@ export function CopilotDock({
       },
       now: () => new Date().toISOString(),
       newId: randomId,
+      ensureConversations: (days) => latest.current.ensureConversations(days),
     }),
     []
   )

@@ -35,7 +35,7 @@ import type { AdsStatus, Opportunity } from "@/lib/types";
 import type { ResolvedDateRange } from "@/lib/date-range";
 import { contactIdsInPipelines, filterByContactIds, filterOpportunitiesByPipelines } from "@/lib/pipeline-filter";
 import { APPT_STATUS_ORDER } from "@/lib/appointment-status";
-import { DOC_LIMITS, edgesOf, entityOf, fallbacksOf, seriesOf, type Bucket, type SeriesSpec, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
+import { DOC_LIMITS, conversationDaysOf, edgesOf, entityOf, fallbacksOf, seriesOf, type Bucket, type SeriesSpec, type EntityId, type GroupBySpec, type MetricId, type QuerySpec, type SourceId, type TimeSpec } from "./spec";
 import { METRICS, type MetricCtx } from "./metrics";
 import { adsRowsFor, clippedWarning, pautaLeadDays } from "./ads-metrics";
 import { ENUM_LABELS_ES, METRIC_PHRASES, SOURCE_LABELS, fieldLabel } from "./labels";
@@ -46,8 +46,11 @@ import {
   EMPTY_VALUE,
   QueryError,
   SOURCE_DEFS,
+  MESSAGE_DATE_FIELDS,
   OUTCOME_ORDER,
   clauseFields,
+  isMessageDateField,
+  messageDate,
   customFieldType,
   dateValue,
   dimensionValues,
@@ -101,6 +104,15 @@ export interface QueryMeta {
   seriesLabels?: string[];
   /** How values read when several metrics meet in one chart (series or a ratio). */
   valueKind?: ValueKind;
+  /** Widgets that read conversations: where the on-demand load stands. */
+  conversations?: {
+    status: "loading" | "error" | "ready";
+    days: number;
+    scanned?: number;
+    threads?: number;
+    message?: string;
+    truncated?: boolean;
+  };
   ratio?: {
     kind: "same_group" | "between_series";
     numeratorLabel: string;
@@ -508,6 +520,8 @@ interface DimPlan {
   fill: string[] | null;
   /** bucket "age" only. */
   edges?: number[];
+  /** Message dates only: the conversation window, for the "Más de N días o sin mensajes" range. */
+  beyondDays?: number;
 }
 
 export interface GroupOptions {
@@ -546,6 +560,14 @@ function planDims(
     if (!isDate) return { spec, bucket: null, fill: null };
     if (spec.bucket === "age") {
       const edges = edgesOf(spec);
+      const conv = ctx.conversations;
+      if (isMessageDateField(source, spec.dimension) && conv?.status === "ready") {
+        // Ranges that start past the window cannot hold a message; what is older
+        // (or never happened) is one honest range: "Más de N días o sin mensajes".
+        const lower = (i: number) => (i === 0 ? 0 : edges[i - 1] + 1);
+        const fill = [...ageKeys(edges).filter((_, i) => lower(i) <= conv.days), "beyond"];
+        return { spec, bucket: "age", fill, edges, beyondDays: conv.days };
+      }
       return { spec, bucket: "age", fill: ageKeys(edges), edges };
     }
     let bucket: Bucket = spec.bucket ?? "day";
@@ -567,6 +589,7 @@ function planDims(
 
 function valuesFor(row: Row, dim: DimPlan, source: SourceId, ctx: MetricCtx, opts: GroupOptions): string[] {
   if (dim.bucket === "age") {
+    if (isMessageDateField(source, dim.spec.dimension) && messageDate(source, row, dim.spec.dimension, ctx) === "beyond") return ["beyond"];
     const d = dateValue(source, row, dim.spec.dimension, ctx);
     return [ageBucketKey(d ? differenceInCalendarDays(ctx.now, d) : null, dim.edges!)];
   }
@@ -591,7 +614,7 @@ const capitalize = (t: string): string => (t ? t[0].toUpperCase() + t.slice(1) :
 // booleans to Sí/No.
 function labelFor(key: string, dim: DimPlan, source: SourceId): string {
   if (key === OTROS_KEY) return OTROS;
-  if (dim.bucket === "age") return ageBucketLabel(key, dim.edges!);
+  if (dim.bucket === "age") return key === "beyond" ? `Más de ${dim.beyondDays} días o sin mensajes` : ageBucketLabel(key, dim.edges!);
   if (dim.bucket && key === EMPTY_VALUE) {
     const f = dim.spec.dimension.replace(/^contact\./, "");
     return `Sin ${customFieldName(f) ?? fieldLabel(f)}`;
@@ -601,7 +624,8 @@ function labelFor(key: string, dim: DimPlan, source: SourceId): string {
   const field = related ? related[2] : dim.spec.dimension;
   const entity: EntityId | null = related ? (related[1] as EntityId) : entityOf(source);
   if (field === "sourceCategory") return catLabel(key);
-  if (field === "dePauta" || field === "won") return key === "true" ? "Sí" : key === "false" ? "No" : key;
+  if (field === "dePauta" || field === "won" || field === "waitingReply") return key === "true" ? "Sí" : key === "false" ? "No" : key;
+  if (field === "lastDirection") return key === "inbound" ? "Entrante" : key === "outbound" ? "Saliente" : key;
   const translated = entity ? ENUM_LABELS_ES[`${entity}.${field}`]?.[key] : undefined;
   return translated ? capitalize(translated) : key;
 }
@@ -921,8 +945,97 @@ function withCompare(result: QueryResult, q: QuerySpec, ctx: EngineContext): Que
 }
 
 export function runQuery(q: QuerySpec, ctx: EngineContext): QueryResult {
-  if (seriesOf(q).length > 0 || q.ratio) return runMultiQuery(q, ctx);
-  return withCompare(runQueryOnce(q, ctx), q, ctx);
+  const need = conversationDaysNeeded(q);
+  if (need !== null) {
+    const pending = conversationGate(q, ctx, need);
+    if (pending) return pending;
+  }
+  const res = seriesOf(q).length > 0 || q.ratio ? runMultiQuery(q, ctx) : withCompare(runQueryOnce(q, ctx), q, ctx);
+  return need !== null ? withConversationMeta(res, q, ctx) : res;
+}
+
+// ─── Conversations (spec 2026-11-02 §3.8) ─────────────────────────────────────
+
+const LOAD_TIME_NOTICE = "Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga.";
+
+/**
+ * Days of conversations this query needs loaded, or null when it reads none:
+ * the conversations source, or a contact's message date anywhere (axis,
+ * filters, fallbacks, the period, a related contact condition, any series).
+ */
+export function conversationDaysNeeded(q: QuerySpec): number | null {
+  const axis = q.groupBy[0]?.dimension;
+  const parts = [
+    { source: q.source, filters: q.filters, related: q.relatedFilters, fields: [...q.groupBy.flatMap((g) => [g.dimension, ...fallbacksOf(g)]), q.time.field] },
+    ...seriesOf(q).map((x) => ({ source: x.source, filters: x.filters, related: x.relatedFilters, fields: [x.dateField, x.dimension ?? axis ?? ""] })),
+  ];
+  const uses = parts.some(
+    (p) =>
+      p.source === "conversations" ||
+      p.fields.some((f) => isMessageDateField(p.source, f)) ||
+      p.filters.some((c) => c.anyOf.some((f) => [f.field, ...fallbacksOf(f)].some((x) => isMessageDateField(p.source, x)))) ||
+      p.related.some((rf) => rf.entity === "contact" && rf.conditions.some((c) => c.anyOf.some((f) => MESSAGE_DATE_FIELDS.includes(f.field))))
+  );
+  return uses ? conversationDaysOf(q) : null;
+}
+
+/** Until the index covers the card's window, the result is "loading"/"error" — never measured zeros. */
+function conversationGate(q: QuerySpec, ctx: EngineContext, need: number): QueryResult | null {
+  const state = ctx.conversations;
+  if (state?.status === "ready" && state.days >= need) return null;
+  const extra = seriesOf(q).length;
+  const n = q.ratio ? 1 : extra ? extra + 1 : q.metrics.length;
+  return {
+    rows: [],
+    totals: Array.from({ length: n }, () => null),
+    margins: null,
+    compare: null,
+    meta: {
+      source: q.source,
+      recordCount: 0,
+      range: rangeKeys(resolveWidgetRange(q.time, ctx)),
+      bucketUsed: null,
+      foldedIntoOtros: 0,
+      seriesFolded: 0,
+      fanOut: false,
+      crmFiltersIgnored: false,
+      overriddenGlobals: [],
+      warnings: [],
+      adsStatus: null,
+      adsMessage: null,
+      conversations:
+        state?.status === "error"
+          ? { status: "error", days: need, message: state.message }
+          : state?.status === "loading"
+            ? { status: "loading", days: need, scanned: state.scanned, threads: state.threads }
+            : { status: "loading", days: need },
+    },
+  };
+}
+
+function withConversationMeta(res: QueryResult, q: QuerySpec, ctx: EngineContext): QueryResult {
+  const state = ctx.conversations;
+  if (state?.status !== "ready") return res;
+  const warnings = [...res.meta.warnings];
+  if (state.days > DOC_LIMITS.defaultConversationDays) warnings.push(LOAD_TIME_NOTICE);
+  if ([q.source, ...seriesOf(q).map((x) => x.source)].includes("conversations")) {
+    const range = resolveWidgetRange(q.time, ctx);
+    if (!range || range.from < startOfDay(subDays(ctx.now, state.days))) warnings.push(`Mostrando los últimos ${state.days} días de conversaciones.`);
+  }
+  if (state.threadErrors > 0) {
+    warnings.push(`${state.threadErrors} conversaciones no se pudieron abrir: su último mensaje nuestro puede ser más reciente.`);
+  }
+  if (state.truncated) warnings.push("La carga de conversaciones llegó a su tope de seguridad: faltan las más antiguas.");
+  const clauses = [
+    ...q.filters,
+    ...q.relatedFilters.filter((rf) => rf.entity === "contact").flatMap((rf) => rf.conditions),
+    ...seriesOf(q).flatMap((x) => [...x.filters, ...x.relatedFilters.filter((rf) => rf.entity === "contact").flatMap((rf) => rf.conditions)]),
+  ];
+  const tooFar = clauses.some((c) =>
+    c.anyOf.some((f) => f.op === "days_ago_gte" && MESSAGE_DATE_FIELDS.includes(f.field.replace(/^contact\./, "")) && Number(f.values[0]) > state.days)
+  );
+  if (tooFar) warnings.push(`No se puede medir más de ${state.days} días con ${state.days} días de conversaciones.`);
+  return { ...res, meta: { ...res.meta, warnings, conversations: { status: "ready", days: state.days, truncated: state.truncated } } };
 }
 
 // ─── Several series and proportions (spec 2026-11-02 §3.1–3.2) ────────────────
