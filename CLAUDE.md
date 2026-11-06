@@ -543,7 +543,9 @@ Distribution **Sub-account**, "who can install" **agency only**; agency
   for white-label apps. That is why the Custom Page is `/embed`, not `/ghl`.
 - **SSO decides the tenant by `activeLocation` only, never by `type`.** `type`
   describes the user: an agency admin inside a sub-account arrives as
-  `type: "agency"` with `activeLocation` set (verified 2026-10-28). Never take the
+  `type: "agency"` with `activeLocation` set (verified 2026-10-28), and a sub-account
+  user as `type: "account"` — a value GHL's docs don't list. An allowlist on it locked
+  every advisor out until 2026-11-06, so nothing may validate it. Never take the
   tenant from URL variables like `{{location.id}}` — they are user-editable.
 - The SSO cookie is `SameSite=None; Partitioned`: inside GHL's iframe it is a
   third-party cookie. The password login keeps `Lax`.

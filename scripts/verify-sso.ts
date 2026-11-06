@@ -37,9 +37,29 @@ async function main() {
   assert.throws(() => decryptUserContext(sealed, KEY + "x"), "wrong key must be rejected");
   assert.throws(() => decryptUserContext("bm90IGEgY2lwaGVydGV4dA==", KEY), "non-CryptoJS input");
   assert.throws(() => decryptUserContext(encryptLikeCryptoJs('{"userId":"u1"}', KEY), KEY), "missing companyId");
-  assert.throws(() => decryptUserContext(encryptLikeCryptoJs(ctx({ type: "admin" }), KEY), KEY), "unknown type");
 
   assert.deepEqual(decideSso(decoded), { ok: true, locationId: "loc-1" });
+
+  // `type` must never gate anything. GHL's docs list agency|location, but real
+  // sub-account users arrive as "account" (production logs, 2026-11-06): an
+  // allowlist on it locked every one of them out, on every reload.
+  for (const type of ["account", "some-future-value", undefined]) {
+    assert.deepEqual(
+      decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ type }), KEY), KEY)),
+      { ok: true, locationId: "loc-1" },
+      `type ${String(type)} inside a sub-account gets that sub-account`,
+    );
+    // Dropping the gate must not open anything: the two real checks still hold.
+    assert.deepEqual(
+      decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ type, companyId: "other-agency" }), KEY), KEY)),
+      { ok: false, reason: "wrong_agency" },
+    );
+    assert.deepEqual(
+      decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ type, activeLocation: undefined }), KEY), KEY)),
+      { ok: false, reason: "agency_view" },
+    );
+  }
+
   assert.deepEqual(
     decideSso(decryptUserContext(encryptLikeCryptoJs(ctx({ companyId: "other-agency" }), KEY), KEY)),
     { ok: false, reason: "wrong_agency" },
