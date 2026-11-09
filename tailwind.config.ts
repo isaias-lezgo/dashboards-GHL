@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
 
 const config: Config = {
   darkMode: ['class'],
@@ -91,6 +92,13 @@ const config: Config = {
       },
     },
   },
-  plugins: [require('tailwindcss-animate'), require('@tailwindcss/typography')],
+  plugins: [
+    require('tailwindcss-animate'),
+    require('@tailwindcss/typography'),
+    // `embed:` — styles for when the panel runs inside GHL's iframe (the
+    // "Dashboard" Custom Page). The attribute is set by the inline script in
+    // app/layout.tsx before first paint; see EMBED_DETECT_SCRIPT there.
+    plugin(({ addVariant }) => addVariant('embed', 'html[data-embed] &')),
+  ],
 }
 export default config

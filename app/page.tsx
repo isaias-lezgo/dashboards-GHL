@@ -263,14 +263,25 @@ export default function DashboardPage() {
     return () => clearInterval(id)
   }, [])
 
+  const syncedAtIso = syncedAt ?? data?.meta?.fetchedAt
+  const syncLabel = isLoading
+    ? (progress || "Sincronizando…")
+    : syncedAtIso
+      ? `Actualizado ${formatDistanceToNow(new Date(syncedAtIso), { addSuffix: true, locale: es })}`
+      : ""
+
+  const toggleTheme = () => setTheme(resolvedTheme === "dark" ? "light" : "dark")
+
   return (
     <>
     <AnimatePresence>
       {isInitialLoad && <LoadingScreen key="loader" progress={progress} locationName={locationName} steps={steps} />}
     </AnimatePresence>
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="border-b border-[#335577]/20 bg-[#0D172F] px-4 py-3 text-white shadow-none sm:px-6 sm:py-3.5">
+      {/* Header — hidden inside GHL's iframe (`embed:`), where the CRM already
+          frames the page and names the sub-account. Its controls that still
+          matter there are repeated in the tab row below; keep the two in sync. */}
+      <header className="border-b border-[#335577]/20 bg-[#0D172F] px-4 py-3 text-white shadow-none embed:hidden sm:px-6 sm:py-3.5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex min-w-0 items-center gap-3">
             <Image
@@ -338,11 +349,7 @@ export default function DashboardPage() {
               </TooltipProvider>
             )}
             <span className="hidden text-[11px] tabular-nums text-white/55 sm:inline">
-              {isLoading
-                ? (progress || "Sincronizando…")
-                : (syncedAt ?? data?.meta?.fetchedAt)
-                  ? `Actualizado ${formatDistanceToNow(new Date((syncedAt ?? data!.meta.fetchedAt)!), { addSuffix: true, locale: es })}`
-                  : ""}
+              {syncLabel}
             </span>
             
            
@@ -363,7 +370,7 @@ export default function DashboardPage() {
               variant="ghost"
               size="icon"
               className="h-8 w-8 rounded-lg text-white/70 hover:bg-white/10 hover:text-white"
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              onClick={toggleTheme}
               aria-label="Cambiar tema"
             >
               {mounted && resolvedTheme === "dark" ? (
@@ -392,7 +399,10 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <nav className="border-b border-border bg-card px-4 sm:px-6" aria-label="Vistas del panel">
+      <nav
+        className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 sm:px-6"
+        aria-label="Vistas del panel"
+      >
         <div className="flex gap-6 sm:gap-8">
           {(
             [
@@ -420,6 +430,41 @@ export default function DashboardPage() {
               </button>
             )
           })}
+        </div>
+
+        {/* Embedded only: the header's controls that still matter inside GHL.
+            The cache's age stays visible for the same reason it is in the
+            header, and the assistant points users at "Actualizar". No logout:
+            GHL's SSO owns this session, and /login inside the frame is a dead end. */}
+        <div className="hidden shrink-0 items-center gap-1.5 embed:flex sm:gap-2">
+          {isError && (
+            <div className="flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Error al cargar datos</span>
+            </div>
+          )}
+          <span className="hidden text-[11px] tabular-nums text-muted-foreground md:inline">
+            {syncLabel}
+          </span>
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs font-medium"
+            onClick={() => refresh()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">Actualizar</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+            onClick={toggleTheme}
+            aria-label="Cambiar tema"
+          >
+            {mounted && resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
       </nav>
 
