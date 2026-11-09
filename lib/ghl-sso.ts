@@ -23,7 +23,10 @@ export const AGENCY_COMPANY_ID = "LkhcnqrWIwMDHdc6oN5F";
 export interface GhlUserContext {
   userId: string;
   companyId: string;
-  type: "agency" | "location";
+  // GHL's label for the user. Logged, never decided on (see decideSso). A plain
+  // string on purpose: the docs list agency|location, real sub-account users
+  // arrive as "account".
+  type?: string;
   activeLocation?: string;
   role?: string;
   userName?: string;
@@ -67,9 +70,6 @@ export function decryptUserContext(encrypted: string, passphrase: string): GhlUs
   if (typeof data.userId !== "string" || typeof data.companyId !== "string") {
     throw new Error("User context is missing userId/companyId");
   }
-  if (data.type !== "agency" && data.type !== "location") {
-    throw new Error(`Unexpected user context type: ${String(data.type)}`);
-  }
   return data as GhlUserContext;
 }
 
@@ -83,7 +83,9 @@ export function decideSso(ctx: GhlUserContext): SsoDecision {
   // Decided by activeLocation alone, NOT by `type`. `type` describes the USER:
   // an agency admin opening the Dashboard inside a sub-account arrives as
   // type "agency" with that sub-account in activeLocation — gating on
-  // type === "location" locked every agency user out (Lezgo Suite, 2026-10-28).
+  // type === "location" locked every agency user out (Lezgo Suite, 2026-10-28) —
+  // and a sub-account user as "account", which an allowlist in decryptUserContext
+  // refused on every reload (2026-11-06).
   // Only the agency menu itself sends no activeLocation: no client to show.
   if (!ctx.activeLocation) return { ok: false, reason: "agency_view" };
   return { ok: true, locationId: ctx.activeLocation };
