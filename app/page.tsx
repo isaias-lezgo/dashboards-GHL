@@ -32,6 +32,7 @@ import { PanelFilterBar } from "@/components/widgets/panel-filter-bar"
 import { WidgetFilterEditor } from "@/components/widgets/widget-filter-editor"
 import { EmptyPanel } from "@/components/widgets/empty-panel"
 import { CopilotDock } from "@/components/widgets/copilot-dock"
+import { useRecentlyAddedWidgets } from "@/components/widgets/widget-entrance"
 import { buildSuggestions } from "@/lib/widgets/suggestions"
 import { activeGlobalFilters } from "@/lib/widgets/filter-state"
 import { buildCatalog, validateWidget } from "@/lib/widgets/validate"
@@ -90,6 +91,10 @@ export default function DashboardPage() {
   const docApi = useDashboardDoc()
   const panelEnabled = docApi.enabled === true
   const docTabs = useMemo(() => docApi.doc?.tabs ?? [], [docApi.doc])
+  // Widgets just added to the panel (copilot, undo, another session) play an
+  // entrance when they first mount — tracked over the whole doc, since the
+  // copilot builds into a new tab and switches to it after the save.
+  const recentWidgets = useRecentlyAddedWidgets(docApi.doc)
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null)
   // The copilot: open/closed, and the text the empty panel hands it.
   const [copilotOpen, setCopilotOpen] = useState(false)
@@ -788,6 +793,8 @@ export default function DashboardPage() {
             onDelete={removeWidget}
             onRetryConversations={conversationIndex.retry}
             conversationProgress={conversationIndex.state.status === "loading" ? conversationIndex.state : null}
+            isFresh={recentWidgets.isFresh}
+            onEntrancePlayed={recentWidgets.forget}
           />
         )}
         <WidgetFilterEditor widget={filterEditorWidget} ctx={engineCtx} onClose={() => setFilterEditorId(null)} onSave={saveWidgetFilters} />

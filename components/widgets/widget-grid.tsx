@@ -5,7 +5,7 @@
 // responsive by construction. Each row is stretched to the full width
 // (lib/widgets/layout.ts): preset sizes alone leave holes no choice of sizes can
 // avoid — an `l` (8 of 12) never fills a row — and deleting a widget opens more.
-import { useEffect, useRef, type CSSProperties } from "react"
+import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { EngineContext } from "@/lib/widgets/semantic"
 import type { Tab } from "@/lib/widgets/spec"
@@ -28,6 +28,8 @@ export function WidgetGrid({
   onDelete,
   onRetryConversations,
   conversationProgress,
+  isFresh,
+  onEntrancePlayed,
 }: {
   tab: Tab
   ctx: EngineContext
@@ -38,19 +40,10 @@ export function WidgetGrid({
   onDelete: (id: string) => void
   onRetryConversations?: () => void
   conversationProgress?: { scanned: number; threads: number } | null
+  /** Just added to the panel (useRecentlyAddedWidgets): plays the entrance on mount. */
+  isFresh?: (id: string) => boolean
+  onEntrancePlayed?: (id: string) => void
 }) {
-  // Which widgets are new since this tab's previous render. Nothing is new on
-  // a tab's FIRST render (page load, tab switch): the entrance marks what was
-  // just added — by the copilot, an undo, or another session's change. Runs
-  // before the empty-state return, so the first widgets of an empty tab count.
-  const seenRef = useRef<{ tabId: string; ids: Set<string> } | null>(null)
-  const prevIds = seenRef.current?.tabId === tab.id ? seenRef.current.ids : null
-  const freshOrder = new Map<string, number>()
-  if (prevIds) for (const w of tab.widgets) if (!prevIds.has(w.id)) freshOrder.set(w.id, freshOrder.size)
-  useEffect(() => {
-    seenRef.current = { tabId: tab.id, ids: new Set(tab.widgets.map((w) => w.id)) }
-  }, [tab])
-
   if (tab.widgets.length === 0) {
     return (
       <div className="mx-4 mt-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center sm:mx-6">
@@ -60,6 +53,9 @@ export function WidgetGrid({
     )
   }
   const spans = widgetSpans(tab.widgets.map((w) => w.size))
+  // Widgets added together enter one after another, in the tab's order.
+  const freshOrder = new Map<string, number>()
+  if (isFresh) for (const w of tab.widgets) if (isFresh(w.id)) freshOrder.set(w.id, freshOrder.size)
   return (
     <div className="grid grid-cols-12 gap-4 px-4 py-4 sm:px-6">
       {tab.widgets.map((w, i) => (
@@ -72,6 +68,7 @@ export function WidgetGrid({
           onClickCapture={() => {
             if (selectedWidgetId && selectedWidgetId !== w.id) onSelect(null)
           }}
+          onPlayed={() => onEntrancePlayed?.(w.id)}
         >
           <WidgetCard
             widget={w}
