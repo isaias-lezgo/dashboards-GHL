@@ -75,3 +75,64 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 }
+
+/* ── Widget entrance ──────────────────────────────────────────────────────────
+   Plays once on a panel widget that was JUST added (copilot, undo, another
+   session) — never on page load or a tab switch; components/widgets/
+   widget-entrance.tsx decides. The card materializes out of a blur, one
+   brand-amber scan line sweeps it and its edge glows, then fades. DESIGN.md
+   rules out ambient glows: this one is transient, marks what was just built,
+   and leaves nothing behind (fill-mode `backwards`, so no filter or transform
+   lingers on the card once it ends). */
+@keyframes widget-materialize {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); filter: blur(10px); }
+  60% { filter: blur(0); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes widget-scan {
+  0% { top: -35%; opacity: 0; }
+  12% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 105%; opacity: 0; }
+}
+@keyframes widget-edge {
+  0% { opacity: 0; }
+  22% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.widget-enter {
+  animation: widget-materialize 650ms cubic-bezier(0.16, 1, 0.3, 1) var(--enter-delay, 0ms) backwards;
+}
+.widget-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 105%;
+  height: 35%;
+  opacity: 0;
+  background: linear-gradient(to bottom, transparent, rgb(245 155 27 / 0.07) 60%, rgb(245 155 27 / 0.28) 96%, rgb(245 155 27 / 0.85));
+  animation: widget-scan 1100ms cubic-bezier(0.45, 0, 0.2, 1) calc(var(--enter-delay, 0ms) + 120ms) backwards;
+}
+.widget-scan::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: rgb(245 155 27);
+  box-shadow: 0 0 12px 2px rgb(245 155 27 / 0.75);
+}
+.widget-edge {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 0 1px rgb(245 155 27 / 0.7), 0 0 22px 2px rgb(245 155 27 / 0.28);
+  animation: widget-edge 1600ms ease-out calc(var(--enter-delay, 0ms) + 150ms) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .widget-enter, .widget-scan, .widget-edge { animation: none; }
+  .widget-scan, .widget-edge { display: none; }
+}

@@ -5,12 +5,13 @@
 // responsive by construction. Each row is stretched to the full width
 // (lib/widgets/layout.ts): preset sizes alone leave holes no choice of sizes can
 // avoid — an `l` (8 of 12) never fills a row — and deleting a widget opens more.
-import type { CSSProperties } from "react"
+import { useEffect, useRef, type CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { EngineContext } from "@/lib/widgets/semantic"
 import type { Tab } from "@/lib/widgets/spec"
 import { widgetSpans } from "@/lib/widgets/layout"
 import { WidgetCard } from "./widget-card"
+import { WidgetEntrance } from "./widget-entrance"
 
 // Spans come from CSS variables so one class serves every width; below md every
 // widget is full width.
@@ -38,6 +39,18 @@ export function WidgetGrid({
   onRetryConversations?: () => void
   conversationProgress?: { scanned: number; threads: number } | null
 }) {
+  // Which widgets are new since this tab's previous render. Nothing is new on
+  // a tab's FIRST render (page load, tab switch): the entrance marks what was
+  // just added — by the copilot, an undo, or another session's change. Runs
+  // before the empty-state return, so the first widgets of an empty tab count.
+  const seenRef = useRef<{ tabId: string; ids: Set<string> } | null>(null)
+  const prevIds = seenRef.current?.tabId === tab.id ? seenRef.current.ids : null
+  const freshOrder = new Map<string, number>()
+  if (prevIds) for (const w of tab.widgets) if (!prevIds.has(w.id)) freshOrder.set(w.id, freshOrder.size)
+  useEffect(() => {
+    seenRef.current = { tabId: tab.id, ids: new Set(tab.widgets.map((w) => w.id)) }
+  }, [tab])
+
   if (tab.widgets.length === 0) {
     return (
       <div className="mx-4 mt-4 rounded-xl border border-dashed border-border bg-muted/20 px-6 py-16 text-center sm:mx-6">
@@ -50,8 +63,10 @@ export function WidgetGrid({
   return (
     <div className="grid grid-cols-12 gap-4 px-4 py-4 sm:px-6">
       {tab.widgets.map((w, i) => (
-        <div
+        <WidgetEntrance
           key={w.id}
+          fresh={freshOrder.has(w.id)}
+          order={freshOrder.get(w.id) ?? 0}
           className={cn(SPAN_CLASS, "min-w-0")}
           style={{ "--span-md": spans[i].md, "--span-lg": spans[i].lg } as CSSProperties}
           onClickCapture={() => {
@@ -68,7 +83,7 @@ export function WidgetGrid({
             onRetryConversations={onRetryConversations}
             conversationProgress={conversationProgress}
           />
-        </div>
+        </WidgetEntrance>
       ))}
     </div>
   )

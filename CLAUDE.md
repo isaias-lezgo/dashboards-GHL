@@ -270,7 +270,7 @@ semantic catalog, and everything it saves is validated first.
 | `hooks/use-dashboard-doc.ts`, `use-panel-filters.ts` | Optimistic commits through a queue, 409 reload, undo stack; the bar's state |
 | `lib/conversation-index.ts`, `-load.ts` | Conversation rows + our last outbound per contact (pure / server walk) |
 | `hooks/use-conversation-index.ts` | On-demand conversation load, shared by every card of the session |
-| `components/widgets/*` | Grid, cards, viz, tabs, filter bar, empty panel, `viz-matrix.tsx`, `copilot-dock.tsx` |
+| `components/widgets/*` | Grid, cards, viz, tabs, filter bar, empty panel, `viz-matrix.tsx`, `copilot-dock.tsx`, `widget-entrance.tsx` (the one-time entrance of a JUST-added widget — never on load or tab switch; look in `app/globals.css`, off under reduced motion) |
 
 Invariants:
 
