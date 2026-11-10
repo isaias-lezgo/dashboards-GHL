@@ -386,6 +386,21 @@ function engineSection(): void {
     assert.deepEqual(res.rows.map((r) => r.label[0]), ["Primera Cita", "Propuesta", "Ganado", "Perdido"]);
   });
 
+  check("un eje de fechas ordenado por «label» va por fecha, no alfabético (sem. 12 oct ≠ antes de sem. 14 sep)", () => {
+    const weeks = ["2026-10-12", "2026-08-17", "2026-09-14", "2026-08-10"];
+    const wctx = { ...ctx, dataset: { ...ctx.dataset, opportunities: weeks.map((d, i) => mkOpp(`w${i}`, "c1", "p1", "Nuevo", `${d}T12:00:00Z`)) } };
+    const run = (by: "label" | "natural", dir: "asc" | "desc") =>
+      runQuery(q({ groupBy: [dim("createdAt", "week")], sort: { by, dir }, time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" } }), wctx).rows.map((r) => r.key[0]);
+    // The engine fills the empty weeks in between, so check order, not the exact list.
+    const asc = run("label", "asc");
+    assert.deepEqual(asc, [...asc].sort());
+    assert.equal(asc[0], "2026-08-10");
+    assert.equal(asc[asc.length - 1], "2026-10-12");
+    assert.ok(["2026-08-17", "2026-09-14"].every((k) => asc.includes(k)));
+    assert.deepEqual(run("label", "desc"), [...asc].reverse());
+    assert.deepEqual(run("natural", "asc"), asc);
+  });
+
   check("buckets por mes con rango all", () => {
     const res = runQuery(q({ groupBy: [dim("createdAt", "month")], sort: { by: "natural", dir: "asc" }, time: { field: "createdAt", range: "all", from: null, to: null, compare: "none" } }), ctx);
     assert.deepEqual(res.rows.map((r) => [r.key[0], r.values[0]]), [["2026-09", 1], ["2026-10", 3]]);

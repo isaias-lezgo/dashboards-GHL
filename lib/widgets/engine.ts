@@ -749,10 +749,12 @@ export function groupAndMeasure(
       if (vb === null || vb === undefined) return -1;
       return va !== vb ? (va - vb) * dir : cmpLabel(a, b);
     }
-    if (opts.sort.by === "natural") {
-      if (dims[0].bucket) return a.localeCompare(b) * dir;
-      if (rank0) return (rank0(a) - rank0(b)) * dir || cmpLabel(a, b);
-    }
+    // A date axis sorts by its KEY (yyyy-MM-dd, yyyy-MM, yyyy-Qn, weekday 1–7,
+    // hour HH: chronological as text) for "natural" AND "label", never by its
+    // label: as text "sem. 12 oct" < "sem. 14 sep" < "sem. 17 ago", which
+    // scrambled every weekly line the AI saved with sort "label" (2026-11-09).
+    if (dims[0].bucket) return a.localeCompare(b) * dir;
+    if (opts.sort.by === "natural" && rank0) return (rank0(a) - rank0(b)) * dir || cmpLabel(a, b);
     return cmpLabel(a, b) * (opts.sort.by === "label" ? dir : 1);
   });
 
