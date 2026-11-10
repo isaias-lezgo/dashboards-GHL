@@ -470,7 +470,19 @@ export default function DashboardPage() {
   // Only on the client's own tabs (or the empty panel): Marketing, Ventas and
   // the Asistente IA tab are not the copilot's to edit. Hidden, never unmounted.
   const copilotVisible = panelEnabled && copilotOpen && !FIXED_TABS.has(activeTab)
-  const selectedWidget = docApi.doc && selectedWidgetId ? findWidget(docApi.doc, selectedWidgetId)?.widget ?? null : null
+
+  // An empty tab of the client's own has only one thing to do — ask the
+  // copilot — so it opens by itself: on arriving at one (a new tab, a switch,
+  // the first landing) and when the last widget goes. It fires on those
+  // transitions only, never on `copilotOpen`, so closing it sticks until the
+  // user leaves and comes back. Waits for the data, since the dock does too.
+  // Not on EMPTY_TAB_ID: EmptyPanel already has its own question box.
+  const activeTabEmpty = panelEnabled && !!data && activeDocTab !== null && activeDocTab.widgets.length === 0
+  useEffect(() => {
+    if (activeTabEmpty) setCopilotOpen(true)
+  }, [activeTab, activeTabEmpty])
+
+  const selectedWidget =docApi.doc && selectedWidgetId ? findWidget(docApi.doc, selectedWidgetId)?.widget ?? null : null
 
   const syncedAtIso = syncedAt ?? data?.meta?.fetchedAt
   const syncLabel = isLoading
