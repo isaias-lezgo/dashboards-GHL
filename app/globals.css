@@ -136,3 +136,95 @@
   .widget-enter, .widget-scan, .widget-edge { animation: none; }
   .widget-scan, .widget-edge { display: none; }
 }
+
+/* ── Builder buddy (components/widgets/builder-buddy.tsx) ─────────────────────
+   The copilot's wait: a little builder in a hard hat carries blocks to a bar
+   chart, three trips per 10 s cycle; on the third the top block wobbles and
+   falls ("¡Ups!"), the bars come down and it starts over. Everything runs on one
+   10 s clock so the trips, the bars and the gag stay in sync. Base styles are
+   the still picture shown under prefers-reduced-motion. */
+.bb-worker { transform: translate(40px, 86px); animation: bb-route 10s linear infinite; }
+.bb-leg-l, .bb-leg-r { transform-box: fill-box; transform-origin: 50% 0; }
+.bb-leg-l { animation: bb-leg 0.34s ease-in-out infinite alternate; }
+.bb-leg-r { animation: bb-leg 0.34s ease-in-out infinite alternate-reverse; }
+.bb-upper { animation: bb-bob 0.17s ease-in-out infinite alternate; }
+.bb-carry { opacity: 0; animation: bb-carry 10s linear infinite; }
+.bb-arms-down { animation: bb-arms-down 10s linear infinite; }
+.bb-bar1, .bb-bar2, .bb-bar3 { transform-box: fill-box; transform-origin: 50% 100%; }
+.bb-bar1 { animation: bb-bar1 10s ease-out infinite; }
+.bb-bar2 { animation: bb-bar2 10s ease-out infinite; }
+.bb-bar3 { animation: bb-bar3 10s ease-out infinite; }
+.bb-fall { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation: bb-fall 10s linear infinite; }
+.bb-ups { opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation: bb-ups 10s ease-out infinite; }
+.bb-dust { opacity: 0; transform-box: fill-box; transform-origin: center; animation: bb-dust 10s ease-out infinite; }
+.bb-spark1, .bb-spark2, .bb-spark3 { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.bb-spark1 { animation: bb-spark1 10s ease-out infinite; }
+.bb-spark2 { animation: bb-spark2 10s ease-out infinite; }
+.bb-spark3 { animation: bb-spark3 10s ease-out infinite; }
+.bb-phrase { animation: bb-phrase 0.35s ease-out; }
+
+@keyframes bb-route {
+  0%, 2% { transform: translate(40px, 86px) scaleX(1); }
+  12%, 14.5% { transform: translate(136px, 86px) scaleX(1); }
+  15% { transform: translate(136px, 86px) scaleX(-1); }
+  25% { transform: translate(40px, 86px) scaleX(-1); }
+  25.5%, 27% { transform: translate(40px, 86px) scaleX(1); }
+  39%, 41.5% { transform: translate(160px, 86px) scaleX(1); }
+  42% { transform: translate(160px, 86px) scaleX(-1); }
+  53% { transform: translate(40px, 86px) scaleX(-1); }
+  53.5%, 55% { transform: translate(40px, 86px) scaleX(1); }
+  67%, 77% { transform: translate(184px, 86px) scaleX(1); }
+  79% { transform: translate(184px, 79px) scaleX(1); }
+  81%, 82.5% { transform: translate(184px, 86px) scaleX(1); }
+  83% { transform: translate(184px, 86px) scaleX(-1); }
+  92% { transform: translate(40px, 86px) scaleX(-1); }
+  92.5%, 100% { transform: translate(40px, 86px) scaleX(1); }
+}
+@keyframes bb-leg { from { transform: rotate(22deg); } to { transform: rotate(-22deg); } }
+@keyframes bb-bob { from { transform: translateY(0); } to { transform: translateY(-0.8px); } }
+@keyframes bb-carry {
+  0%, 13.5% { opacity: 1; } 14%, 26% { opacity: 0; }
+  26.5%, 40.5% { opacity: 1; } 41%, 53.8% { opacity: 0; }
+  54.3%, 67.8% { opacity: 1; } 68.3%, 99% { opacity: 0; }
+  99.5%, 100% { opacity: 1; }
+}
+@keyframes bb-arms-down {
+  0%, 13.5% { opacity: 0; } 14%, 26% { opacity: 1; }
+  26.5%, 40.5% { opacity: 0; } 41%, 53.8% { opacity: 1; }
+  54.3%, 67.8% { opacity: 0; } 68.3%, 99% { opacity: 1; }
+  99.5%, 100% { opacity: 0; }
+}
+@keyframes bb-bar1 { 0%, 13.6% { transform: scaleY(0); } 15% { transform: scaleY(1.08); } 16%, 92% { transform: scaleY(1); } 96%, 100% { transform: scaleY(0); } }
+@keyframes bb-bar2 { 0%, 40.6% { transform: scaleY(0); } 42% { transform: scaleY(1.08); } 43%, 92% { transform: scaleY(1); } 96%, 100% { transform: scaleY(0); } }
+@keyframes bb-bar3 { 0%, 67.9% { transform: scaleY(0); } 69.3% { transform: scaleY(1.08); } 70.3%, 92% { transform: scaleY(1); } 96%, 100% { transform: scaleY(0); } }
+@keyframes bb-fall {
+  0%, 68.5% { opacity: 0; transform: none; }
+  69.5% { opacity: 1; transform: none; }
+  71% { transform: rotate(-7deg); }
+  73% { transform: rotate(8deg); }
+  75% { transform: rotate(-10deg); }
+  77% { transform: rotate(12deg); }
+  80% { transform: translate(12px, 24px) rotate(60deg); }
+  82%, 89% { opacity: 1; transform: translate(18px, 45px) rotate(90deg); }
+  92%, 100% { opacity: 0; transform: translate(18px, 45px) rotate(90deg); }
+}
+@keyframes bb-ups {
+  0%, 76% { opacity: 0; transform: scale(0.6); }
+  78% { opacity: 1; transform: scale(1.12); }
+  79%, 88% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.9); }
+}
+@keyframes bb-dust {
+  0%, 81.5% { opacity: 0; transform: scale(0.3); }
+  83% { opacity: 0.8; transform: scale(1); }
+  88%, 100% { opacity: 0; transform: scale(1.6); }
+}
+@keyframes bb-spark1 { 0%, 13.8% { opacity: 0; transform: scale(0.3); } 15% { opacity: 1; transform: scale(1); } 18%, 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes bb-spark2 { 0%, 40.8% { opacity: 0; transform: scale(0.3); } 42% { opacity: 1; transform: scale(1); } 45%, 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes bb-spark3 { 0%, 68.1% { opacity: 0; transform: scale(0.3); } 69.3% { opacity: 1; transform: scale(1); } 72%, 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes bb-phrase { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-worker, .bb-leg-l, .bb-leg-r, .bb-upper, .bb-carry, .bb-arms-down, .bb-bar1, .bb-bar2, .bb-bar3,
+  .bb-fall, .bb-ups, .bb-dust, .bb-spark1, .bb-spark2, .bb-spark3, .bb-phrase { animation: none; }
+}

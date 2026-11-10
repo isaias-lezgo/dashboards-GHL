@@ -12,6 +12,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { BuilderBuddy } from "./builder-buddy"
 import { ConvMessageBubble } from "@/components/dashboard/conversations-chat"
 import { ChatQuestion } from "@/components/dashboard/chat-question"
 import { useAgentLoop, type UIMessage } from "@/hooks/use-agent-loop"
@@ -268,16 +269,7 @@ export function CopilotDock({
             </div>
           ))}
           {pendingQuestion && !busy && <ChatQuestion question={pendingQuestion} onAnswer={answer} />}
-          {busy && status && (
-            <div className="flex items-center gap-2.5 py-1 text-xs text-muted-foreground">
-              <span className="flex gap-0.5">
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-primary/60" style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
-              </span>
-              {status}
-            </div>
-          )}
+          {busy && <BuilderBuddy status={status} />}
           {error && (
             <div className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
