@@ -261,6 +261,7 @@ semantic catalog, and everything it saves is validated first.
 | `lib/widgets/validate.ts` | Meaning checks against THIS account (does the field exist, does the chart fit) with suggestions |
 | `lib/widgets/describe.ts`, `labels.ts` | The rule in words (ScopePill), filter chips, the panel snapshot |
 | `lib/widgets/doc-ops.ts` | Pure doc operations (never mutate; throw `DocOpError` in Spanish for the model) |
+| `lib/widgets/layout.ts` | Row filling: widgets pack into rows in order and each row stretches to 12 columns. Preset sizes alone leave holes (an `l` = 8 never fills a row), so a `size` is a proportion, not an exact width |
 | `lib/widgets/filter-state.ts` | Session filter state vs saved defaults |
 | `lib/widgets/terms.ts` | `resolveTerm`: where a business concept lives in the data |
 | `lib/widgets/tools.ts` | The copilot's tools and `executePanelTool` (browser-side) |

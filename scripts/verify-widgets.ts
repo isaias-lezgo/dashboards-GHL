@@ -19,6 +19,7 @@ import {
   type WidgetSpec,
 } from "../lib/widgets/spec";
 import { sourceCategory } from "../lib/source-platform";
+import { fillRows, widgetSpans } from "../lib/widgets/layout";
 import { rankPautasByContact } from "../lib/pauta";
 import type { AdsReport, Appointment, Contact, Opportunity, Pauta, Pipeline } from "../lib/types";
 import { executeTool, type ChatDataset } from "../lib/ai-tools";
@@ -1449,6 +1450,68 @@ async function docLoadSection(): Promise<void> {
   });
 }
 
+function layoutSection(): void {
+  section("layout");
+  const rowsOf = (spans: number[], cols = 12) => {
+    // Re-derive the row breaks from the filled spans: every row must sum to exactly `cols`.
+    const sums: number[] = [];
+    let acc = 0;
+    for (const s of spans) {
+      acc += s;
+      if (acc === cols) {
+        sums.push(acc);
+        acc = 0;
+      }
+    }
+    return { sums, leftover: acc };
+  };
+
+  check("cuatro KPI llenan la fila sin estirarse", () => {
+    assert.deepEqual(fillRows([3, 3, 3, 3]), [3, 3, 3, 3]);
+  });
+
+  check("captura del panel: KPI + barras (3+6) crecen a 4+8, y la fila siguiente queda igual", () => {
+    // 4 KPI, Leads únicos (s), Leads por plataforma (m), Pagado vs orgánico (m), Leads por semana (m)
+    assert.deepEqual(fillRows([3, 3, 3, 3, 3, 6, 6, 6]), [3, 3, 3, 3, 4, 8, 6, 6]);
+  });
+
+  check("un `l` (8) nunca deja hueco: con un s va a 9+3, solo va a 12", () => {
+    assert.deepEqual(fillRows([8, 3]), [9, 3]);
+    assert.deepEqual(fillRows([8]), [12]);
+    // Captura 2: Gasto por semana (m) y Top anuncios (l) no caben juntos → cada uno a lo ancho
+    assert.deepEqual(fillRows([6, 8]), [12, 12]);
+  });
+
+  check("el sobrante se reparte en proporción, el ancho sigue siendo el ancho", () => {
+    assert.deepEqual(fillRows([3, 3, 3]), [4, 4, 4]);
+    assert.deepEqual(fillRows([6, 3]), [8, 4]);
+    assert.deepEqual(fillRows([3]), [12]);
+  });
+
+  check("toda fila suma exactamente 12, para cualquier mezcla de tamaños", () => {
+    const sizes = ["s", "m", "l", "xl"] as const;
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    for (let n = 0; n < 500; n++) {
+      const pick = Array.from({ length: 1 + Math.floor(rand() * 12) }, () => sizes[Math.floor(rand() * 4)]);
+      const spans = widgetSpans([...pick]);
+      for (const bp of ["md", "lg"] as const) {
+        const { leftover } = rowsOf(spans.map((x) => x[bp]));
+        assert.equal(leftover, 0, `${bp} ${pick.join(",")} → ${spans.map((x) => x[bp]).join(",")}`);
+      }
+    }
+  });
+
+  check("md: dos s por fila; un s suelto antes de un ancho se estira", () => {
+    const spans = widgetSpans(["s", "s", "s", "m"]);
+    assert.deepEqual(spans.map((x) => x.md), [6, 6, 12, 12]);
+  });
+
+  check("tamaños fuera de rango no rompen el empaque", () => {
+    assert.deepEqual(fillRows([20, 0]), [12, 12]);
+  });
+}
+
 async function main(): Promise<void> {
   specSection();
   domainSection();
@@ -1465,6 +1528,7 @@ async function main(): Promise<void> {
   docOpsSection();
   filterStateSection();
   suggestionsSection();
+  layoutSection();
   await panelToolsSection();
   await docLoadSection();
   console.log("\n✅ lib/widgets — all assertions passed");

@@ -2,19 +2,20 @@
 
 // The tab's widgets in a 12-column grid. Layout is an ORDERED list with preset
 // sizes — what an AI handles well ("pon los KPI arriba" = reorder a list) and
-// responsive by construction. `grid-auto-flow: dense` back-fills holes left by
-// a narrow widget after a wide one.
+// responsive by construction. Each row is stretched to the full width
+// (lib/widgets/layout.ts): preset sizes alone leave holes no choice of sizes can
+// avoid — an `l` (8 of 12) never fills a row — and deleting a widget opens more.
+import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type { EngineContext } from "@/lib/widgets/semantic"
-import type { Tab, Widget } from "@/lib/widgets/spec"
+import type { Tab } from "@/lib/widgets/spec"
+import { widgetSpans } from "@/lib/widgets/layout"
 import { WidgetCard } from "./widget-card"
 
-const SPAN: Record<Widget["size"], string> = {
-  s: "col-span-12 md:col-span-6 lg:col-span-3",
-  m: "col-span-12 lg:col-span-6",
-  l: "col-span-12 lg:col-span-8",
-  xl: "col-span-12",
-}
+// Spans come from CSS variables so one class serves every width; below md every
+// widget is full width.
+const SPAN_CLASS =
+  "col-span-12 md:[grid-column:span_var(--span-md)/span_var(--span-md)] lg:[grid-column:span_var(--span-lg)/span_var(--span-lg)]"
 
 export function WidgetGrid({
   tab,
@@ -45,12 +46,14 @@ export function WidgetGrid({
       </div>
     )
   }
+  const spans = widgetSpans(tab.widgets.map((w) => w.size))
   return (
-    <div className="grid grid-cols-12 gap-4 px-4 py-4 [grid-auto-flow:dense] sm:px-6">
-      {tab.widgets.map((w) => (
+    <div className="grid grid-cols-12 gap-4 px-4 py-4 sm:px-6">
+      {tab.widgets.map((w, i) => (
         <div
           key={w.id}
-          className={cn(SPAN[w.size], "min-w-0")}
+          className={cn(SPAN_CLASS, "min-w-0")}
+          style={{ "--span-md": spans[i].md, "--span-lg": spans[i].lg } as CSSProperties}
           onClickCapture={() => {
             if (selectedWidgetId && selectedWidgetId !== w.id) onSelect(null)
           }}
