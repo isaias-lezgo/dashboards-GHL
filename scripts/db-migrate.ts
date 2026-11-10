@@ -1,4 +1,4 @@
-// Creates the cache and OAuth token tables. Idempotent — safe to run on every deploy or by hand.
+// Creates the cache, OAuth token, installation and AI-panel tables. Idempotent — safe to run on every deploy or by hand.
 // Run: pnpm db:migrate
 //
 // No migration framework: one table does not justify one, and this repo has no
@@ -74,7 +74,37 @@ async function main() {
   // the location id is the password. The escape hatch when a location id leaks.
   await sql`ALTER TABLE dashboard_installation ADD COLUMN IF NOT EXISTS password text`;
 
-  for (const table of ["project_sync", "ghl_oauth_token", "ghl_location_token", "dashboard_installation"]) {
+  // Turns the AI-managed panel on for one client (lib/clients.ts → ClientConfig.aiPanel).
+  // Off by default: the panel rolls out one sub-account at a time.
+  await sql`ALTER TABLE dashboard_installation ADD COLUMN IF NOT EXISTS ai_panel boolean NOT NULL DEFAULT false`;
+
+  // The AI-managed panel (lib/dashboard-store.ts). One document per client —
+  // tabs, widgets as DECLARATIVE queries, global filters, glossary — plus its
+  // recent history for undo. Unlike project_sync this is client CONTENT, not a
+  // cache: never drop it, and UNINSTALL does not delete it (a reinstall gets
+  // its panel back). It holds queries, never results.
+  await sql`
+    CREATE TABLE IF NOT EXISTS dashboard_doc (
+      client_id  text PRIMARY KEY,
+      doc        jsonb       NOT NULL,
+      version    integer     NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      updated_by text        NOT NULL
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS dashboard_doc_version (
+      client_id  text        NOT NULL,
+      version    integer     NOT NULL,
+      doc        jsonb       NOT NULL,
+      change     text        NOT NULL,
+      source     text        NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (client_id, version)
+    )
+  `;
+
+  for (const table of ["project_sync", "ghl_oauth_token", "ghl_location_token", "dashboard_installation", "dashboard_doc", "dashboard_doc_version"]) {
     const rows = await sql`
       SELECT column_name, data_type
         FROM information_schema.columns

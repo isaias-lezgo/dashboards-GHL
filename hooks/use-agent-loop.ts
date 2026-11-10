@@ -16,6 +16,7 @@ import {
 } from "@/lib/ghl-fetchers";
 import { triggerDownload } from "@/lib/download";
 import { downloadPdf } from "@/lib/pdf/build-pdf";
+import { estimateCost, type TurnUsage } from "@/lib/ai-pricing";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,37 +95,9 @@ export interface ReadyAttachment {
   tables?: UploadedTable[];
 }
 
-interface TurnUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_TURNS = 15;
-// USD por millón de tokens. Debe seguir al modelo de app/api/chat/route.ts
-// (hoy claude-sonnet-5: $2 entrada / $10 salida); lectura de caché es 0.1x la
-// entrada y escritura 1.25x. Si cambia el modelo y esto no, el contador de
-// costo del chat miente sin fallar — con las tarifas de Sonnet 4.6 ($3/$15)
-// sobreestimaba 50%.
-const PRICING = {
-  input: 2,
-  output: 10,
-  cacheRead: 0.2,
-  cacheWrite: 2.5,
-};
-
-function estimateCost(u: TurnUsage): number {
-  return (
-    (u.inputTokens * PRICING.input +
-      u.outputTokens * PRICING.output +
-      u.cacheReadTokens * PRICING.cacheRead +
-      u.cacheCreationTokens * PRICING.cacheWrite) /
-    1_000_000
-  );
-}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -136,7 +109,26 @@ export interface AgentLoopOptions {
     input: Record<string, unknown>,
     result: unknown
   ) => void;
+  /** "panel" = the panel copilot: the server sends the panel tools and prompt. */
+  mode?: "assistant" | "panel";
+  /**
+   * Consulted BEFORE the built-in tools: return a promise to handle the tool
+   * (the panel tools), or undefined to fall through.
+   */
+  executeExtra?: (
+    name: string,
+    input: Record<string, unknown>
+  ) => Promise<unknown> | undefined;
+  /** A non-null result is appended to the user's message as a second text block (the panel snapshot). */
+  decorateUserText?: () => string | null;
 }
+
+// A tool that reports a failure as `{ error }` goes back flagged, so the model
+// treats it as a failed call to correct rather than as data.
+const isErrorResult = (result: unknown): boolean =>
+  !!result &&
+  typeof result === "object" &&
+  typeof (result as { error?: unknown }).error === "string";
 
 export interface AgentLoopReturn {
   messages: UIMessage[];
@@ -157,6 +149,9 @@ export function useAgentLoop({
   datasetSummary,
   dataset,
   onToolExecuted,
+  mode = "assistant",
+  executeExtra,
+  decorateUserText,
 }: AgentLoopOptions): AgentLoopReturn {
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [busy, setBusy] = useState(false);
@@ -177,6 +172,10 @@ export function useAgentLoop({
   // Always use the latest callback without re-creating runWithMessages
   const onToolExecutedRef = useRef(onToolExecuted);
   onToolExecutedRef.current = onToolExecuted;
+  const executeExtraRef = useRef(executeExtra);
+  executeExtraRef.current = executeExtra;
+  const decorateRef = useRef(decorateUserText);
+  decorateRef.current = decorateUserText;
 
   const runWithMessages = useCallback(
     async (initialMessages: UIMessage[]) => {
@@ -201,7 +200,12 @@ export function useAgentLoop({
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ datasetSummary, messages: apiMessages, userTimezone }),
+            // The assistant's body is unchanged (no `mode` key) so its requests stay byte-identical.
+            body: JSON.stringify(
+              mode === "panel"
+                ? { datasetSummary, messages: apiMessages, userTimezone, mode }
+                : { datasetSummary, messages: apiMessages, userTimezone }
+            ),
           });
 
           if (!res.ok) {
@@ -266,7 +270,10 @@ export function useAgentLoop({
             toRun.map(async (tu): Promise<ToolResultBlock> => {
               try {
                 let result: unknown;
-                if (tu.name === "get_contact_messages") {
+                const extra = executeExtraRef.current?.(tu.name, tu.input);
+                if (extra !== undefined) {
+                  result = await extra;
+                } else if (tu.name === "get_contact_messages") {
                   result = await fetchContactMessages(tu.input);
                 } else if (tu.name === "search_conversations") {
                   result = await fetchConversationThreads(tu.input);
@@ -310,6 +317,7 @@ export function useAgentLoop({
                   type: "tool_result",
                   tool_use_id: tu.id,
                   content: JSON.stringify(result),
+                  ...(isErrorResult(result) ? { is_error: true } : {}),
                 };
               } catch (err) {
                 return {
@@ -392,7 +400,7 @@ export function useAgentLoop({
         setStatus(null);
       }
     },
-    [datasetSummary, dataset]
+    [datasetSummary, dataset, mode]
   );
 
   const answer = useCallback(
@@ -455,6 +463,8 @@ export function useAgentLoop({
       const blocks: AnyBlock[] = [...attachmentBlocks];
       if (text) blocks.push({ type: "text", text });
       if (blocks.length === 0) return;
+      const decoration = decorateRef.current?.() ?? null;
+      if (decoration) blocks.push({ type: "text", text: decoration });
 
       const userMsg: UIMessage = { role: "user", blocks };
       const next = [...messagesRef.current, userMsg];

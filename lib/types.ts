@@ -82,6 +82,9 @@ export interface Opportunity {
   probability?: number
   closedAt?: string
   updatedAt?: string
+  /** Raw GHL fields, kept by transformOpportunity's spread (present on every cached opportunity, checked 2026-11-02). */
+  lastStageChangeAt?: string
+  lastStatusChangeAt?: string
   source?: string
   campaignId?: string
   funnelId?: string
@@ -354,6 +357,12 @@ export interface DashboardPayload {
    * hit must never crash the page.
    */
   ads?: AdsReport
+  /**
+   * GHL's dataType per custom field, keyed "<model>:<name>" (lib/sync.ts
+   * customFieldTypeMap). Optional for the same reason as `ads`: a payload cached
+   * before it existed has none, and custom dates stay unavailable until the next sync.
+   */
+  customFieldTypes?: Record<string, string>
   meta: {
     totalContacts: number
     totalOpportunities: number

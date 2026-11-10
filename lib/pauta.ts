@@ -4,6 +4,7 @@
 // not re-inline isPaidTraffic / isDePauta / resolveCampaignName elsewhere.
 
 import type { Opportunity, Pauta } from "@/lib/types"
+import { toUTCDateStr } from "@/lib/date-range"
 
 // Paid-traffic source/medium vocabularies. Social + search together — an
 // opportunity is "paid traffic" if its GHL source or ad medium matches any of
@@ -331,4 +332,37 @@ export function groupCampaignsByFamily(
     })
   }
   return groups
+}
+
+/**
+ * pautaId → its 0-based position in ITS CONTACT'S ENTIRE pauta history, oldest
+ * first. Rank 0 is the contact's first-ever pauta ("Primer ingreso", a unique
+ * lead); every later one is a "reingreso". Rank against the FULL, date-unfiltered
+ * pauta set: ranking a filtered slice would relabel an in-window follow-up as a
+ * first entry. Pautas without a contact are not keyed (they read as rank 0).
+ * Shared by the Marketing dashboard and the AI panel's leads_pauta_unique.
+ */
+export function rankPautasByContact(allPautas: Pauta[]): Map<string, number> {
+  const byContact = new Map<string, Pauta[]>()
+  for (const p of allPautas) {
+    if (!p.contactId) continue
+    const arr = byContact.get(p.contactId) ?? []
+    arr.push(p)
+    byContact.set(p.contactId, arr)
+  }
+  const ranks = new Map<string, number>()
+  for (const arr of byContact.values()) {
+    arr.sort((a, b) => toUTCDateStr(a.createdAt).localeCompare(toUTCDateStr(b.createdAt)))
+    arr.forEach((p, i) => ranks.set(p.id, i))
+  }
+  return ranks
+}
+
+
+// Strip " - URL - NUMERIC_ID" suffix from nombrePauta (e.g. "TITLE - https://... - 120241019662550611")
+// so only the campaign title shows in compact results and aggregate keys.
+export function campaignTitle(s: string | null | undefined): string | undefined {
+  if (!s) return undefined;
+  const idx = s.indexOf(" - http");
+  return idx !== -1 ? s.slice(0, idx).trim() : s;
 }

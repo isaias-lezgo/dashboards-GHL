@@ -26,6 +26,7 @@ import type { Opportunity, Contact, Call, Message, Task, Appointment, Pauta, Pip
 import { Users, TrendingUp, Target, DollarSign, CalendarDays } from "lucide-react"
 import { PLATFORM_COLORS, PLATFORM_ORDER, platformLabel } from "@/lib/source-platform"
 import { isWonOpp } from "@/lib/opportunity-status"
+import { APPT_STATUS_ORDER } from "@/lib/appointment-status"
 import { ChartDrillDrawer, DRILL_CLOSED, type DrillState } from "./chart-drill-drawer"
 import {
   BRAND_AMBER,
@@ -116,7 +117,6 @@ const APPT_STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   invalid:   { label: "Inválida",   color: "#6b7280" },
 }
 
-const KNOWN_APPT_STATUS_ORDER = ["showed", "confirmed", "new", "noshow", "cancelled", "invalid"]
 
 function apptStatusVisual(status: string, fallbackIndex: number): { label: string; color: string } {
   const known = APPT_STATUS_CONFIG[status]
@@ -370,8 +370,8 @@ export function SalesDashboard({ opportunities, allOpportunities, contacts, allC
       byStatus.get(a.status)!.push(a)
     }
     const statuses = [...byStatus.keys()].sort((a, b) => {
-      const ai = KNOWN_APPT_STATUS_ORDER.indexOf(a)
-      const bi = KNOWN_APPT_STATUS_ORDER.indexOf(b)
+      const ai = APPT_STATUS_ORDER.indexOf(a)
+      const bi = APPT_STATUS_ORDER.indexOf(b)
       if (ai === -1 && bi === -1) return a.localeCompare(b)
       if (ai === -1) return 1
       if (bi === -1) return -1

@@ -1,0 +1,1069 @@
+// Verification for the copilot's second round of capabilities. Run: pnpm verify:capabilities
+//
+// Plan: docs/superpowers/plans/2026-11-02-copiloto-robusto.md — several sources
+// in one chart, proportions, custom DATE fields, combined fields, outcome,
+// matrix, "días desde" and conversations. Same discipline as verify-widgets:
+// a silent bug here is a plausible chart counting the wrong population.
+//
+// Wrapped in main() rather than using top-level await: this package is CJS.
+import assert from "node:assert/strict";
+import {
+  BUCKETS,
+  FILTER_OPS,
+  SOURCES,
+  VIZ_TYPES,
+  conversationDaysOf,
+  dashboardDocSchema,
+  edgesOf,
+  fallbacksOf,
+  glossaryKind,
+  parseDoc,
+  seriesOf,
+  WIDGET_SPEC_JSON_SCHEMA,
+  FILTER_SPEC_JSON_SCHEMA,
+  widgetSpecSchema,
+  type DashboardDoc,
+  type GlossaryEntry,
+  type WidgetSpec,
+} from "../lib/widgets/spec";
+import { section, check, q, makeFixture, mkContact, mkOpp } from "./lib/widget-test-kit";
+import {
+  EMPTY_VALUE,
+  dateValue,
+  fieldValuesWithFallbacks,
+  isDateField,
+  matchesFilter,
+  outcomeOf,
+  resolveCtx,
+  type EngineContext,
+} from "../lib/widgets/semantic";
+import type { Opportunity } from "../lib/types";
+import { QueryError } from "../lib/widgets/semantic";
+import { ageBucketKey, runQuery } from "../lib/widgets/engine";
+import { byLabel, dim } from "./lib/widget-test-kit";
+import { buildCatalog, validateWidget } from "../lib/widgets/validate";
+import { channelLabel, contactMessageDates, lastOutboundFrom, needsThread, toIso, type ConversationRow, type ConversationState } from "../lib/conversation-index";
+import { conversationDaysNeeded } from "../lib/widgets/engine";
+import { buildPanelCatalogSummary, buildPanelSnapshot, describeFilterChips, describeWidget } from "../lib/widgets/describe";
+import { PANEL_MODE_TOOLS, executePanelTool, type PanelToolDeps } from "../lib/widgets/tools";
+import { resolveTerm } from "../lib/widgets/terms";
+import { activeGlobalFilters, initialFilterState } from "../lib/widgets/filter-state";
+import { listFieldValues } from "../lib/widgets/semantic";
+import { ids } from "./lib/widget-test-kit";
+import type { FilterControl } from "../lib/widgets/spec";
+import { ASSISTANT_SYSTEM_PROMPT, PANEL_PROMPT_SECTION } from "../lib/ai-context";
+import { planEnsure, stableForEngine } from "../hooks/use-conversation-index";
+import { checkAsync } from "./lib/widget-test-kit";
+import type { QuerySpec, VizType } from "../lib/widgets/spec";
+import type { FilterClause, MetricId, RelatedFilterSpec, SeriesSpec, SourceId, TimeSpec } from "../lib/widgets/spec";
+import { customFieldTypeMap } from "../lib/sync";
+
+// ─── Fixtures ─────────────────────────────────────────────────────────────────
+
+const NOW_ISO = "2026-10-29T12:00:00.000Z";
+
+// A KPI exactly as the first phase saved it — no key added after 2026-10-30.
+const LEGACY_KPI = {
+  title: "Leads del mes",
+  subtitle: null,
+  viz: "kpi",
+  size: "s",
+  height: "compact",
+  query: {
+    source: "contacts",
+    metrics: [{ metric: "count", label: null }],
+    groupBy: [],
+    filters: [],
+    relatedFilters: [],
+    time: { field: "createdAt", range: "inherit", from: null, to: null, compare: "none" },
+    globalFilters: "inherit",
+    sort: { by: "value", dir: "desc" },
+    limit: null,
+  },
+  text: null,
+  target: null,
+  nativeId: null,
+  prompt: "Leads del mes",
+};
+
+const LEGACY_DOC = {
+  schemaVersion: 1,
+  tabs: [
+    {
+      id: "t1",
+      title: "Ventas",
+      widgets: [
+        { ...LEGACY_KPI, id: "w1", createdAt: NOW_ISO, createdBy: "ai", updatedAt: NOW_ISO },
+        {
+          ...LEGACY_KPI,
+          id: "w2",
+          title: "Citas por etapa",
+          viz: "stacked_bar",
+          size: "l",
+          height: "normal",
+          query: {
+            ...LEGACY_KPI.query,
+            source: "appointments",
+            groupBy: [
+              { dimension: "startTime", bucket: "month", join: null },
+              { dimension: "opportunity.stage", bucket: null, join: "latest" },
+            ],
+            time: { field: "startTime", range: "inherit", from: null, to: null, compare: "none" },
+          },
+          createdAt: NOW_ISO,
+          createdBy: "ai",
+          updatedAt: NOW_ISO,
+        },
+      ],
+    },
+  ],
+  filters: {
+    defaultDate: "last_month",
+    defaultPipelines: [],
+    controls: [
+      { id: "k1", kind: "field", entity: "opportunity", label: "Asesor", field: "assignedTo", defaultValues: [], clause: null, defaultOn: false },
+    ],
+  },
+  glossary: [
+    {
+      id: "g1",
+      term: "clientes activos",
+      aliases: [],
+      entity: "contact",
+      meaning: [{ anyOf: [{ field: "tags", op: "in", values: ["cliente activo"] }] }],
+      note: "",
+      createdAt: NOW_ISO,
+    },
+  ],
+};
+
+function docWithGlossary(entry: Partial<GlossaryEntry>): DashboardDoc {
+  const doc = JSON.parse(JSON.stringify(LEGACY_DOC)) as DashboardDoc;
+  doc.glossary = [{ ...doc.glossary[0], term: "sucursal", entity: "opportunity", ...entry }];
+  return doc;
+}
+
+const withQuery = (over: Record<string, unknown>): unknown => ({ ...LEGACY_KPI, query: { ...LEGACY_KPI.query, ...over } });
+
+const extraSeries = (label: string) => ({
+  label,
+  source: "contacts",
+  metric: "count",
+  filters: [],
+  relatedFilters: [],
+  dateField: "createdAt",
+  dimension: null,
+});
+
+// ─── Task 1: vocabulary and optional properties ───────────────────────────────
+
+function specSection(): void {
+  section("spec: vocabulary and optional properties");
+
+  check("a v1 doc saved before this change still parses", () => {
+    const doc = parseDoc(JSON.parse(JSON.stringify(LEGACY_DOC)));
+    assert.equal(doc.tabs[0].widgets.length, 2);
+    assert.equal(seriesOf(doc.tabs[0].widgets[0].query!).length, 0);
+    assert.equal(glossaryKind(doc.glossary[0]), "condition");
+  });
+
+  check("new vocabulary is accepted", () => {
+    assert.ok((VIZ_TYPES as readonly string[]).includes("matrix"));
+    assert.ok((SOURCES as readonly string[]).includes("conversations"));
+    assert.ok((BUCKETS as readonly string[]).includes("age"));
+    assert.ok((FILTER_OPS as readonly string[]).includes("days_ago_gte"));
+    assert.ok((FILTER_OPS as readonly string[]).includes("days_ago_lte"));
+  });
+
+  check("a multi-series widget with a ratio parses", () => {
+    const w = withQuery({
+      series: [{ ...extraSeries("Con oportunidad"), relatedFilters: [{ entity: "opportunity", quantifier: "any", conditions: [] }] }],
+      ratio: { label: "% con oportunidad", numerator: 1, denominator: 0 },
+      conversationDays: null,
+    });
+    const parsed = widgetSpecSchema.safeParse(w);
+    assert.ok(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues[0]));
+  });
+
+  check("limits: 6 extra series, 4 fallbacks and 9 edges are refused", () => {
+    const six = Array.from({ length: 6 }, (_, i) => extraSeries(`S${i}`));
+    assert.equal(widgetSpecSchema.safeParse(withQuery({ series: six })).success, false);
+    const fourFallbacks = withQuery({ groupBy: [{ dimension: "cf:A", bucket: null, join: null, fallbacks: ["cf:B", "cf:C", "cf:D", "cf:E"] }] });
+    assert.equal(widgetSpecSchema.safeParse(fourFallbacks).success, false);
+    const nineEdges = withQuery({ groupBy: [{ dimension: "createdAt", bucket: "age", join: null, edges: [1, 2, 3, 4, 5, 6, 7, 8, 9] }] });
+    assert.equal(widgetSpecSchema.safeParse(nineEdges).success, false);
+  });
+
+  check("glossary field kind needs fields, condition kind needs meaning", () => {
+    assert.equal(dashboardDocSchema.safeParse(docWithGlossary({ kind: "field", fields: [], meaning: [] })).success, false);
+    assert.ok(dashboardDocSchema.safeParse(docWithGlossary({ kind: "field", fields: ["cf:Sucursal VAEO", "cf:Sucursal MESH"], meaning: [] })).success);
+    assert.equal(dashboardDocSchema.safeParse(docWithGlossary({ kind: "condition", meaning: [] })).success, false);
+  });
+
+  check("normalizers give defaults", () => {
+    assert.deepEqual(edgesOf({ dimension: "createdAt", bucket: "age", join: null }), [7, 15, 30, 60]);
+    assert.deepEqual(edgesOf({ dimension: "createdAt", bucket: "age", join: null, edges: [10, 20] }), [10, 20]);
+    assert.equal(conversationDaysOf(q({})), 60);
+    assert.equal(conversationDaysOf(q({ conversationDays: 120 })), 120);
+    assert.deepEqual(fallbacksOf({}), []);
+    assert.deepEqual(fallbacksOf({ fallbacks: null }), []);
+    assert.deepEqual(fallbacksOf({ fallbacks: ["cf:B"] }), ["cf:B"]);
+  });
+
+  check("the model-facing JSON schema carries the new properties", () => {
+    type Props = { properties: Record<string, unknown> };
+    const props = (o: unknown): Record<string, unknown> => (o as Props).properties;
+    const query = (props(WIDGET_SPEC_JSON_SCHEMA).query as { anyOf: unknown[] }).anyOf[0];
+    for (const k of ["series", "ratio", "conversationDays"]) assert.ok(k in props(query), k);
+    const groupItem = (props(query).groupBy as { items: unknown }).items;
+    for (const k of ["fallbacks", "edges"]) assert.ok(k in props(groupItem), k);
+    assert.ok("fallbacks" in props(FILTER_SPEC_JSON_SCHEMA));
+  });
+
+  check("a legacy widget spec type-checks without the new keys", () => {
+    const w: WidgetSpec = LEGACY_KPI as WidgetSpec;
+    assert.ok(widgetSpecSchema.safeParse(w).success);
+  });
+}
+
+// ─── Task 2: custom field types in the payload ────────────────────────────────
+
+function syncSection(): void {
+  section("sync: custom field types");
+
+  check("customFieldTypeMap keys by model and name", () => {
+    const m = customFieldTypeMap([
+      { id: "1", name: "Fecha de Cierre", dataType: "DATE", model: "opportunity" },
+      { id: "2", name: "Fecha de Cierre", dataType: "TEXT", model: "contact" },
+      { id: "3", name: "Sin tipo" },
+    ]);
+    assert.deepEqual(m, { "opportunity:Fecha de Cierre": "DATE", "contact:Fecha de Cierre": "TEXT" });
+  });
+
+  check("a field without model is a contact field and dataType is upper-cased", () => {
+    assert.deepEqual(customFieldTypeMap([{ id: "1", name: "Cumpleaños", dataType: "date" }]), { "contact:Cumpleaños": "DATE" });
+  });
+}
+
+// ─── Task 3: semantic layer ───────────────────────────────────────────────────
+
+type Row = Record<string, unknown>;
+
+function fixtureWithTypes(types: Record<string, string> | null): EngineContext {
+  return { ...makeFixture().ctx, customFieldTypes: types };
+}
+
+// Combined-field fixture: the channel lives on the opportunity, or else on its contact.
+function makeComboFixture(): { ctx: EngineContext; o: Record<string, Opportunity> } {
+  const contacts = [
+    mkContact("c1"),
+    mkContact("c2", { customFieldsResolved: { "Canal de Contacto": "Facebook" } }),
+    mkContact("c3"),
+  ];
+  const o = {
+    o1: mkOpp("o1", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", { customFieldsResolved: { "Canal de contacto": "WhatsApp" } }),
+    o2: mkOpp("o2", "c2", "p1", "Nuevo", "2026-10-02T12:00:00Z"),
+    o3: mkOpp("o3", "c3", "p1", "Nuevo", "2026-10-03T12:00:00Z"),
+    oBoth: mkOpp("oBoth", "c3", "p1", "Nuevo", "2026-10-04T12:00:00Z", { customFieldsResolved: { "Sucursal VAEO": "Tanarah", "Sucursal MESH": "Valle" } }),
+    oMesh: mkOpp("oMesh", "c3", "p1", "Nuevo", "2026-10-05T12:00:00Z", { customFieldsResolved: { "Sucursal MESH": "Valle" } }),
+  };
+  const base = makeFixture().ctx;
+  return { ctx: { ...base, dataset: { ...base.dataset, contacts, opportunities: Object.values(o) } }, o };
+}
+
+function semanticSection(): void {
+  section("semantic: custom dates, combined fields, outcome, relative filters");
+
+  check("dateValue reads epoch number, epoch string and ISO the same day", () => {
+    const ctx = resolveCtx(fixtureWithTypes({ "opportunity:Fecha de Cierre": "DATE" }));
+    for (const v of [1790812800000, "1790812800000", "2026-10-01T00:00:00.000Z"]) {
+      const d = dateValue("opportunities", { customFieldsResolved: { "Fecha de Cierre": v } }, "cf:Fecha de Cierre", ctx);
+      assert.ok(d, String(v));
+      assert.deepEqual([d.getFullYear(), d.getMonth(), d.getDate()], [2026, 9, 1], String(v));
+    }
+  });
+
+  check("a TEXT custom field that looks like a date is not a date", () => {
+    const ctx = fixtureWithTypes({ "contact:Fecha de última asignación": "TEXT" });
+    assert.equal(isDateField("contacts", "cf:Fecha de última asignación", ctx), false);
+    assert.equal(dateValue("contacts", { customFieldsResolved: { "Fecha de última asignación": "20/05/2026" } }, "cf:Fecha de última asignación", resolveCtx(ctx)), null);
+  });
+
+  check("unknown types (old cache) make custom dates unavailable", () => {
+    assert.equal(isDateField("opportunities", "cf:Fecha de Cierre", fixtureWithTypes(null)), false);
+    assert.equal(isDateField("opportunities", "cf:Fecha de Cierre", fixtureWithTypes({ "opportunity:fecha de cierre": "DATE" })), true);
+  });
+
+  check("stage and status change dates are opportunity dates; contact dates reach through", () => {
+    const ctx = fixtureWithTypes({});
+    assert.equal(isDateField("opportunities", "lastStageChangeAt", ctx), true);
+    assert.equal(isDateField("opportunities", "lastStatusChangeAt", ctx), true);
+    assert.equal(isDateField("appointments", "contact.createdAt", ctx), true);
+    assert.equal(isDateField("contacts", "contact.createdAt", ctx), false);
+  });
+
+  check("fallbacks read the first filled field, crossing to the contact", () => {
+    const { ctx, o } = makeComboFixture();
+    const r = resolveCtx(ctx);
+    const fields = ["cf:Canal de contacto", "contact.cf:Canal de Contacto"];
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o1 as unknown as Row, fields, r), ["WhatsApp"]);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o2 as unknown as Row, fields, r), ["Facebook"]);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.o3 as unknown as Row, fields, r), [EMPTY_VALUE]);
+  });
+
+  check("fallback filter agrees with fallback grouping", () => {
+    const { ctx, o } = makeComboFixture();
+    const r = resolveCtx(ctx);
+    const f = { field: "cf:Sucursal VAEO", op: "eq" as const, values: ["Valle"], fallbacks: ["cf:Sucursal MESH"] };
+    assert.equal(matchesFilter("opportunities", o.oBoth as unknown as Row, f, r), false);
+    assert.equal(matchesFilter("opportunities", o.oMesh as unknown as Row, f, r), true);
+    assert.deepEqual(fieldValuesWithFallbacks("opportunities", o.oBoth as unknown as Row, ["cf:Sucursal VAEO", "cf:Sucursal MESH"], r), ["Tanarah"]);
+  });
+
+  check("outcome follows isWonOpp and folds abandoned into Perdida", () => {
+    const base = mkOpp("x", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z");
+    assert.equal(outcomeOf({ ...base, status: "open", stage: "Negocio Ganado" }), "Ganada");
+    assert.equal(outcomeOf({ ...base, status: "won" }), "Ganada");
+    assert.equal(outcomeOf({ ...base, status: "abandoned" }), "Perdida");
+    assert.equal(outcomeOf({ ...base, status: "lost" }), "Perdida");
+    assert.equal(outcomeOf({ ...base, status: "open" }), "Abierta");
+  });
+
+  check("days_ago filters count whole local days from ctx.now", () => {
+    const ctx = resolveCtx(fixtureWithTypes({}));
+    const opp = { ...mkOpp("s16", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z"), lastStageChangeAt: new Date(2026, 9, 13, 23, 0, 0).toISOString() } as unknown as Row;
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }, ctx), true);
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["17"] }, ctx), false);
+    assert.equal(matchesFilter("opportunities", opp, { field: "lastStageChangeAt", op: "days_ago_lte", values: ["16"] }, ctx), true);
+    const noDate = mkOpp("nd", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z") as unknown as Row;
+    assert.equal(matchesFilter("opportunities", noDate, { field: "lastStageChangeAt", op: "days_ago_gte", values: ["1"] }, ctx), false);
+  });
+}
+
+// ─── Task 4: age buckets, custom-date windows, margins ─────────────────────────
+
+const ALL: TimeSpec = { field: "createdAt", range: "all", from: null, to: null, compare: "none" };
+const WON: FilterClause = { anyOf: [{ field: "won", op: "eq", values: ["true"] }] };
+const OCT1_UTC = "1790812800000"; // 2026-10-01T00:00:00Z, how GHL stores a DATE field
+
+function makeCloseDateFixture(): EngineContext {
+  const cf = (v?: string) => (v ? { customFieldsResolved: { "Fecha de Cierre": v } } : {});
+  const opps = [
+    mkOpp("oA", "c1", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 1000, ...cf("1791158400000") }), // Oct 5
+    mkOpp("oB", "c1", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 2000, ...cf(OCT1_UTC) }),
+    mkOpp("oC", "c2", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 300 }),
+    mkOpp("oD", "c2", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 400 }),
+    mkOpp("oE", "c3", "p1", "Ganado", "2026-09-01T12:00:00Z", { status: "won", value: 500, ...cf("1789430400000") }), // Sep 15
+    mkOpp("oF", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { value: 900, ...cf("1791590400000") }), // Oct 10, open
+  ];
+  const base = makeFixture().ctx;
+  return { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: { "opportunity:Fecha de Cierre": "DATE" } };
+}
+
+function makeAgeFixture(): EngineContext {
+  const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString(); // now = 2026-10-29 12:00 local
+  const opps = [
+    mkOpp("a3", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(3) }),
+    mkOpp("a20", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(20) }),
+    mkOpp("a90", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(90) }),
+    mkOpp("aNone", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z"),
+    mkOpp("aFuture", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(-2) }),
+  ];
+  const base = makeFixture().ctx;
+  return { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: {} };
+}
+
+function engineDimsSection(): void {
+  section("engine: age buckets, custom-date windows, margins");
+
+  check("age buckets: 7/8, 15/16, 60/61 borders, future and missing", () => {
+    const e = [7, 15, 30, 60];
+    assert.deepEqual([0, 7, 8, 15, 16, 30, 31, 60, 61].map((d) => ageBucketKey(d, e)), ["a0", "a0", "a1", "a1", "a2", "a2", "a3", "a3", "a4"]);
+    assert.equal(ageBucketKey(-1, e), "future");
+    assert.equal(ageBucketKey(null, e), EMPTY_VALUE);
+  });
+
+  check("an age dimension shows every range even at zero, in order", () => {
+    const res = runQuery(q({ groupBy: [{ dimension: "lastStageChangeAt", bucket: "age", join: null }], time: ALL }), makeAgeFixture());
+    assert.deepEqual(res.rows.map((r) => r.label[0]), ["0–7 días", "8–15 días", "16–30 días", "31–60 días", "Más de 60 días", "Fecha futura", "Sin fecha"]);
+    assert.deepEqual(res.rows.map((r) => r.values[0]), [1, 0, 1, 0, 1, 1, 1]);
+  });
+
+  check("custom date window drops undated rows and says how many", () => {
+    const res = runQuery(
+      q({ metrics: [{ metric: "value_sum", label: null }], filters: [WON], time: { field: "cf:Fecha de Cierre", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "none" } }),
+      makeCloseDateFixture()
+    );
+    assert.equal(res.totals[0], 3000);
+    assert.ok(res.meta.warnings.includes("2 oportunidades sin «Fecha de Cierre» no aparecen"), res.meta.warnings.join(" | "));
+    assert.equal(res.meta.undated?.records.length, 2);
+  });
+
+  check("a close date of Oct 1 00:00Z buckets in October; undated show last on an all-time axis", () => {
+    const res = runQuery(q({ metrics: [{ metric: "value_sum", label: null }], filters: [WON], groupBy: [dim("cf:Fecha de Cierre", "month")], sort: { by: "natural", dir: "asc" }, time: ALL }), makeCloseDateFixture());
+    const v = byLabel(res);
+    assert.equal(v["oct 2026"], 3000);
+    assert.equal(v["sep 2026"], 500);
+    assert.equal(res.rows[res.rows.length - 1].label[0], "Sin Fecha de Cierre");
+  });
+
+  check("custom date with an old cache is pending, not an unknown field", () => {
+    assert.throws(
+      () => runQuery(q({ time: { ...ALL, field: "cf:Fecha de Cierre" } }), { ...makeCloseDateFixture(), customFieldTypes: null }),
+      (e: unknown) => e instanceof QueryError && e.code === "pending" && /después de la próxima actualización/.test(e.message)
+    );
+  });
+
+  check("margins measure deduped records, not summed cells", () => {
+    const base = makeFixture().ctx;
+    const contacts = [mkContact("m1", { assignedTo: "Ana", tags: ["vip", "b"] }), mkContact("m2", { assignedTo: "Ana", tags: ["vip"] })];
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("assignedTo"), dim("tags")], time: ALL }), { ...base, dataset: { ...base.dataset, contacts } });
+    assert.equal(res.margins!.first["Ana"][0], 2);
+    assert.equal(res.margins!.second["vip"][0], 2);
+    assert.equal(res.margins!.second["b"][0], 1);
+    assert.equal(runQuery(q({ source: "contacts", groupBy: [dim("assignedTo")], time: ALL }), base).margins, null);
+  });
+
+  check("outcome stacks in Ganada, Abierta, Perdida order", () => {
+    const base = makeFixture().ctx;
+    const opps = [
+      mkOpp("l1", "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", { status: "lost" }),
+      mkOpp("l2", "c1", "p1", "Nuevo", "2026-10-02T12:00:00Z", { status: "abandoned" }),
+      mkOpp("w1", "c2", "p1", "Nuevo", "2026-10-03T12:00:00Z", { status: "won" }),
+      mkOpp("op", "c3", "p1", "Nuevo", "2026-10-04T12:00:00Z"),
+    ];
+    const res = runQuery(q({ groupBy: [dim("createdAt", "month"), dim("outcome")], time: ALL }), { ...base, dataset: { ...base.dataset, opportunities: opps } });
+    assert.deepEqual(res.rows.map((r) => r.label[1]), ["Ganada", "Abierta", "Perdida"]);
+    assert.deepEqual(res.rows.map((r) => r.values[0]), [1, 1, 2]);
+  });
+}
+
+// ─── Task 5: several series and proportions ───────────────────────────────────
+
+const OCT: TimeSpec = { field: "createdAt", range: "absolute", from: "2026-10-01", to: "2026-10-31", compare: "none" };
+const ANY_OPP: RelatedFilterSpec = { entity: "opportunity", quantifier: "any", conditions: [] };
+const NONE_OPP: RelatedFilterSpec = { entity: "opportunity", quantifier: "none", conditions: [] };
+
+function series(label: string, source: SourceId, metric: MetricId, dateField: string, extra: Partial<SeriesSpec> = {}): SeriesSpec {
+  return { label, source, metric, filters: [], relatedFilters: [], dateField, dimension: null, ...extra };
+}
+
+// k1 Oct 2 (opp Oct 3), k2 Oct 9 (opp Sep 1), k3 Oct 9 (no opp), k9 Oct 20 (opp Nov 2, after the window).
+function makeSeriesFixture(): EngineContext {
+  const base = makeFixture().ctx;
+  const contacts = [
+    mkContact("k1", { createdAt: "2026-10-02T15:00:00Z" }),
+    mkContact("k2", { createdAt: "2026-10-09T15:00:00Z" }),
+    mkContact("k3", { createdAt: "2026-10-09T16:00:00Z" }),
+    mkContact("k9", { createdAt: "2026-10-20T15:00:00Z" }),
+  ];
+  const opps = [
+    mkOpp("pk1", "k1", "p1", "Nuevo", "2026-10-03T15:00:00Z"),
+    mkOpp("pk2", "k2", "p2", "Nuevo", "2026-09-01T15:00:00Z"),
+    mkOpp("pk9", "k9", "p1", "Nuevo", "2026-11-02T15:00:00Z"),
+  ];
+  return { ...base, now: new Date(2026, 10, 10, 12, 0, 0), dataset: { ...base.dataset, contacts, opportunities: opps } };
+}
+
+function seriesSection(): void {
+  section("engine: several series and proportions");
+  const ctx = makeSeriesFixture();
+
+  check("contacts and opportunities created per week share one axis", () => {
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], series: [series("Oportunidades", "opportunities", "count", "createdAt")], time: OCT }), ctx);
+    assert.deepEqual(res.meta.seriesLabels, ["Contactos", "Oportunidades"]);
+    assert.deepEqual(res.totals, [4, 1]);
+    assert.equal(res.meta.valueKind, "count");
+    const week5 = res.rows.filter((r) => r.key[0] === "2026-10-05");
+    assert.deepEqual(week5.map((r) => [r.label[1], r.values[0]]), [["Contactos", 2], ["Oportunidades", 0]]);
+  });
+
+  check("same-group proportion counts the condition over all time (cohort)", () => {
+    const res = runQuery(
+      q({ source: "contacts", series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "% con oportunidad", numerator: 1, denominator: 0 }, time: OCT }),
+      ctx
+    );
+    assert.equal(res.meta.ratio!.kind, "same_group");
+    assert.deepEqual(res.meta.ratio!.parts, [3, 4]);
+    assert.equal(res.totals[0], 0.75);
+    assert.equal(res.meta.valueKind, "rate");
+    assert.ok(res.meta.warnings.includes("Cuenta hasta hoy: los periodos recientes siguen madurando."), res.meta.warnings.join(" | "));
+  });
+
+  check("between-series ratio says they are not the same records", () => {
+    const res = runQuery(q({ source: "opportunities", metrics: [{ metric: "count", label: "Oportunidades" }], series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 }, time: OCT }), ctx);
+    assert.equal(res.meta.ratio!.kind, "between_series");
+    assert.deepEqual(res.meta.ratio!.parts, [1, 4]);
+    assert.ok(res.meta.warnings.includes("«Oportunidades» y «Contactos» no son los mismos registros: el cociente compara ritmos, no es una conversión."), res.meta.warnings.join(" | "));
+  });
+
+  check("ratio with zero denominator is null", () => {
+    const res = runQuery(q({ source: "opportunities", groupBy: [dim("createdAt", "week")], series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 }, time: OCT }), ctx);
+    const wk12 = res.rows.find((r) => r.key[0] === "2026-10-12")!;
+    assert.equal(wk12.values[0], null);
+    assert.deepEqual(wk12.parts, [0, 0]);
+    const empty = runQuery(q({ source: "opportunities", series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "x", numerator: 0, denominator: 1 }, time: { ...OCT, from: "2026-01-01", to: "2026-01-31" } }), ctx);
+    assert.deepEqual(empty.totals, [null]);
+  });
+
+  check("mixed units are refused", () => {
+    assert.throws(() => runQuery(q({ series: [series("Valor", "opportunities", "value_sum", "createdAt")], time: OCT }), ctx), /mezclan unidades/);
+  });
+
+  check("has-opportunity contact queries ignore the pipeline filter and say so", () => {
+    const res = runQuery(q({ source: "contacts", relatedFilters: [NONE_OPP], time: ALL }), { ...ctx, pipelineFilter: ["p1"] });
+    assert.equal(res.totals[0], 1);
+    assert.equal(res.meta.pipelineIgnored, true);
+    assert.ok(res.meta.warnings.includes("Ignora el filtro de pipeline: con él, todos los contactos tendrían oportunidad."));
+    const plain = runQuery(q({ source: "contacts", relatedFilters: [NONE_OPP], time: ALL }), ctx);
+    assert.equal(plain.meta.pipelineIgnored, undefined);
+  });
+
+  check("a single-source widget still returns exactly what it did", () => {
+    const res = runQuery(q({ groupBy: [dim("stage")], time: ALL }), makeFixture().ctx);
+    assert.deepEqual(byLabel(res), { "Primera Cita": 1, Propuesta: 1, "Negocio Ganado": 1, Seguimiento: 1 });
+    assert.equal(res.meta.seriesLabels, undefined);
+  });
+}
+
+// ─── Task 6: validation ───────────────────────────────────────────────────────
+
+function widget(viz: VizType, over: Partial<QuerySpec>): WidgetSpec {
+  return { ...(LEGACY_KPI as WidgetSpec), viz, size: "m", height: "normal", query: q({ source: "contacts", time: ALL, ...over }) };
+}
+
+function validateSection(): void {
+  section("validate: series, matrix, age, combined fields, conversations");
+  const cat = buildCatalog({ ...makeComboFixture().ctx, customFieldTypes: { "opportunity:Fecha de Cierre": "DATE" } });
+  const catOld = buildCatalog({ ...makeComboFixture().ctx, customFieldTypes: null });
+  const opps = series("Oportunidades", "opportunities", "count", "createdAt");
+  const weekly = { groupBy: [dim("createdAt", "week")], series: [opps] };
+  const one = (spec: WidgetSpec, path: string, re: RegExp) => {
+    const issues = validateWidget(spec, cat);
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    assert.equal(issues[0].path, path);
+    assert.match(issues[0].message, re);
+  };
+
+  check("valid multi-series and ratio widgets have no issues", () => {
+    assert.deepEqual(validateWidget(widget("grouped_bar", weekly), cat), []);
+    assert.deepEqual(validateWidget(widget("line", weekly), cat), []);
+    assert.deepEqual(validateWidget(widget("kpi", { series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "%", numerator: 1, denominator: 0 } }), cat), []);
+  });
+  check("stacked bars across sources are refused", () => one(widget("stacked_bar", weekly), "viz", /no se apilan series de fuentes distintas/));
+  check("a kpi with two series and no ratio is refused", () => one(widget("kpi", { series: [opps] }), "viz", /necesita una proporción/));
+  check("series take one axis only", () => one(widget("grouped_bar", { ...weekly, groupBy: [dim("createdAt", "week"), dim("source")] }), "query.groupBy", /solo hay un eje/));
+  check("a series date must be a date of its source", () => one(widget("grouped_bar", { ...weekly, series: [{ ...opps, dateField: "startTime" }] }), "query.series[0].dateField", /no es una fecha de opportunities/));
+  check("a category axis must exist in every series", () =>
+    one(widget("grouped_bar", { groupBy: [dim("city")], series: [opps] }), "query.series[0].dimension", /city/));
+  check("mixed units without a ratio are refused", () =>
+    one(widget("grouped_bar", { ...weekly, series: [{ ...opps, metric: "value_sum" }] }), "query.series", /mezclan unidades/));
+  check("no previous-period comparison with series", () =>
+    one(widget("grouped_bar", { ...weekly, time: { ...ALL, compare: "previous_period" } }), "query.time.compare", /varias series/));
+  check("ratio indexes must exist and differ", () =>
+    one(widget("kpi", { series: [opps], ratio: { label: "%", numerator: 2, denominator: 0 } }), "query.ratio", /no existen/));
+  check("a matrix needs exactly two dimensions and one metric", () => one(widget("matrix", { groupBy: [dim("source")] }), "viz", /2 dimensiones/));
+  check("age on a non-date is refused", () => one(widget("bar", { groupBy: [{ dimension: "source", bucket: "age", join: null }] }), "query.groupBy[0]", /no es una fecha/));
+  check("an unknown fallback field is refused", () =>
+    one(widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Canal de contacto"), fallbacks: ["contact.cf:Canal Inexistente"] }] }), "query.groupBy[0].fallbacks[0]", /Canal Inexistente/));
+  check("a fallback to the contact is accepted", () =>
+    assert.deepEqual(validateWidget(widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Canal de contacto"), fallbacks: ["contact.cf:Canal de Contacto"] }] }), cat), []));
+  check("conversations take no related filters", () =>
+    one(widget("kpi", { source: "conversations", time: { ...ALL, field: "lastMessageAt" }, relatedFilters: [ANY_OPP] }), "query.relatedFilters", /conversaciones/i));
+  check("a custom date is a valid period when GHL types it DATE, pending on an old cache", () => {
+    const spec = widget("kpi", { source: "opportunities", time: { ...OCT, field: "cf:Fecha de Cierre" } });
+    assert.deepEqual(validateWidget(spec, cat), []);
+    const issues = validateWidget(spec, catOld);
+    assert.equal(issues.length, 1);
+    assert.match(issues[0].message, /después de la próxima actualización/);
+  });
+}
+
+// ─── Task 7: the conversation index (pure part) ───────────────────────────────
+
+function convRow(over: Partial<ConversationRow>): ConversationRow {
+  return {
+    id: "cv",
+    contactId: "c1",
+    channel: "WhatsApp",
+    assignedTo: null,
+    lastMessageAt: null,
+    lastDirection: null,
+    unreadCount: 0,
+    createdAt: null,
+    lastOutboundAt: null,
+    waitingReply: false,
+    ...over,
+  };
+}
+
+function conversationIndexSection(): void {
+  section("conversations: pure index");
+  const NOW = Date.UTC(2026, 9, 29, 12);
+  const CUTOFF = NOW - 60 * 86_400_000;
+  const recent = new Date(NOW - 2 * 86_400_000).toISOString();
+  const old = new Date(NOW - 90 * 86_400_000).toISOString();
+
+  check("toIso reads epoch number, numeric string and ISO", () => {
+    assert.equal(toIso(1786082787710), new Date(1786082787710).toISOString());
+    assert.equal(toIso("1786082787710"), new Date(1786082787710).toISOString());
+    assert.equal(toIso("2026-10-01T10:00:00.000Z"), "2026-10-01T10:00:00.000Z");
+    assert.equal(toIso(""), null);
+    assert.equal(toIso(undefined), null);
+    assert.equal(toIso("no es fecha"), null);
+  });
+
+  check("a conversation ending outbound needs no thread; inbound inside the window does", () => {
+    assert.equal(needsThread("outbound", recent, CUTOFF), false);
+    assert.equal(needsThread("inbound", recent, CUTOFF), true);
+    assert.equal(needsThread("inbound", old, CUTOFF), false);
+    assert.equal(needsThread(null, recent, CUTOFF), true);
+  });
+
+  check("last outbound skips activities and counts automated messages", () => {
+    const out = { direction: "outbound", dateAdded: "2026-10-20T10:00:00.000Z", messageType: "TYPE_WHATSAPP", source: "workflow" };
+    const activity = { direction: "outbound", dateAdded: "2026-10-25T10:00:00.000Z", messageType: "TYPE_ACTIVITY_OPPORTUNITY" };
+    const inbound = { direction: "inbound", dateAdded: "2026-10-26T10:00:00.000Z", messageType: "TYPE_WHATSAPP" };
+    assert.equal(lastOutboundFrom([out, activity, inbound]), "2026-10-20T10:00:00.000Z");
+    assert.equal(lastOutboundFrom([inbound]), null);
+  });
+
+  check("channel labels are Spanish and fall back to Otro", () => {
+    assert.equal(channelLabel("TYPE_WHATSAPP"), "WhatsApp");
+    assert.equal(channelLabel("TYPE_EMAIL"), "Correo");
+    assert.equal(channelLabel("TYPE_SOMETHING_NEW"), "Otro");
+    assert.equal(channelLabel(undefined), "Otro");
+  });
+
+  check("contact dates take the max across conversations", () => {
+    const m = contactMessageDates([
+      convRow({ id: "a", lastMessageAt: "2026-10-10T00:00:00.000Z", lastOutboundAt: "2026-10-10T00:00:00.000Z" }),
+      convRow({ id: "b", lastMessageAt: "2026-10-20T00:00:00.000Z", lastOutboundAt: "2026-10-05T00:00:00.000Z" }),
+      convRow({ id: "c", contactId: "c2", lastMessageAt: "2026-10-01T00:00:00.000Z" }),
+    ]);
+    assert.deepEqual(m.get("c1"), { lastOutboundAt: "2026-10-10T00:00:00.000Z", lastMessageAt: "2026-10-20T00:00:00.000Z" });
+    assert.deepEqual(m.get("c2"), { lastOutboundAt: null, lastMessageAt: "2026-10-01T00:00:00.000Z" });
+  });
+}
+
+// ─── Task 8: conversations in the panel ───────────────────────────────────────
+
+function readyState(rows: ConversationRow[], days = 60): ConversationState {
+  return { status: "ready", days, rows, byContact: contactMessageDates(rows), truncated: false, threadErrors: 0 };
+}
+
+// now = 2026-10-29 12:00 local. x1/x2 open with a recent outbound, x3 open and its
+// contact silent for the whole window, x4 won (out of the matrix).
+function makeStaleFixture(): { ctx: EngineContext; rows: ConversationRow[] } {
+  const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString();
+  const base = makeFixture().ctx;
+  const opps = [
+    mkOpp("x1", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(3) }),
+    mkOpp("x2", "c2", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(5) }),
+    mkOpp("x3", "c3", "p1", "Nuevo", "2026-09-01T12:00:00Z", { lastStageChangeAt: at(20) }),
+    mkOpp("x4", "c1", "p1", "Nuevo", "2026-09-01T12:00:00Z", { status: "won", lastStageChangeAt: at(1) }),
+  ];
+  const rows = [
+    convRow({ id: "v1", contactId: "c1", lastMessageAt: at(1), lastDirection: "inbound", lastOutboundAt: at(2), waitingReply: true }),
+    convRow({ id: "v2", contactId: "c2", lastMessageAt: at(3), lastDirection: "outbound", lastOutboundAt: at(3) }),
+  ];
+  return { ctx: { ...base, dataset: { ...base.dataset, opportunities: opps }, customFieldTypes: {} }, rows };
+}
+
+const OPEN: FilterClause = { anyOf: [{ field: "outcome", op: "eq", values: ["Abierta"] }] };
+const staleMatrixQuery = q({
+  groupBy: [
+    { dimension: "lastStageChangeAt", bucket: "age", join: null },
+    { dimension: "contact.lastOutboundAt", bucket: "age", join: null },
+  ],
+  filters: [OPEN],
+  time: ALL,
+});
+const convQuery = q({ source: "conversations", time: { field: "lastMessageAt", range: "inherit", from: null, to: null, compare: "none" } });
+const cellOf = (res: ReturnType<typeof runQuery>, a: string, b: string) => res.rows.find((r) => r.label[0] === a && r.label[1] === b)?.values[0];
+
+async function conversationsEngineSection(): Promise<void> {
+  section("conversations in the panel");
+  const { ctx, rows } = makeStaleFixture();
+  const ready = { ...ctx, conversations: readyState(rows) };
+
+  check("pending conversations give a pending result, never zero rows", () => {
+    const res = runQuery(convQuery, { ...ctx, conversations: { status: "loading", days: 60, scanned: 100, threads: 3 } });
+    assert.equal(res.rows.length, 0);
+    assert.deepEqual(res.totals, [null]);
+    assert.equal(res.meta.conversations!.status, "loading");
+    const idle = runQuery(staleMatrixQuery, ctx);
+    assert.equal(idle.rows.length, 0);
+    assert.equal(idle.meta.conversations!.status, "loading");
+    const failed = runQuery(convQuery, { ...ctx, conversations: { status: "error", days: 60, message: "HTTP 500" } });
+    assert.equal(failed.meta.conversations!.status, "error");
+    assert.equal(failed.meta.conversations!.message, "HTTP 500");
+  });
+
+  check("stale matrix: open opps by stage age × our last outbound age", () => {
+    const res = runQuery(staleMatrixQuery, ready);
+    assert.equal(cellOf(res, "0–7 días", "0–7 días"), 2);
+    assert.equal(cellOf(res, "16–30 días", "Más de 60 días o sin mensajes"), 1);
+    const columns = [...new Set(res.rows.map((r) => r.label[1]))];
+    assert.ok(columns.includes("Más de 60 días o sin mensajes"));
+    assert.ok(!columns.includes("Más de 60 días"), columns.join(", "));
+    assert.equal(res.totals[0], 3);
+  });
+
+  check("a conversations card counts conversations and waiting replies", () => {
+    const res = runQuery({ ...convQuery, groupBy: [dim("waitingReply")], time: { ...convQuery.time, range: "all" } }, ready);
+    assert.deepEqual(byLabel(res), { "Sí": 1, No: 1 });
+  });
+
+  check("panel range wider than window shows the window notice", () => {
+    const res = runQuery({ ...convQuery, time: { ...convQuery.time, range: "all" } }, ready);
+    assert.ok(res.meta.warnings.includes("Mostrando los últimos 60 días de conversaciones."), res.meta.warnings.join(" | "));
+    const inside = runQuery({ ...convQuery, time: { ...convQuery.time, range: "last_7d" } }, ready);
+    assert.ok(!inside.meta.warnings.some((w) => w.startsWith("Mostrando")));
+  });
+
+  check("a widened window warns about load time", () => {
+    const res = runQuery({ ...convQuery, conversationDays: 120 }, { ...ctx, conversations: readyState(rows, 120) });
+    assert.ok(res.meta.warnings.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    const short = runQuery({ ...convQuery, conversationDays: 120 }, ready);
+    assert.equal(short.meta.conversations!.status, "loading", "a 60-day load does not serve a 120-day card");
+  });
+
+  check("days_ago beyond the window does not match and warns", () => {
+    const silentFor = (n: number) => q({ filters: [OPEN], relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: [String(n)] }] }] }], time: ALL });
+    assert.equal(runQuery(silentFor(16), ready).totals[0], 1);
+    const far = runQuery(silentFor(90), ready);
+    assert.equal(far.totals[0], 0);
+    assert.ok(far.meta.warnings.includes("No se puede medir más de 60 días con 60 días de conversaciones."), far.meta.warnings.join(" | "));
+  });
+
+  check("conversationDaysNeeded finds message dates in groupBy, related filters and the source", () => {
+    assert.equal(conversationDaysNeeded(staleMatrixQuery), 60);
+    assert.equal(conversationDaysNeeded(convQuery), 60);
+    assert.equal(conversationDaysNeeded({ ...convQuery, conversationDays: 120 }), 120);
+    assert.equal(conversationDaysNeeded(q({ relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["16"] }] }] }] })), 60);
+    assert.equal(conversationDaysNeeded(q({})), null);
+  });
+
+  const toolDeps = (ensure: PanelToolDeps["ensureConversations"]): PanelToolDeps =>
+    ({ engineCtx: () => ctx, ensureConversations: ensure, getDoc: () => JSON.parse(JSON.stringify(LEGACY_DOC)) } as unknown as PanelToolDeps);
+  const convWidget = { ...(LEGACY_KPI as WidgetSpec), query: { ...convQuery, time: { ...convQuery.time, range: "all" } } };
+
+  await checkAsync("preview of a conversations widget waits for the load", async () => {
+    const out = (await executePanelTool("preview_widget", { widget: convWidget }, toolDeps(async () => readyState(rows)))) as { totals?: unknown[]; error?: string };
+    assert.equal(out.error, undefined, out.error);
+    assert.deepEqual(out.totals, [2]);
+    const failed = (await executePanelTool("preview_widget", { widget: convWidget }, toolDeps(async () => ({ status: "error", days: 60, message: "HTTP 500" })))) as { error?: string };
+    assert.match(failed.error ?? "", /No se pudieron cargar las conversaciones: HTTP 500/);
+  });
+}
+
+// ─── Task 10: describe, labels, snapshot ──────────────────────────────────────
+
+function describeSection(): void {
+  section("describe: series, ratios, combined fields, ages, snapshot");
+  const contactsVsOpps = widget("grouped_bar", { groupBy: [dim("createdAt", "week")], series: [series("Oportunidades", "opportunities", "count", "createdAt")], time: { ...ALL, range: "inherit" } });
+  const shareSpec = widget("kpi", { series: [series("Con oportunidad", "contacts", "count", "createdAt", { relatedFilters: [ANY_OPP] })], ratio: { label: "% con oportunidad", numerator: 1, denominator: 0 } });
+  const betweenSpec = widget("kpi", { source: "opportunities", series: [series("Contactos", "contacts", "count", "createdAt")], ratio: { label: "Opps por contacto", numerator: 0, denominator: 1 } });
+  const bySucursal = widget("bar", { source: "opportunities", groupBy: [{ ...dim("cf:Sucursal VAEO"), fallbacks: ["cf:Sucursal MESH"] }] });
+  const staleMatrix: WidgetSpec = { ...widget("matrix", {}), query: staleMatrixQuery };
+
+  check("series are described with their source and date", () => {
+    assert.equal(describeWidget(contactsVsOpps), "Contactos (contactos por fecha de creación) y Oportunidades (oportunidades por fecha de creación) · por semana · hereda fechas");
+  });
+  check("a ratio says what it divides and which kind it is", () => {
+    assert.match(describeWidget(shareSpec), /% con oportunidad = Con oportunidad ÷ Contactos \(mismo grupo, cuenta hasta hoy\)/);
+    assert.match(describeWidget(betweenSpec), /Opps por contacto = Oportunidades ÷ Contactos \(cociente entre registros distintos\)/);
+  });
+  check("fallbacks and age ranges are described", () => {
+    assert.match(describeWidget(bySucursal), /por Sucursal VAEO \(o Sucursal MESH\)/);
+    assert.match(describeWidget(staleMatrix), /días desde el último cambio de etapa × días desde nuestro último mensaje/);
+  });
+  check("a widened conversation window is named", () => {
+    assert.match(describeWidget({ ...widget("kpi", {}), query: { ...convQuery, conversationDays: 120 } }), /conversaciones de 120 días/);
+    assert.doesNotMatch(describeWidget({ ...widget("kpi", {}), query: convQuery }), /conversaciones de/);
+  });
+  check("filter chips read relative days and combined fields", () => {
+    const spec = widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }] }, { anyOf: [{ field: "cf:Sucursal VAEO", op: "eq", values: ["Valle"], fallbacks: ["cf:Sucursal MESH"] }] }] });
+    const chips = describeFilterChips(spec);
+    assert.ok(chips.includes("Último cambio de etapa hace ≥ 16 días"), chips.join(" | "));
+    assert.ok(chips.includes("Sucursal VAEO (o Sucursal MESH) = «Valle»"), chips.join(" | "));
+  });
+  check("the snapshot carries field-kind glossary entries", () => {
+    const doc = docWithGlossary({ kind: "field", fields: ["cf:Sucursal VAEO", "cf:Sucursal MESH"], meaning: [] });
+    assert.ok(buildPanelSnapshot(doc, "t1", null, "—").includes(" - «sucursal» (campo) = cf:Sucursal VAEO → cf:Sucursal MESH"));
+  });
+  check("the catalog lists custom date fields and conversations", () => {
+    const text = buildPanelCatalogSummary({ ...makeCloseDateFixture() });
+    // 4 of the 6 opportunities carry a close date (oA, oB, oE, oF).
+    assert.ok(text.includes("Campos de fecha personalizados: cf:Fecha de Cierre (oportunidad, 67% con dato)"), text);
+    assert.ok(text.includes("Conversaciones: fuente «conversations»"), text);
+    const old = buildPanelCatalogSummary({ ...makeCloseDateFixture(), customFieldTypes: null });
+    assert.ok(old.includes("Campos de fecha personalizados: disponibles después de la próxima actualización"), old);
+  });
+}
+
+// ─── Task 11: glossary concepts of kind "field" ───────────────────────────────
+
+function makeSucursalFixture(overlap: boolean): EngineContext {
+  const base = makeFixture().ctx;
+  const opps = [
+    ...Array.from({ length: 6 }, (_, i) =>
+      mkOpp(`v${i}`, "c1", "p1", "Nuevo", "2026-10-01T12:00:00Z", {
+        customFieldsResolved: { "Sucursal VAEO": i % 2 ? "Tanarah" : "Valle", ...(overlap && i < 5 ? { "Sucursal MESH": "Centro" } : {}) },
+      })
+    ),
+    ...Array.from({ length: overlap ? 0 : 4 }, (_, i) => mkOpp(`m${i}`, "c2", "p2", "Nuevo", "2026-10-01T12:00:00Z", { customFieldsResolved: { "Sucursal MESH": "Centro" } })),
+  ];
+  return { ...base, dataset: { ...base.dataset, opportunities: opps } };
+}
+
+async function glossaryFieldSection(): Promise<void> {
+  section("glossary: concepts of kind field");
+
+  check("two disjoint fields named after the concept become a combined candidate", () => {
+    const r = resolveTerm("sucursal", "opportunity", makeSucursalFixture(false));
+    const comb = r.candidates.find((c) => c.kind === "combined_fields");
+    assert.ok(comb, JSON.stringify(r.candidates.map((c) => [c.kind, c.field])));
+    assert.deepEqual(comb.fields, ["cf:Sucursal VAEO", "cf:Sucursal MESH"]);
+    assert.equal(comb.records, 10);
+    assert.equal(r.materiallyDifferent, false);
+  });
+
+  check("overlapping fields do not combine", () => {
+    const r = resolveTerm("sucursal", "opportunity", makeSucursalFixture(true));
+    assert.equal(r.candidates.some((c) => c.kind === "combined_fields"), false);
+  });
+
+  await checkAsync("save_term kind field persists, and an unknown field is refused", async () => {
+    let doc = JSON.parse(JSON.stringify(LEGACY_DOC)) as DashboardDoc;
+    const ctx = makeSucursalFixture(false);
+    const deps = {
+      engineCtx: () => ctx,
+      getDoc: () => doc,
+      commit: async (mutate: (d: DashboardDoc) => DashboardDoc) => {
+        doc = mutate(doc);
+        return { ok: true as const, version: 2 };
+      },
+      now: () => NOW_ISO,
+      newId: () => "g2",
+    } as unknown as PanelToolDeps;
+    const ok = (await executePanelTool("save_term", { term: "sucursal", aliases: [], entity: "opportunity", kind: "field", fields: ["cf:Sucursal VAEO", "cf:Sucursal MESH"], meaning: [], note: "" }, deps)) as { ok?: boolean; error?: string };
+    assert.equal(ok.ok, true, ok.error);
+    const saved = doc.glossary.find((g) => g.term === "sucursal")!;
+    assert.equal(saved.kind, "field");
+    assert.deepEqual(saved.fields, ["cf:Sucursal VAEO", "cf:Sucursal MESH"]);
+    const bad = (await executePanelTool("save_term", { term: "ciudad", aliases: [], entity: "opportunity", kind: "field", fields: ["cf:Sucursal VAEO", "cf:Ciudad Inexistente"], meaning: [], note: "" }, deps)) as { error?: string };
+    assert.match(bad.error ?? "", /no se guardó/);
+  });
+
+  check("strict set is 8 tools without save_term", () => {
+    const strict = PANEL_MODE_TOOLS.filter((t) => (t as { strict?: boolean }).strict === true).map((t) => t.name).sort();
+    assert.deepEqual(strict, ["arrange_tab", "delete_tab", "delete_widgets", "forget_term", "get_dashboard", "get_widget_data", "move_widgets", "upsert_tab"]);
+  });
+}
+
+// ─── Task 12: a filter-bar control on a combined field ────────────────────────
+
+async function filterBarSection(): Promise<void> {
+  section("filter bar: combined-field control");
+  const { ctx } = makeComboFixture();
+  const ctrl: FilterControl = { id: "k9", kind: "field", entity: "opportunity", label: "Sucursal", field: "cf:Sucursal VAEO", fallbacks: ["cf:Sucursal MESH"], defaultValues: [], clause: null, defaultOn: false };
+  const filters = { defaultDate: null, defaultPipelines: [], controls: [ctrl] };
+
+  check("a combined-field control filters by first-filled value", () => {
+    const state = initialFilterState(filters, new Date(2026, 9, 29));
+    const active = activeGlobalFilters({ ...state, values: { k9: ["Valle"] } }, filters);
+    const res = runQuery(q({ time: ALL }), { ...ctx, globalFilters: active });
+    assert.deepEqual(ids(res), ["oMesh"]);
+  });
+
+  check("the control lists first-filled values", () => {
+    const values = listFieldValues("opportunity", "cf:Sucursal VAEO", resolveCtx(ctx), ["cf:Sucursal MESH"]).map((v) => [v.value, v.count]);
+    assert.deepEqual(values.filter(([v]) => v !== EMPTY_VALUE), [["Tanarah", 1], ["Valle", 1]]);
+  });
+
+  await checkAsync("set_panel_filters saves a control with fallbacks", async () => {
+    let doc = JSON.parse(JSON.stringify(LEGACY_DOC)) as DashboardDoc;
+    const deps = {
+      engineCtx: () => ctx,
+      getDoc: () => doc,
+      commit: async (mutate: (d: DashboardDoc) => DashboardDoc) => {
+        doc = mutate(doc);
+        return { ok: true as const, version: 2 };
+      },
+      getFilterState: () => initialFilterState(doc.filters, new Date(2026, 9, 29)),
+      applyFilterState: () => {},
+      now: () => NOW_ISO,
+      newId: () => "k9",
+    } as unknown as PanelToolDeps;
+    const out = (await executePanelTool(
+      "set_panel_filters",
+      { defaultDate: null, defaultPipelines: null, controls: [{ kind: "field", entity: "opportunity", label: "Sucursal", field: "cf:Sucursal VAEO", fallbacks: ["cf:Sucursal MESH"], defaultValues: [], clause: null, defaultOn: false }] },
+      deps
+    )) as { ok?: boolean; error?: string };
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(doc.filters.controls[0].fallbacks, ["cf:Sucursal MESH"]);
+  });
+}
+
+// ─── Task 13: the copilot's prompt ────────────────────────────────────────────
+
+function promptSection(): void {
+  section("prompt: the copilot knows the new capabilities");
+
+  check("panel prompt carries the new sections and the dictated copy", () => {
+    for (const h of ["## Cuando algo no se puede", "## Varias fuentes y proporciones", "## Fechas personalizadas", "## Campos combinados", "## Conversaciones", "## Días desde"]) {
+      assert.ok(PANEL_PROMPT_SECTION.includes(h), h);
+    }
+    assert.ok(PANEL_PROMPT_SECTION.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    assert.match(PANEL_PROMPT_SECTION, /cuando se puede/);
+  });
+
+  check("the assistant prompt does not carry panel-only sections", () => {
+    assert.ok(!ASSISTANT_SYSTEM_PROMPT.includes("## Cuando algo no se puede"));
+  });
+}
+
+// ─── Task 15: fixes found driving the real app ────────────────────────────────
+
+function appFixesSection(): void {
+  section("fixes found in the app");
+
+  check("the copilot is told to speak in the user's words, not spec names", () => {
+    assert.match(PANEL_PROMPT_SECTION, /nunca nombres internos del spec/);
+  });
+
+  check("stage and status change dates can be filtered, not only grouped", () => {
+    const spec = widget("kpi", { source: "opportunities", filters: [OPEN, { anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["16"] }] }] });
+    assert.deepEqual(validateWidget(spec, buildCatalog(makeAgeFixture())), []);
+    assert.equal(runQuery(spec.query!, makeAgeFixture()).totals[0], 2); // a20 and a90 (aNone has no date)
+  });
+
+  check("a matrix shows every column up to 20, not the 6-series cap", () => {
+    const base = makeFixture().ctx;
+    const stages = ["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8"];
+    const opps = stages.map((st, i) => mkOpp(`m${i}`, "c1", "p1", st, "2026-10-01T12:00:00Z", { assignedTo: "Ana" }));
+    const ctx = { ...base, dataset: { ...base.dataset, opportunities: opps }, pipelines: [{ id: "p1", name: "p1", stages }] };
+    const query = q({ groupBy: [dim("assignedTo"), dim("stage")], time: ALL });
+    const asMatrix = runQuery(query, ctx, { viz: "matrix" });
+    assert.deepEqual([...new Set(asMatrix.rows.map((r) => r.label[1]))], stages);
+    const asBars = runQuery(query, ctx);
+    assert.ok(asBars.rows.some((r) => r.label[1] === "Otros"), "bars keep the 6-series cap");
+  });
+
+  check("a table may mix units (one column per series); charts may not", () => {
+    const ctx = makeSeriesFixture();
+    const mixed = { groupBy: [dim("createdAt", "month")], series: [series("Valor", "opportunities", "value_sum", "createdAt")], time: OCT };
+    const res = runQuery(q({ source: "contacts", ...mixed }), ctx, { viz: "table" });
+    assert.deepEqual(res.meta.seriesKinds, ["count", "amount"]);
+    assert.equal(res.meta.valueKind, undefined);
+    const cat = buildCatalog(ctx);
+    assert.deepEqual(validateWidget(widget("table", mixed), cat), []);
+    assert.equal(validateWidget(widget("grouped_bar", mixed), cat).length, 1);
+    assert.throws(() => runQuery(q({ source: "contacts", ...mixed }), ctx, { viz: "grouped_bar" }), /mezclan unidades/);
+  });
+
+  check("the catalog says which opportunity dates hold data in this account", () => {
+    const text = buildPanelCatalogSummary(makeCloseDateFixture());
+    assert.ok(text.includes("Fechas de oportunidad con dato en esta cuenta: createdAt 100%, closedAt 0%"), text);
+    assert.match(PANEL_PROMPT_SECTION, /no la uses: elige una fecha con dato/);
+  });
+
+  check("a limit on a date axis keeps the most recent periods, never an Otros bar", () => {
+    const res = runQuery(q({ source: "contacts", groupBy: [dim("createdAt", "week")], limit: 2, sort: { by: "natural", dir: "asc" }, time: OCT }), makeSeriesFixture());
+    assert.deepEqual(res.rows.map((r) => r.key[0]), ["2026-10-19", "2026-10-26"]);
+    assert.ok(!res.rows.some((r) => r.label[0] === "Otros"));
+    assert.ok(res.meta.warnings.includes("Se muestran los últimos 2 periodos; los anteriores quedan fuera."), res.meta.warnings.join(" | "));
+  });
+}
+
+// ─── Final review fixes ───────────────────────────────────────────────────────
+
+function finalReviewSection(): void {
+  section("final review fixes");
+
+  check("days_ago filters must be on a date and carry a whole number of days", () => {
+    const cat = buildCatalog(makeAgeFixture());
+    const onStage = validateWidget(widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "stage", op: "days_ago_gte", values: ["16"] }] }] }), cat);
+    assert.equal(onStage.length, 1, JSON.stringify(onStage));
+    assert.match(onStage[0].message, /no es una fecha/);
+    const words = validateWidget(widget("kpi", { source: "opportunities", filters: [{ anyOf: [{ field: "lastStageChangeAt", op: "days_ago_gte", values: ["dos semanas"] }] }] }), cat);
+    assert.equal(words.length, 1, JSON.stringify(words));
+    assert.match(words[0].message, /número entero de días/);
+    const related = validateWidget(widget("kpi", { source: "opportunities", relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["x"] }] }] }] }), cat);
+    assert.equal(related.length, 1, JSON.stringify(related));
+    const ok = validateWidget(widget("kpi", { source: "opportunities", relatedFilters: [{ entity: "contact", quantifier: "any", conditions: [{ anyOf: [{ field: "lastOutboundAt", op: "days_ago_gte", values: ["16"] }] }] }] }), cat);
+    assert.deepEqual(ok, []);
+  });
+
+  check("a 60-day card measures 60 days even when the session loaded 90 for a sibling", () => {
+    const { ctx } = makeStaleFixture();
+    const at = (daysAgo: number) => new Date(2026, 9, 29 - daysAgo, 10, 0, 0).toISOString();
+    const rows = [
+      convRow({ id: "v1", contactId: "c1", lastMessageAt: at(1), lastDirection: "outbound", lastOutboundAt: at(1) }),
+      convRow({ id: "v2", contactId: "c2", lastMessageAt: at(70), lastDirection: "outbound", lastOutboundAt: at(70) }),
+    ];
+    const wide = { ...ctx, conversations: readyState(rows, 90) };
+    const alone = { ...ctx, conversations: readyState(rows.slice(0, 1), 60) };
+    const m60 = runQuery(staleMatrixQuery, wide);
+    assert.deepEqual(m60.rows.map((r) => [r.label[0], r.label[1], r.values[0]]), runQuery(staleMatrixQuery, alone).rows.map((r) => [r.label[0], r.label[1], r.values[0]]));
+    assert.ok(m60.rows.some((r) => r.label[1] === "Más de 60 días o sin mensajes"));
+    assert.ok(!m60.meta.warnings.includes("Recomendamos limitar el periodo a 60 días o menos para reducir el tiempo de carga."));
+    const all = { ...convQuery, time: { ...convQuery.time, range: "all" as const } };
+    assert.equal(runQuery(all, wide).totals[0], 1);
+    assert.equal(runQuery({ ...all, conversationDays: 90 }, wide).totals[0], 2);
+  });
+
+  check("progress frames do not change what the engine sees (no recompute per frame)", () => {
+    const first = stableForEngine({ status: "idle" }, { status: "loading", days: 60, scanned: 0, threads: 0 });
+    const later = stableForEngine(first, { status: "loading", days: 60, scanned: 900, threads: 40 });
+    assert.equal(later, first, "same object while the same load runs");
+    const wider = stableForEngine(first, { status: "loading", days: 90, scanned: 0, threads: 0 });
+    assert.notEqual(wider, first);
+    const ready = readyState([], 60);
+    assert.equal(stableForEngine(first, ready), ready);
+  });
+
+  check("after a reset (Actualizar) the index loads again instead of reusing the old one", () => {
+    const ready = readyState([], 60);
+    assert.deepEqual(planEnsure(ready, null, 60), { kind: "reuse" });
+    assert.deepEqual(planEnsure({ status: "idle" }, null, 60), { kind: "load", days: 60 });
+    assert.deepEqual(planEnsure(ready, null, 90), { kind: "load", days: 90 });
+    assert.deepEqual(planEnsure({ status: "loading", days: 60, scanned: 1, threads: 0 }, 60, 60), { kind: "reuse" });
+    assert.deepEqual(planEnsure({ status: "error", days: 60, message: "x" }, null, 60), { kind: "reuse" });
+  });
+
+  check("series filter fallbacks are validated like the query's", () => {
+    const cat = buildCatalog(makeComboFixture().ctx);
+    const issues = validateWidget(
+      widget("grouped_bar", { groupBy: [dim("createdAt", "week")], series: [series("Opps", "opportunities", "count", "createdAt", { filters: [{ anyOf: [{ field: "cf:Canal de contacto", op: "eq", values: ["X"], fallbacks: ["contact.cf:No Existe"] }] }] })] }),
+      cat
+    );
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    assert.match(issues[0].message, /No Existe/);
+  });
+}
+
+async function main(): Promise<void> {
+  specSection();
+  syncSection();
+  semanticSection();
+  engineDimsSection();
+  seriesSection();
+  validateSection();
+  conversationIndexSection();
+  await conversationsEngineSection();
+  describeSection();
+  await glossaryFieldSection();
+  await filterBarSection();
+  promptSection();
+  appFixesSection();
+  finalReviewSection();
+  console.log("\n✅ capabilities — all assertions passed");
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
